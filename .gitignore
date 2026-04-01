@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Local secrets
+.env
+
+# Local generated artifacts
+sync_log.txt
+rename_map.csv
+
+# macOS
+.DS_Store

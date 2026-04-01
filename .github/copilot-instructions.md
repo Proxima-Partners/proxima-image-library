@@ -1,0 +1,35 @@
+- [ ] Verify that the copilot-instructions.md file in the .github directory is created.
+
+- [x] Clarify Project Requirements
+	- Python project for asset library with Airtable + Claude integration
+	- Auto-generate alt text for images using AI
+	- Batch process and sync to Airtable
+
+- [x] Scaffold the Project
+	- Created folder structure: src/, tests/, assets/, .github/
+	- Created all core modules: main.py, config.py, airtable_client.py, ai_generator.py, image_scanner.py
+
+- [x] Customize the Project
+	- Implemented Airtable API client for record management
+	- Implemented Claude vision integration for alt-text generation
+	- Implemented image scanner for recursive folder traversal
+	- Created main orchestrator with sync and status tracking
+	- Created comprehensive documentation
+
+- [ ] Install Required Extensions
+	- No VS Code extensions required for this Python project
+
+- [x] Compile the Project
+	- Created requirements.txt with all dependencies
+	- Created .env.example template with required configuration
+
+- [ ] Create and Run Task
+	- Tasks.json creation pending - user should run directly or via terminal
+
+- [ ] Launch the Project
+	- Run: `python -m src.main` after configuring .env
+
+- [x] Ensure Documentation is Complete
+	- README.md created with comprehensive setup and usage guide
+	- .env.example template created
+	- All modules documented with docstrings
