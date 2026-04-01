@@ -41,7 +41,7 @@ Create a table in Airtable with these columns:
 - **Image** (Attachment) - Image file
 - **Alt Text** (Long Text) - Generated or edited alt text
 - **Tags** (Text) - Optional tags for categorization
-- **Status** (Single select) - Options: pending_review, reviewed, archived
+- **Status** (Single select) - Options: pending-review, reviewed, archived
 
 ### 4. Add Your Images
 
@@ -65,7 +65,7 @@ This will:
 1. Scan for all new images
 2. Generate alt text for each using Claude
 3. Create records in Airtable
-4. Mark them as "pending_review"
+4. Mark them as "pending-review"
 
 ## Rename Files Before Sync (Recommended)
 
@@ -177,6 +177,28 @@ library.regenerate_alt_text(
 3. **Update Status** - Mark as "reviewed" or "archived" in Airtable
 4. **Bulk Edits** - Use Airtable's batch operations for updates
 5. **Regenerate** - Use the tool to regenerate alt text when you update images
+
+## Git Setup
+
+This project is initialized as a local Git repository on branch `main`.
+
+Check status:
+
+```bash
+git status -sb
+```
+
+Add a GitHub remote:
+
+```bash
+git remote add origin <your-github-repo-url>
+```
+
+Push for the first time:
+
+```bash
+git push -u origin main
+```
 
 ## Troubleshooting
 
