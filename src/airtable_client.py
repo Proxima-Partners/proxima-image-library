@@ -105,6 +105,55 @@ class AirtableClient:
             print(f"Error creating record in Airtable: {e}")
             return None
 
+    def get_all_record_ids(self) -> List[str]:
+        """Fetch all record IDs from Airtable, handling pagination."""
+        record_ids = []
+        offset = None
+        while True:
+            params = {"fields[]": "Filename"}
+            if offset:
+                params["offset"] = offset
+            try:
+                response = requests.get(self.base_url, headers=self.headers, params=params)
+                response.raise_for_status()
+                data = response.json()
+                for record in data.get("records", []):
+                    record_ids.append(record["id"])
+                offset = data.get("offset")
+                if not offset:
+                    break
+            except requests.exceptions.RequestException as e:
+                print(f"Error fetching record IDs: {e}")
+                break
+        return record_ids
+
+    def delete_records(self, record_ids: List[str]) -> int:
+        """Delete records by ID in batches of 10 (Airtable limit).
+
+        Returns:
+            Number of records deleted.
+        """
+        deleted = 0
+        for i in range(0, len(record_ids), 10):
+            batch = record_ids[i : i + 10]
+            params = [("records[]", rid) for rid in batch]
+            try:
+                response = requests.delete(self.base_url, headers=self.headers, params=params)
+                response.raise_for_status()
+                deleted += len(response.json().get("records", batch))
+            except requests.exceptions.RequestException as e:
+                print(f"Error deleting batch starting at {i}: {e}")
+        return deleted
+
+    def delete_all_records(self) -> int:
+        """Delete every record in the table. Returns count of deleted records."""
+        print("Fetching all record IDs...")
+        ids = self.get_all_record_ids()
+        print(f"Found {len(ids)} records. Deleting...")
+        deleted = self.delete_records(ids)
+        print(f"Deleted {deleted} records.")
+        return deleted
+
     def update_record(self, record_id: str, alt_text: str, status: str = "reviewed") -> bool:
         """Update an existing record's alt text.
 
