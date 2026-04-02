@@ -20,3 +20,6 @@ rename_map.csv
 
 # macOS
 .DS_Store
+
+# Compiled macOS app bundles (rebuild from .applescript source)
+*.app/

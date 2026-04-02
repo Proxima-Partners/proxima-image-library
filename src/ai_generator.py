@@ -136,11 +136,20 @@ The alt text should:
             image_data = self.encode_image(image_path)
             media_type = self.get_image_media_type(image_path)
 
-            prompt = """Analyze this image and return 3-6 short, lowercase tags that describe its content, subject, mood, or use case.
+            prompt = """Analyze this image and select 2-5 tags from the following list that best describe what the image shows.
+
+Allowed tags:
+people, headshot, group, individual, staff, volunteer, family, youth, children, elderly, unhoused, neighbor, community
+city, san-francisco, bay-area, golden-gate, landscape, architecture, street, cafe, office, church, indoor, outdoor, mission-district
+park, beach, mountains, waterfront, urban, suburban, rural, forest, plaza, rooftop, bridge, neighborhood
+hope, connection, service, prayer, celebration, hardship, joy, loneliness, generosity
+icon, logo, illustration, graphic, vector, document, map, badge, partner
+portrait, thumbnail, banner, background, photo
+
 Rules:
-- Each tag is 1-3 words, lowercase, hyphenated if multi-word (e.g. san-francisco, black-and-white)
+- Only use tags from the list above — do not invent new ones
 - Return ONLY a comma-separated list, nothing else
-- No punctuation other than hyphens and commas"""
+- No punctuation other than commas"""
 
             if context:
                 prompt += f"\nContext: {context}"

@@ -23,9 +23,18 @@ class Config:
     IMAGE_FOLDER = os.getenv("IMAGE_FOLDER", "./assets")
     SUPPORTED_FORMATS = os.getenv("SUPPORTED_FORMATS", ".jpg,.jpeg,.png,.gif,.webp").split(",")
 
+    # Test mode — uses local JSON store instead of Airtable
+    TEST_MODE = os.getenv("TEST_MODE", "").lower() in ("1", "true", "yes")
+
     @staticmethod
     def validate():
         """Validate that all required configuration is set."""
+        if Config.TEST_MODE:
+            # Only Claude key is needed in test mode
+            if not os.getenv("ANTHROPIC_API_KEY"):
+                raise ValueError("Missing required environment variable: ANTHROPIC_API_KEY")
+            return
+
         required = ["AIRTABLE_API_KEY", "AIRTABLE_BASE_ID", "ANTHROPIC_API_KEY"]
         missing = [key for key in required if not os.getenv(key)]
 

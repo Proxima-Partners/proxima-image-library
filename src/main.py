@@ -8,6 +8,7 @@ from src.config import Config
 from src.image_scanner import ImageScanner
 from src.ai_generator import AltTextGenerator
 from src.airtable_client import AirtableClient
+from src.local_client import LocalClient
 from src.rename_assets import slugify
 
 
@@ -24,7 +25,11 @@ class AssetLibrary:
 
         self.scanner = ImageScanner()
         self.generator = AltTextGenerator()
-        self.airtable = AirtableClient()
+        if Config.TEST_MODE:
+            print("⚠️  TEST MODE — using local JSON store (test_data/local_table.json)")
+            self.airtable = LocalClient()
+        else:
+            self.airtable = AirtableClient()
 
     def sync_new_images(self, dry_run: bool = False) -> int:
         """Scan for new images and add them to Airtable with alt text.
