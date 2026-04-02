@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Proxima Image Library</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #f5f5f5;
+      --surface: #ffffff;
+      --border: #e0e0e0;
+      --accent: #2563eb;
+      --accent-hover: #1d4ed8;
+      --text: #111827;
+      --muted: #6b7280;
+      --folder-bg: #f0fdf4;
+      --folder-border: #bbf7d0;
+      --folder-color: #166534;
+      --folder-sel-bg: #16a34a;
+      --folder-sel-color: #ffffff;
+      --tag-bg: #e0e7ff;
+      --tag-color: #3730a3;
+      --tag-sel-bg: #2563eb;
+      --tag-sel-color: #ffffff;
+      --radius: 8px;
+      --shadow: 0 1px 3px rgba(0,0,0,0.12);
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 14px 32px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      box-shadow: var(--shadow);
+    }
+    header h1 { font-size: 17px; font-weight: 700; letter-spacing: -0.3px; white-space: nowrap; }
+
+    .breadcrumb {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      color: var(--muted);
+      margin-left: auto;
+      flex-wrap: wrap;
+    }
+    .breadcrumb .crumb { cursor: pointer; color: var(--accent); }
+    .breadcrumb .crumb:hover { text-decoration: underline; }
+    .breadcrumb .sep { color: var(--border); }
+
+    .view { display: none; }
+    .view.active { display: block; }
+
+    .panel { max-width: 900px; margin: 0 auto; padding: 40px 24px; }
+    .panel h2 { font-size: 22px; font-weight: 600; margin-bottom: 6px; }
+    .panel .subtitle { font-size: 14px; color: var(--muted); margin-bottom: 28px; }
+
+    .chip-controls { display: flex; gap: 10px; margin-bottom: 14px; }
+    .chip-controls button {
+      font-size: 12px; padding: 4px 12px;
+      border: 1px solid var(--border); border-radius: 20px;
+      background: var(--surface); cursor: pointer; color: var(--muted);
+      transition: background 0.15s, color 0.15s;
+    }
+    .chip-controls button:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+    .chip-grid { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 36px; }
+
+    .folder-chip {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 8px 16px; border-radius: var(--radius);
+      font-size: 13px; font-weight: 500;
+      background: var(--folder-bg); color: var(--folder-color);
+      border: 2px solid var(--folder-border);
+      cursor: pointer; user-select: none;
+      transition: background 0.15s, color 0.15s, border-color 0.15s;
+    }
+    .folder-chip:hover { border-color: var(--folder-sel-bg); }
+    .folder-chip.selected { background: var(--folder-sel-bg); color: var(--folder-sel-color); border-color: var(--folder-sel-bg); }
+    .folder-chip .icon { font-size: 15px; }
+    .folder-chip .count { font-size: 11px; opacity: 0.7; }
+
+    .tag-chip {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 6px 14px; border-radius: 20px;
+      font-size: 13px; font-weight: 500;
+      background: var(--tag-bg); color: var(--tag-color);
+      border: 2px solid transparent;
+      cursor: pointer; user-select: none;
+      transition: background 0.15s, color 0.15s, border-color 0.15s;
+    }
+    .tag-chip:hover { border-color: var(--accent); }
+    .tag-chip.selected { background: var(--tag-sel-bg); color: var(--tag-sel-color); border-color: var(--tag-sel-bg); }
+    .tag-chip .count { font-size: 11px; opacity: 0.7; }
+
+    .btn-primary {
+      display: block; margin: 0 auto;
+      padding: 14px 48px; font-size: 15px; font-weight: 600;
+      background: var(--accent); color: #fff;
+      border: none; border-radius: var(--radius);
+      cursor: pointer; transition: background 0.15s;
+    }
+    .btn-primary:hover { background: var(--accent-hover); }
+    .btn-primary:disabled { opacity: 0.45; cursor: not-allowed; }
+
+    .btn-back {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-size: 13px; padding: 7px 14px;
+      border: 1px solid var(--border); border-radius: var(--radius);
+      background: var(--surface); cursor: pointer; color: var(--text);
+      transition: background 0.15s;
+    }
+    .btn-back:hover { background: var(--bg); }
+
+    .loading { text-align: center; padding: 60px 0; color: var(--muted); font-size: 14px; }
+    .spinner {
+      width: 32px; height: 32px;
+      border: 3px solid var(--border); border-top-color: var(--accent);
+      border-radius: 50%; animation: spin 0.7s linear infinite; margin: 0 auto 12px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    #view-grid { padding: 32px 24px; }
+    .grid-header {
+      display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+      max-width: 1400px; margin: 0 auto 24px;
+    }
+    .grid-header h2 { font-size: 18px; font-weight: 600; }
+    .grid-header .count { font-size: 13px; color: var(--muted); }
+    .grid-header .btn-back { margin-left: auto; }
+
+    .image-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 16px; max-width: 1400px; margin: 0 auto;
+    }
+    .image-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); overflow: hidden;
+      cursor: pointer; transition: transform 0.15s, box-shadow 0.15s;
+      box-shadow: var(--shadow);
+    }
+    .image-card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+    .image-card .thumb { width: 100%; aspect-ratio: 1; object-fit: cover; display: block; background: var(--bg); }
+    .image-card .thumb-placeholder {
+      width: 100%; aspect-ratio: 1; background: var(--bg);
+      display: flex; align-items: center; justify-content: center;
+      color: var(--muted); font-size: 12px;
+    }
+    .image-card .card-label {
+      padding: 8px 10px; font-size: 11px; color: var(--muted);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      border-top: 1px solid var(--border);
+    }
+
+    #view-detail { padding: 32px 24px; max-width: 1000px; margin: 0 auto; }
+    .detail-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; align-items: start; }
+    @media (max-width: 640px) { .detail-layout { grid-template-columns: 1fr; } }
+    .detail-image-wrap {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow);
+    }
+    .detail-image-wrap img { width: 100%; display: block; object-fit: contain; max-height: 480px; }
+    .detail-info { display: flex; flex-direction: column; gap: 20px; }
+    .btn-download {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 11px 24px; font-size: 14px; font-weight: 600;
+      background: var(--accent); color: #fff;
+      border: none; border-radius: var(--radius);
+      cursor: pointer; text-decoration: none;
+      transition: background 0.15s;
+      align-self: flex-start;
+    }
+    .btn-download:hover { background: var(--accent-hover); }
+    .detail-field label {
+      display: block; font-size: 11px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.6px;
+      color: var(--muted); margin-bottom: 4px;
+    }
+    .detail-field p {
+      font-size: 14px; line-height: 1.6; color: var(--text);
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 10px 12px; word-break: break-word;
+    }
+    .detail-field .tag-list { display: flex; flex-wrap: wrap; gap: 6px; }
+    .detail-field .tag-badge {
+      padding: 3px 10px; border-radius: 12px;
+      background: var(--tag-bg); color: var(--tag-color);
+      font-size: 12px; font-weight: 500;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Proxima Image Library</h1>
+  <nav class="breadcrumb" id="breadcrumb"></nav>
+</header>
+
+<!-- STEP 1: Folders -->
+<section id="view-folders" class="view active">
+  <div class="panel">
+    <h2>Select a Folder</h2>
+    <p class="subtitle">Choose one or more folders to browse, then continue to filter by tag.</p>
+    <div id="folder-grid" class="chip-grid">
+      <div class="loading"><div class="spinner"></div>Loading folders&hellip;</div>
+    </div>
+    <button id="btn-to-tags" class="btn-primary" disabled>Filter by Tag</button>
+  </div>
+</section>
+
+<!-- STEP 2: Tags -->
+<section id="view-tags" class="view">
+  <div class="panel">
+    <div style="margin-bottom:20px">
+      <button class="btn-back" id="btn-back-folders">&#8592; Back to Folders</button>
+    </div>
+    <h2>Filter by Tag</h2>
+    <p class="subtitle">Select one or more tags, or click Browse Images to see everything in the selected folder(s).</p>
+    <div class="chip-controls">
+      <button id="btn-select-all">Select all</button>
+      <button id="btn-clear-all">Clear</button>
+    </div>
+    <div id="tag-grid" class="chip-grid">
+      <div class="loading"><div class="spinner"></div>Loading tags&hellip;</div>
+    </div>
+    <button id="btn-browse" class="btn-primary">Browse Images</button>
+  </div>
+</section>
+
+<!-- STEP 3: Image Grid -->
+<section id="view-grid" class="view">
+  <div class="grid-header">
+    <h2>Images</h2>
+    <span class="count" id="grid-count"></span>
+    <button class="btn-back" id="btn-back-tags">&#8592; Back to Tags</button>
+  </div>
+  <div id="image-grid" class="image-grid">
+    <div class="loading"><div class="spinner"></div>Loading images&hellip;</div>
+  </div>
+</section>
+
+<!-- STEP 4: Detail -->
+<section id="view-detail" class="view">
+  <button class="btn-back" id="btn-back-grid" style="margin:24px 24px 0">&#8592; Back to Images</button>
+  <div style="padding:24px">
+    <div class="detail-layout">
+      <div class="detail-image-wrap">
+        <img id="detail-img" src="" alt="" />
+      </div>
+      <div class="detail-info">
+        <div class="detail-field">
+          <label>Filename</label>
+          <p id="detail-filename"></p>
+        </div>
+        <div class="detail-field">
+          <label>Location</label>
+          <p id="detail-location"></p>
+        </div>
+        <div class="detail-field">
+          <label>Alt Text</label>
+          <p id="detail-alt"></p>
+        </div>
+        <div class="detail-field">
+          <label>Image Size</label>
+          <p id="detail-size">Loading&hellip;</p>
+        </div>
+        <div class="detail-field">
+          <label>Tags</label>
+          <div class="tag-list" id="detail-tags"></div>
+        </div>
+        <a id="detail-download" class="btn-download" href="" download>
+          &#8595; Download Original
+        </a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script>
+  const state = {
+    folders: [],
+    selectedFolders: new Set(),
+    tags: [],
+    tagCounts: {},
+    selectedTags: new Set(),
+    images: [],
+  };
+
+  function showView(name) {
+    document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+    document.getElementById('view-' + name).classList.add('active');
+    updateBreadcrumb(name);
+  }
+
+  function updateBreadcrumb(view) {
+    const bc = document.getElementById('breadcrumb');
+    const steps = {
+      folders: '',
+      tags:   '<span class="crumb" onclick="showView(\'folders\')">Folders</span><span class="sep">›</span>Tags',
+      grid:   '<span class="crumb" onclick="showView(\'folders\')">Folders</span><span class="sep">›</span><span class="crumb" onclick="goTags()">Tags</span><span class="sep">›</span>Images',
+      detail: '<span class="crumb" onclick="showView(\'folders\')">Folders</span><span class="sep">›</span><span class="crumb" onclick="goTags()">Tags</span><span class="sep">›</span><span class="crumb" onclick="showView(\'grid\')">Images</span><span class="sep">›</span>Detail',
+    };
+    bc.innerHTML = steps[view] || '';
+  }
+
+  function goTags() { showView('tags'); }
+
+  // ── STEP 1: Folders ────────────────────────────────────────
+  async function loadFolders() {
+    const res = await fetch('/api/folders');
+    const data = await res.json();
+    state.folders = data.folders;
+    renderFolders();
+  }
+
+  function renderFolders() {
+    const grid = document.getElementById('folder-grid');
+    grid.innerHTML = state.folders.map(f => {
+      const sel = state.selectedFolders.has(f.name) ? 'selected' : '';
+      const label = f.name === '.' ? 'Root' : f.name;
+      return `<div class="folder-chip ${sel}" onclick="toggleFolder(this,'${escJs(f.name)}')">
+        <span class="icon">&#128193;</span>${escHtml(label)}<span class="count">(${f.count})</span>
+      </div>`;
+    }).join('');
+    updateToTagsButton();
+  }
+
+  function toggleFolder(el, name) {
+    if (state.selectedFolders.has(name)) {
+      state.selectedFolders.delete(name);
+      el.classList.remove('selected');
+    } else {
+      state.selectedFolders.add(name);
+      el.classList.add('selected');
+    }
+    updateToTagsButton();
+  }
+
+  function updateToTagsButton() {
+    const btn = document.getElementById('btn-to-tags');
+    const n = state.selectedFolders.size;
+    btn.disabled = n === 0;
+    btn.textContent = n === 0
+      ? 'Filter by Tag'
+      : 'Filter by Tag \u2014 ' + n + ' folder' + (n > 1 ? 's' : '') + ' selected';
+  }
+
+  document.getElementById('btn-to-tags').addEventListener('click', async () => {
+    showView('tags');
+    await loadTagsForFolders();
+  });
+
+  // ── STEP 2: Tags ───────────────────────────────────────────
+  async function loadTagsForFolders() {
+    const tagGrid = document.getElementById('tag-grid');
+    tagGrid.innerHTML = '<div class="loading"><div class="spinner"></div>Loading tags\u2026</div>';
+    state.selectedTags.clear();
+
+    const folders = [...state.selectedFolders];
+    const [tagResults, imgResults] = await Promise.all([
+      Promise.all(folders.map(f =>
+        fetch('/api/tags?folder=' + encodeURIComponent(f)).then(r => r.json())
+      )),
+      Promise.all(folders.map(f =>
+        fetch('/api/images?folder=' + encodeURIComponent(f)).then(r => r.json())
+      )),
+    ]);
+
+    const merged = new Set();
+    tagResults.forEach(d => d.tags.forEach(t => merged.add(t)));
+    state.tags = [...merged].sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+
+    const counts = {};
+    imgResults.forEach(d => d.images.forEach(img => {
+      img.tags.split(',').map(t => t.trim()).filter(Boolean).forEach(t => {
+        counts[t] = (counts[t] || 0) + 1;
+      });
+    }));
+    state.tagCounts = counts;
+
+    renderTags();
+    updateBrowseButton();
+  }
+
+  function renderTags() {
+    const grid = document.getElementById('tag-grid');
+    if (!state.tags.length) {
+      grid.innerHTML = '<p style="color:var(--muted);font-size:14px">No tags found in selected folders.</p>';
+      return;
+    }
+    grid.innerHTML = state.tags.map(tag => {
+      const sel = state.selectedTags.has(tag) ? 'selected' : '';
+      const count = state.tagCounts[tag] || 0;
+      return `<div class="tag-chip ${sel}" onclick="toggleTag(this,'${escJs(tag)}')">${escHtml(tag)}<span class="count">(${count})</span></div>`;
+    }).join('');
+  }
+
+  function toggleTag(el, tag) {
+    if (state.selectedTags.has(tag)) {
+      state.selectedTags.delete(tag);
+      el.classList.remove('selected');
+    } else {
+      state.selectedTags.add(tag);
+      el.classList.add('selected');
+    }
+    updateBrowseButton();
+  }
+
+  function updateBrowseButton() {
+    const btn = document.getElementById('btn-browse');
+    const n = state.selectedTags.size;
+    btn.textContent = n === 0
+      ? 'Browse All Images'
+      : 'Browse Images (' + n + ' tag' + (n > 1 ? 's' : '') + ')';
+  }
+
+  document.getElementById('btn-select-all').addEventListener('click', () => {
+    state.tags.forEach(t => state.selectedTags.add(t));
+    renderTags();
+    updateBrowseButton();
+  });
+  document.getElementById('btn-clear-all').addEventListener('click', () => {
+    state.selectedTags.clear();
+    renderTags();
+    updateBrowseButton();
+  });
+
+  document.getElementById('btn-browse').addEventListener('click', loadImages);
+
+  // ── STEP 3: Grid ───────────────────────────────────────────
+  async function loadImages() {
+    showView('grid');
+    document.getElementById('image-grid').innerHTML = '<div class="loading"><div class="spinner"></div>Loading images\u2026</div>';
+    document.getElementById('grid-count').textContent = '';
+
+    const folders = [...state.selectedFolders];
+    const tags = [...state.selectedTags].join(',');
+
+    const results = await Promise.all(folders.map(f => {
+      const params = new URLSearchParams({ folder: f });
+      if (tags) params.set('tags', tags);
+      return fetch('/api/images?' + params).then(r => r.json());
+    }));
+
+    state.images = results.flatMap(d => d.images);
+    renderGrid();
+  }
+
+  function renderGrid() {
+    const grid = document.getElementById('image-grid');
+    const n = state.images.length;
+    document.getElementById('grid-count').textContent = '\u2014 ' + n + ' image' + (n !== 1 ? 's' : '');
+
+    if (!n) {
+      grid.innerHTML = '<p style="color:var(--muted);font-size:14px;padding:20px">No images found.</p>';
+      return;
+    }
+    grid.innerHTML = state.images.map((img, i) =>
+      '<div class="image-card" onclick="showDetail(' + i + ')">' +
+        '<img class="thumb" src="/thumbnail?path=' + encodeURIComponent(img.location) + '"' +
+             ' alt="' + escHtml(img.alt_text) + '"' +
+             ' onerror="this.outerHTML=\'<div class=\\\'thumb-placeholder\\\'>No preview</div>\'" />' +
+        '<div class="card-label">' + escHtml(img.filename) + '</div>' +
+      '</div>'
+    ).join('');
+  }
+
+  document.getElementById('btn-back-tags').addEventListener('click', goTags);
+
+  // ── STEP 4: Detail ─────────────────────────────────────────
+  function showDetail(idx) {
+    const img = state.images[idx];
+    document.getElementById('detail-img').src = '/image?path=' + encodeURIComponent(img.location);
+    document.getElementById('detail-img').alt = img.alt_text;
+    const dl = document.getElementById('detail-download');
+    dl.href = '/image?path=' + encodeURIComponent(img.location);
+    dl.download = img.filename || 'image';
+    document.getElementById('detail-filename').textContent = img.filename || '\u2014';
+    document.getElementById('detail-location').textContent = img.location || '\u2014';
+    document.getElementById('detail-alt').textContent = img.alt_text || '\u2014';
+
+    const tagsEl = document.getElementById('detail-tags');
+    const tags = img.tags.split(',').map(t => t.trim()).filter(Boolean);
+    tagsEl.innerHTML = tags.length
+      ? tags.map(t => '<span class="tag-badge">' + escHtml(t) + '</span>').join('')
+      : '<span style="color:var(--muted);font-size:13px">None</span>';
+
+    document.getElementById('detail-size').textContent = 'Loading\u2026';
+    fetch('/api/image-info?path=' + encodeURIComponent(img.location))
+      .then(r => r.json())
+      .then(d => {
+        document.getElementById('detail-size').textContent =
+          d.width && d.height
+            ? d.width + ' \u00d7 ' + d.height + ' px \u2014 ' + d.file_size
+            : d.file_size || '\u2014';
+      })
+      .catch(() => { document.getElementById('detail-size').textContent = '\u2014'; });
+
+    showView('detail');
+  }
+
+  document.getElementById('btn-back-grid').addEventListener('click', () => showView('grid'));
+  document.getElementById('btn-back-folders').addEventListener('click', () => showView('folders'));
+
+  // ── Helpers ────────────────────────────────────────────────
+  function escHtml(str) {
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+  function escJs(str) {
+    return String(str).replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+  }
+
+  // ── Boot ───────────────────────────────────────────────────
+  loadFolders();
+  updateBreadcrumb('folders');
+</script>
+</body>
+</html>

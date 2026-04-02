@@ -115,6 +115,63 @@ The alt text should:
             print(f"Error generating alt text for {image_path}: {e}")
             return None
 
+    def generate_tags(
+        self,
+        image_path: str,
+        context: Optional[str] = None,
+    ) -> Optional[str]:
+        """Generate comma-separated tags for an image using Claude.
+
+        Args:
+            image_path: Path to the image file
+            context: Optional context about the image or project
+
+        Returns:
+            Comma-separated tags string or None if generation failed
+        """
+        try:
+            if not Path(image_path).exists():
+                return None
+
+            image_data = self.encode_image(image_path)
+            media_type = self.get_image_media_type(image_path)
+
+            prompt = """Analyze this image and return 3-6 short, lowercase tags that describe its content, subject, mood, or use case.
+Rules:
+- Each tag is 1-3 words, lowercase, hyphenated if multi-word (e.g. san-francisco, black-and-white)
+- Return ONLY a comma-separated list, nothing else
+- No punctuation other than hyphens and commas"""
+
+            if context:
+                prompt += f"\nContext: {context}"
+
+            message = self.client.messages.create(
+                model="claude-sonnet-4-6",
+                max_tokens=80,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "image",
+                                "source": {
+                                    "type": "base64",
+                                    "media_type": media_type,
+                                    "data": image_data,
+                                },
+                            },
+                            {"type": "text", "text": prompt},
+                        ],
+                    }
+                ],
+            )
+
+            return message.content[0].text.strip()
+
+        except Exception as e:
+            print(f"Error generating tags for {image_path}: {e}")
+            return None
+
     def batch_generate_alt_text(
         self,
         image_paths: list,

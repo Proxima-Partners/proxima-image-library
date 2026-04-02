@@ -65,6 +65,8 @@ class AirtableClient:
         alt_text: str = "",
         tags: str = "",
         status: str = "pending-review",
+        slug: str = "",
+        location: str = "",
     ) -> Optional[Dict]:
         """Create a new record in Airtable.
 
@@ -74,6 +76,8 @@ class AirtableClient:
             alt_text: Alt text for the image
             tags: Comma-separated tags
             status: Status of the record (pending, reviewed, etc.)
+            slug: URL-safe slug derived from alt text
+            location: Relative path of the image within IMAGE_FOLDER
 
         Returns:
             Created record or None if creation failed
@@ -87,6 +91,8 @@ class AirtableClient:
                             "Alt Text": alt_text,
                             "Tags": tags,
                             "Status": status,
+                            "Slug": slug,
+                            "Location": location,
                         }
                     }
                 ]
@@ -104,6 +110,27 @@ class AirtableClient:
         except requests.exceptions.RequestException as e:
             print(f"Error creating record in Airtable: {e}")
             return None
+
+    def get_all_records(self) -> List[Dict]:
+        """Fetch all records from Airtable, handling pagination."""
+        all_records: List[Dict] = []
+        offset = None
+        while True:
+            params: Dict = {}
+            if offset:
+                params["offset"] = offset
+            try:
+                response = requests.get(self.base_url, headers=self.headers, params=params)
+                response.raise_for_status()
+                data = response.json()
+                all_records.extend(data.get("records", []))
+                offset = data.get("offset")
+                if not offset:
+                    break
+            except requests.exceptions.RequestException as e:
+                print(f"Error fetching records: {e}")
+                break
+        return all_records
 
     def get_all_record_ids(self) -> List[str]:
         """Fetch all record IDs from Airtable, handling pagination."""

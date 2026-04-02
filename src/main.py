@@ -8,6 +8,7 @@ from src.config import Config
 from src.image_scanner import ImageScanner
 from src.ai_generator import AltTextGenerator
 from src.airtable_client import AirtableClient
+from src.rename_assets import slugify
 
 
 class AssetLibrary:
@@ -70,12 +71,24 @@ class AssetLibrary:
 
             print(f"  ✍️  Alt text: {alt_text}")
 
+            # Generate tags
+            print("  ⏳ Generating tags...")
+            tags = self.generator.generate_tags(full_path) or ""
+            print(f"  🏷️  Tags: {tags}")
+
+            # Derive slug from alt text
+            slug = slugify(alt_text)
+            print(f"  🔗 Slug: {slug}")
+
             # Create Airtable record
             if not dry_run:
                 print("  📤 Uploading to Airtable...")
                 record = self.airtable.create_record(
                     filename=filename,
                     alt_text=alt_text,
+                    tags=tags,
+                    slug=slug,
+                    location=relative_path,
                     status="pending-review",
                 )
 

@@ -30,7 +30,7 @@ def slugify(value: str) -> str:
 def build_plan(
     images: List[Tuple[str, str]],
     prefix: str,
-    start_index: int,
+    start_index: int = 1,
 ) -> List[Tuple[Path, Path]]:
     """Create a collision-safe rename plan.
 
@@ -40,11 +40,17 @@ def build_plan(
     used_targets: Dict[Path, int] = {}
     plan: List[Tuple[Path, Path]] = []
 
-    for offset, (full_path, _relative_path) in enumerate(sorted_images):
+    # Pattern to strip an existing {prefix}-NNNN- or {prefix}- header from stem.
+    existing_prefix_re = re.compile(
+        r"^" + re.escape(prefix) + r"(?:-\d{4})?-", re.IGNORECASE
+    )
+
+    for full_path, _relative_path in sorted_images:
         source = Path(full_path)
         extension = source.suffix.lower()
-        stem_slug = slugify(source.stem)
-        base_name = f"{prefix}-{start_index + offset:04d}-{stem_slug}"
+        raw_stem = existing_prefix_re.sub("", source.stem)
+        stem_slug = slugify(raw_stem)
+        base_name = f"{prefix}-{stem_slug}"
 
         candidate = source.with_name(f"{base_name}{extension}")
         if candidate == source:
@@ -52,13 +58,13 @@ def build_plan(
 
         # Resolve collisions if two files normalize to same target.
         if candidate in used_targets or (candidate.exists() and candidate != source):
-            collision_count = used_targets.get(candidate, 1)
+            collision_count = used_targets.get(base_name, 2)
             while True:
                 candidate = source.with_name(f"{base_name}-{collision_count}{extension}")
                 if candidate not in used_targets and (not candidate.exists() or candidate == source):
                     break
                 collision_count += 1
-            used_targets[candidate] = collision_count + 1
+            used_targets[base_name] = collision_count + 1
         else:
             used_targets[candidate] = 1
 
