@@ -6,6 +6,7 @@ Use the tag manager UI or API to promote or discard them.
 
 import json
 import time
+from pathlib import Path
 from typing import Dict, List, Optional
 
 from src.config import Config
@@ -69,12 +70,24 @@ class TagLibrary:
             self._sp = SharePointClient()
         return self._sp
 
+    def _local_path(self) -> Path:
+        return Path(Config.TAG_LIBRARY_PATH).expanduser()
+
     def _load(self) -> None:
         sp = self._get_sp()
         if sp:
             try:
                 content = sp.get_file_bytes(_SP_PATH)
                 self._data = json.loads(content)
+                self._loaded_at = time.time()
+                return
+            except Exception:
+                pass  # Fall through to local file
+
+        local = self._local_path()
+        if local.exists():
+            try:
+                self._data = json.loads(local.read_text(encoding="utf-8"))
                 self._loaded_at = time.time()
                 return
             except Exception:
@@ -93,8 +106,18 @@ class TagLibrary:
             try:
                 content = json.dumps(self._data, indent=2, ensure_ascii=False).encode("utf-8")
                 sp.upload_file(_SP_FOLDER, _SP_FILE, content)
+                return
             except Exception as e:
                 print(f"Warning: could not save tag library to SharePoint: {e}")
+
+        local = self._local_path()
+        try:
+            local.parent.mkdir(parents=True, exist_ok=True)
+            local.write_text(
+                json.dumps(self._data, indent=2, ensure_ascii=False), encoding="utf-8"
+            )
+        except Exception as e:
+            print(f"Warning: could not save tag library to {local}: {e}")
 
     # ------------------------------------------------------------------
     # Public interface

@@ -1,15 +1,21 @@
 """Flask web app for Proxima Image Library browser."""
 
+import json
 import os
+import queue
 import subprocess
 import sys
+import tempfile
+import threading
 import time
+import uuid
 from io import BytesIO
 from pathlib import Path, PurePosixPath
 from urllib.parse import unquote
 
 from dotenv import load_dotenv
-from typing import List, Optional
+from typing import Dict, List, Optional
+from werkzeug.utils import secure_filename
 
 from flask import Flask, Response, jsonify, redirect, render_template, request, stream_with_context
 from flask_cors import CORS
@@ -436,6 +442,133 @@ def api_tag_library_promote():
     TagLibrary.instance().promote_suggestion(tag, category)
     TagLibrary.instance().invalidate_cache()
     return jsonify({"ok": True})
+
+
+# ------------------------------------------------------------------
+# Feature 2: Catalog external images via upload
+# ------------------------------------------------------------------
+
+# In-memory staging store: file_id → {path, filename}
+# Files are written to tempfile and removed after processing.
+_STAGED: Dict[str, Dict[str, str]] = {}
+
+_UPLOAD_ALLOWED = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
+
+
+@app.route("/upload")
+def upload():
+    return render_template("upload.html")
+
+
+@app.route("/api/upload/stage", methods=["POST"])
+def api_upload_stage():
+    """Receive multipart file upload, save to temp, return staged IDs."""
+    files = request.files.getlist("files")
+    if not files or all(f.filename == "" for f in files):
+        return jsonify({"error": "No files provided"}), 400
+
+    staged = []
+    for f in files:
+        original_name = secure_filename(f.filename or "upload")
+        ext = Path(original_name).suffix.lower()
+        if ext not in _UPLOAD_ALLOWED:
+            staged.append({"error": f"Unsupported format: {ext or '(none)'}", "filename": original_name})
+            continue
+
+        file_id = uuid.uuid4().hex
+        tmp_path = Path(tempfile.gettempdir()) / f"proxima_{file_id}{ext}"
+        f.save(str(tmp_path))
+        _STAGED[file_id] = {"path": str(tmp_path), "filename": original_name}
+        staged.append({"id": file_id, "filename": original_name})
+
+    return jsonify({"staged": staged})
+
+
+@app.route("/api/upload/process")
+def api_upload_process():
+    """SSE stream — run the full pipeline for one staged file."""
+    file_id = request.args.get("id", "")
+    category = request.args.get("category", "")
+
+    from src.image_processor import CATEGORIES, process_image
+    if file_id not in _STAGED:
+        return jsonify({"error": "Unknown or expired file ID"}), 404
+    if category not in CATEGORIES:
+        return jsonify({"error": f"Invalid category. Must be one of: {CATEGORIES}"}), 400
+
+    staged = _STAGED.pop(file_id)
+
+    def generate():
+        yield "data: [START]\n\n"
+        q: queue.Queue = queue.Queue()
+
+        def worker():
+            try:
+                file_bytes = Path(staged["path"]).read_bytes()
+                try:
+                    os.unlink(staged["path"])
+                except OSError:
+                    pass
+
+                from src.ai_generator import AltTextGenerator
+                gen = AltTextGenerator()
+
+                if Config.TEST_MODE:
+                    list_client = LocalClient()
+                    sp_client = None
+                    storage_mode = "local"
+                else:
+                    from src.sharepoint_list_client import SharePointListClient
+                    from src.sharepoint_client import SharePointClient
+                    list_client = SharePointListClient()
+                    sp_client = SharePointClient()
+                    storage_mode = "sharepoint"
+
+                result = process_image(
+                    file_bytes=file_bytes,
+                    original_filename=staged["filename"],
+                    category=category,
+                    generator=gen,
+                    list_client=list_client,
+                    sp_client=sp_client,
+                    image_folder=Config.IMAGE_FOLDER,
+                    storage_mode=storage_mode,
+                    on_progress=lambda msg: q.put(("progress", msg)),
+                )
+                q.put(("done", result))
+            except Exception as exc:
+                q.put(("error", str(exc)))
+
+        t = threading.Thread(target=worker, daemon=True)
+        t.start()
+
+        while True:
+            try:
+                kind, value = q.get(timeout=180)
+            except queue.Empty:
+                yield "data: [ERROR] Processing timed out after 3 minutes\n\n"
+                break
+
+            if kind == "progress":
+                yield f"data: {value}\n\n"
+            elif kind == "done":
+                yield f"data: [RESULT] {json.dumps(value)}\n\n"
+                yield "data: [DONE]\n\n"
+                # Invalidate records cache so library reflects new image
+                global _records_cache
+                _records_cache = None
+                break
+            elif kind == "error":
+                yield f"data: [ERROR] {value}\n\n"
+                break
+
+        t.join(timeout=5)
+
+    return Response(
+        stream_with_context(generate()),
+        mimetype="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 if __name__ == "__main__":

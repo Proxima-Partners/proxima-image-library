@@ -8,14 +8,14 @@ Locates image files based on description. Retrieves the file based on user selec
 - **AI:** Claude vision API (claude-sonnet-4-6) — generates alt text and tags from image content
 - **Metadata store:** SharePoint List — stores filenames, alt text, tags, status, slug, location (WebP path), and high-res location
 - **Image storage:** Proxima SharePoint (production); local folder (development/testing)
-- **Security:** Microsoft Azure available for SharePoint authentication and access control
+- **Security:** Microsoft Azure required for SharePoint authentication and access control (live mode)
 
 ## Feature Status
 
 | Feature | Description | Status |
 | ------- | ----------- | ------ |
-| 1 | Search and selection (triggered from Proxima Writing) | Planned |
-| 2 | Catalog external images via upload | Planned |
+| 1 | Search and selection (triggered from Proxima Writing) | Implemented |
+| 2 | Catalog external images via upload | Implemented |
 | 3 | Stock photo search (Pexels, Shutterstock, Unsplash, Pixabay) | Implemented |
 | 4 | Internal image search (local library) | Implemented |
 | 5 | Utility / maintenance tools | Implemented |

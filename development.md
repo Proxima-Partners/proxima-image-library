@@ -79,6 +79,47 @@ Open **http://localhost:5000** in your browser.
 
 ---
 
+## MCP Server (Claude Integration)
+
+The MCP server exposes three tools so Claude can search images and catalog stock photos without leaving the conversation.
+
+### Tools
+
+| Tool | Trigger | Description |
+| ---- | ------- | ----------- |
+| `search_image_library` | Auto — after blog/article skill output | Searches SharePoint List by keyword/tag; returns ranked matches |
+| `search_stock_photos` | After internal search returns no selection | Searches Pexels, Shutterstock, Unsplash, Pixabay concurrently; supports per-library orientation filter |
+| `catalog_stock_image` | After user selects a stock photo | Downloads, transforms to WebP, generates alt text + tags, stores in SharePoint, writes metadata record |
+
+### Run the MCP server
+
+```bash
+python -m src.mcp_server
+```
+
+### Register in Claude Desktop
+
+Edit `~/Library/Application Support/Claude/claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "proxima-image-library": {
+      "command": "/Users/mike-j4c/Projects/proxima-image-library/.venv/bin/python3",
+      "args": ["-m", "src.mcp_server"],
+      "cwd": "/Users/mike-j4c/Projects/proxima-image-library",
+      "env": {
+        "PYTHONPATH": "/Users/mike-j4c/Projects/proxima-image-library"
+      }
+    }
+  }
+}
+```
+
+Restart Claude Desktop after editing the config. The tools appear automatically when the Blog or Article writing skill triggers the image workflow.
+
+---
+
 ## Running Tests
 
 ```bash
@@ -219,6 +260,31 @@ Keep the model pinned to `claude-sonnet-4-6`. Do not change it without discussio
 | Stock search tab shows "not configured" | Missing env var | Add the relevant API key(s) to `.env` |
 | Thumbnail returns 500 | Image format unreadable by Pillow (e.g. CMYK JPEG) | Convert source image to sRGB before adding to `IMAGE_FOLDER` |
 | `build_plan` re-renames already-named files | Slug is derived from the full stem, including the prefix | Re-running rename on already-renamed files is safe but will double-prefix — run rename once per batch |
+
+---
+
+## Next Steps
+
+### Infrastructure setup (manual — one-time)
+
+- [ ] Add Azure credentials to image library `.env` (`SHAREPOINT_TENANT_ID`, `SHAREPOINT_CLIENT_ID`, `SHAREPOINT_CLIENT_SECRET`, `SHAREPOINT_SITE_ID`, `SHAREPOINT_DRIVE_ID`)
+- [ ] Create SharePoint List "Assets" with columns: Title, AltText, Tags, Status, Slug, Location, HighResLocation
+- [ ] Run `pip install -r requirements.txt` after pulling latest
+
+### Webflow UI build (Features 2–5)
+
+The Flask backend is complete. The next development phase is building the Webflow-hosted frontend that calls the Flask API.
+
+| Feature | UI work required |
+| ------- | ---------------- |
+| 2 — Upload & catalog | Drag-and-drop upload form → `/api/upload/stage` + `/api/upload/process` SSE stream |
+| 3 — Stock photo search | Search form → `/api/stock-search`; display results grid with per-library tabs |
+| 4 — Image browser | Tag/folder filter UI → `/api/images`; grid + detail view; selection returns image to calling context |
+| 5 — Maintenance tools | Library diff and re-index controls → `/run/scan-*` SSE streams |
+
+### MCP server update (deferred)
+
+After the Flask image library is deployed and accessible, update the `search_image_library` tool in `src/mcp_server.py` to call the Flask `/api/images` endpoint instead of querying the SharePoint List directly.
 
 ---
 

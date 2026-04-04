@@ -16,6 +16,10 @@ class Config:
     # Paths
     IMAGE_FOLDER = os.getenv("IMAGE_FOLDER", "./assets")
     SUPPORTED_FORMATS = os.getenv("SUPPORTED_FORMATS", ".jpg,.jpeg,.png,.gif,.webp").split(",")
+    TAG_LIBRARY_PATH = os.getenv(
+        "TAG_LIBRARY_PATH",
+        "~/Applications/Image-Library/Config/tag_library.json",
+    )
 
     # Test mode — uses local JSON store instead of Airtable
     TEST_MODE = os.getenv("TEST_MODE", "").lower() in ("1", "true", "yes")

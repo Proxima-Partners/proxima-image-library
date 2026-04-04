@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Upload Images — Proxima</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #f5f5f5;
+      --surface: #ffffff;
+      --border: #e0e0e0;
+      --accent: #2563eb;
+      --accent-hover: #1d4ed8;
+      --text: #111827;
+      --muted: #6b7280;
+      --success: #16a34a;
+      --success-bg: #f0fdf4;
+      --success-border: #bbf7d0;
+      --error: #dc2626;
+      --error-bg: #fef2f2;
+      --error-border: #fecaca;
+      --radius: 8px;
+      --shadow: 0 1px 3px rgba(0,0,0,0.12);
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    /* ── Header ── */
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 14px 32px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      box-shadow: var(--shadow);
+    }
+    header h1 { font-size: 17px; font-weight: 700; letter-spacing: -0.3px; }
+    .breadcrumb {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      color: var(--muted);
+      margin-left: auto;
+    }
+    .breadcrumb a { color: var(--accent); text-decoration: none; }
+    .breadcrumb a:hover { text-decoration: underline; }
+    .breadcrumb .sep { color: var(--border); }
+
+    /* ── Main panel ── */
+    .panel {
+      max-width: 760px;
+      margin: 40px auto;
+      padding: 36px 32px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+    }
+    .panel h2 { font-size: 20px; font-weight: 600; margin-bottom: 6px; }
+    .panel .subtitle { font-size: 13px; color: var(--muted); margin-bottom: 28px; line-height: 1.5; }
+
+    .hidden { display: none !important; }
+
+    /* ── Drop zone ── */
+    .drop-zone {
+      border: 2px dashed var(--border);
+      border-radius: var(--radius);
+      padding: 40px 24px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+      margin-bottom: 20px;
+    }
+    .drop-zone:hover,
+    .drop-zone.drag-over {
+      border-color: var(--accent);
+      background: #eff6ff;
+    }
+    .drop-zone .drop-icon { font-size: 36px; margin-bottom: 8px; }
+    .drop-zone .drop-label { font-size: 14px; color: var(--muted); }
+    .drop-zone .drop-label span { color: var(--accent); font-weight: 600; }
+    .drop-zone .drop-formats { font-size: 12px; color: var(--muted); margin-top: 6px; }
+    .drop-zone input[type="file"] { display: none; }
+
+    /* ── Category select ── */
+    .field-row {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-bottom: 20px;
+    }
+    .field-row label { font-size: 13px; font-weight: 600; color: var(--text); }
+    .field-row .hint { font-size: 12px; color: var(--muted); }
+    select {
+      padding: 9px 14px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      font-size: 14px;
+      color: var(--text);
+      background: var(--surface);
+      width: 260px;
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' fill='none'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%236b7280' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 12px center;
+      cursor: pointer;
+    }
+    select:focus { outline: none; border-color: var(--accent); }
+
+    /* ── File list preview ── */
+    #file-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-bottom: 20px;
+    }
+    .file-chip {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 14px;
+      background: #f9fafb;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      font-size: 13px;
+    }
+    .file-chip .file-icon { font-size: 18px; line-height: 1; flex-shrink: 0; }
+    .file-chip .file-name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .file-chip .file-size { font-size: 12px; color: var(--muted); flex-shrink: 0; }
+    .file-chip .remove-btn {
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: var(--muted);
+      font-size: 16px;
+      line-height: 1;
+      padding: 0 2px;
+      flex-shrink: 0;
+    }
+    .file-chip .remove-btn:hover { color: var(--error); }
+
+    /* ── Buttons ── */
+    .action-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-top: 4px;
+    }
+    .btn {
+      padding: 9px 24px;
+      border-radius: 20px;
+      border: none;
+      background: var(--accent);
+      color: #fff;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .btn:hover    { background: var(--accent-hover); }
+    .btn:disabled { background: #93c5fd; cursor: not-allowed; }
+
+    /* ── Results section ── */
+    #results { margin-top: 32px; display: flex; flex-direction: column; gap: 16px; }
+
+    .result-card {
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+    .result-card-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 16px;
+      background: #f9fafb;
+      border-bottom: 1px solid var(--border);
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .result-card-header .rc-filename { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .status-badge {
+      font-size: 11px;
+      font-weight: 600;
+      padding: 2px 9px;
+      border-radius: 20px;
+    }
+    .badge-pending  { background: #fef3c7; color: #92400e; }
+    .badge-running  { background: #dbeafe; color: #1e40af; }
+    .badge-done     { background: var(--success-bg); color: var(--success); border: 1px solid var(--success-border); }
+    .badge-error    { background: var(--error-bg); color: var(--error); border: 1px solid var(--error-border); }
+
+    .result-card-log {
+      padding: 10px 16px;
+      font-family: "SF Mono", "Fira Code", Menlo, monospace;
+      font-size: 12px;
+      line-height: 1.7;
+      color: var(--muted);
+      max-height: 120px;
+      overflow-y: auto;
+    }
+    .result-card-log .log-done  { color: var(--success); font-weight: 600; }
+    .result-card-log .log-error { color: var(--error); font-weight: 600; }
+
+    .result-card-meta {
+      padding: 12px 16px;
+      border-top: 1px solid var(--border);
+      display: grid;
+      gap: 8px;
+    }
+    .meta-row { display: flex; gap: 10px; font-size: 13px; line-height: 1.4; }
+    .meta-label { font-weight: 600; min-width: 80px; flex-shrink: 0; color: var(--muted); }
+    .meta-value { color: var(--text); word-break: break-word; }
+    .meta-tags  { display: flex; flex-wrap: wrap; gap: 4px; }
+    .tag-chip {
+      background: #e0e7ff;
+      color: #3730a3;
+      padding: 2px 8px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 500;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Proxima Image Library</h1>
+  <nav class="breadcrumb">
+    <a href="/library" class="crumb">Library</a>
+    <span class="sep">›</span>
+    <span>Upload &amp; Catalog</span>
+  </nav>
+</header>
+
+<main>
+  <!-- Upload form -->
+  <div class="panel" id="upload-panel">
+    <h2>Upload &amp; Catalog Images</h2>
+    <p class="subtitle">
+      Upload images to process them through the full pipeline: transform to WebP,
+      generate alt text and tags with Claude, and store in SharePoint with metadata.
+    </p>
+
+    <!-- Drop zone -->
+    <div class="drop-zone" id="drop-zone">
+      <div class="drop-icon">📁</div>
+      <div class="drop-label">Drag &amp; drop images here, or <span>browse files</span></div>
+      <div class="drop-formats">JPEG · PNG · WebP · GIF</div>
+      <input type="file" id="file-input" accept=".jpg,.jpeg,.png,.gif,.webp" multiple />
+    </div>
+
+    <!-- Category -->
+    <div class="field-row">
+      <label for="category-select">Category</label>
+      <select id="category-select">
+        <option value="">— select a category —</option>
+        <option value="Headshots">Headshots — staff and individual portraits</option>
+        <option value="Community">Community — people in community contexts</option>
+        <option value="Locations">Locations — SF landmarks, urban scenes, architecture</option>
+        <option value="Situations">Situations — conceptual / thematic photos</option>
+        <option value="Graphics">Graphics — logos, icons, illustrations, vectors</option>
+        <option value="Banners">Banners — banner and background images</option>
+      </select>
+      <span class="hint">All files in this batch will be stored under the selected category.</span>
+    </div>
+
+    <!-- Selected files list -->
+    <div id="file-list"></div>
+
+    <!-- Process button -->
+    <div class="action-row">
+      <button class="btn" id="process-btn" disabled>Process Images</button>
+      <span id="file-count-label" style="font-size:13px;color:var(--muted);"></span>
+    </div>
+  </div>
+
+  <!-- Results -->
+  <div class="panel" id="results-panel" style="display:none;">
+    <h2>Processing Results</h2>
+    <div id="results"></div>
+  </div>
+</main>
+
+<script>
+  const dropZone    = document.getElementById('drop-zone');
+  const fileInput   = document.getElementById('file-input');
+  const fileListEl  = document.getElementById('file-list');
+  const processBtn  = document.getElementById('process-btn');
+  const countLabel  = document.getElementById('file-count-label');
+  const categorySel = document.getElementById('category-select');
+  const resultsPane = document.getElementById('results-panel');
+  const resultsEl   = document.getElementById('results');
+
+  let selectedFiles = []; // Array of File objects
+
+  // ── Drag & drop ──────────────────────────────────────────────────────────
+  dropZone.addEventListener('click', () => fileInput.click());
+
+  dropZone.addEventListener('dragover', e => {
+    e.preventDefault();
+    dropZone.classList.add('drag-over');
+  });
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+  dropZone.addEventListener('drop', e => {
+    e.preventDefault();
+    dropZone.classList.remove('drag-over');
+    addFiles([...e.dataTransfer.files]);
+  });
+
+  fileInput.addEventListener('change', () => {
+    addFiles([...fileInput.files]);
+    fileInput.value = '';
+  });
+
+  categorySel.addEventListener('change', updateProcessBtn);
+
+  // ── File management ───────────────────────────────────────────────────────
+  const ALLOWED_EXTS = new Set(['.jpg', '.jpeg', '.png', '.gif', '.webp']);
+
+  function addFiles(files) {
+    for (const f of files) {
+      const ext = f.name.slice(f.name.lastIndexOf('.')).toLowerCase();
+      if (!ALLOWED_EXTS.has(ext)) continue;
+      // Skip duplicates by name
+      if (selectedFiles.find(x => x.name === f.name)) continue;
+      selectedFiles.push(f);
+    }
+    renderFileList();
+  }
+
+  function removeFile(name) {
+    selectedFiles = selectedFiles.filter(f => f.name !== name);
+    renderFileList();
+  }
+
+  function renderFileList() {
+    fileListEl.innerHTML = '';
+    for (const f of selectedFiles) {
+      const ext  = f.name.slice(f.name.lastIndexOf('.')).toLowerCase();
+      const icon = ['.png','.webp','.gif'].includes(ext) ? '🖼️' : '📷';
+      const size = f.size >= 1048576
+        ? `${(f.size / 1048576).toFixed(1)} MB`
+        : `${Math.round(f.size / 1024)} KB`;
+
+      const chip = document.createElement('div');
+      chip.className = 'file-chip';
+      chip.innerHTML = `
+        <span class="file-icon">${icon}</span>
+        <span class="file-name" title="${f.name}">${f.name}</span>
+        <span class="file-size">${size}</span>
+        <button class="remove-btn" title="Remove" data-name="${f.name}">✕</button>
+      `;
+      chip.querySelector('.remove-btn').addEventListener('click', e => {
+        removeFile(e.currentTarget.dataset.name);
+      });
+      fileListEl.appendChild(chip);
+    }
+
+    const n = selectedFiles.length;
+    countLabel.textContent = n === 0 ? '' : `${n} file${n > 1 ? 's' : ''} selected`;
+    updateProcessBtn();
+  }
+
+  function updateProcessBtn() {
+    processBtn.disabled = selectedFiles.length === 0 || !categorySel.value;
+  }
+
+  // ── Processing ────────────────────────────────────────────────────────────
+  processBtn.addEventListener('click', startProcessing);
+
+  async function startProcessing() {
+    const category = categorySel.value;
+    if (!category || selectedFiles.length === 0) return;
+
+    processBtn.disabled = true;
+    resultsPane.style.display = 'block';
+    resultsEl.innerHTML = '';
+
+    // Stage all files
+    const formData = new FormData();
+    for (const f of selectedFiles) formData.append('files', f);
+
+    let staged;
+    try {
+      const res = await fetch('/api/upload/stage', { method: 'POST', body: formData });
+      const data = await res.json();
+      staged = data.staged || [];
+    } catch (err) {
+      alert(`Upload failed: ${err.message}`);
+      processBtn.disabled = false;
+      return;
+    }
+
+    // Create a result card for each staged file
+    const cards = {};
+    for (const s of staged) {
+      const card = createResultCard(s.filename || s.error);
+      resultsEl.appendChild(card.el);
+      cards[s.id] = card;
+
+      if (s.error) {
+        card.setStatus('error');
+        card.appendLog(s.error, 'error');
+      }
+    }
+
+    resultsPane.scrollIntoView({ behavior: 'smooth' });
+
+    // Process each staged file sequentially via SSE
+    for (const s of staged) {
+      if (!s.id) continue;
+      const card = cards[s.id];
+      card.setStatus('running');
+
+      await new Promise(resolve => {
+        const url = `/api/upload/process?id=${encodeURIComponent(s.id)}&category=${encodeURIComponent(category)}`;
+        const es = new EventSource(url);
+
+        es.onmessage = e => {
+          const msg = e.data;
+
+          if (msg === '[START]') return;
+
+          if (msg === '[DONE]') {
+            card.setStatus('done');
+            es.close();
+            resolve();
+            return;
+          }
+
+          if (msg.startsWith('[ERROR]')) {
+            card.appendLog(msg.slice(7).trim(), 'error');
+            card.setStatus('error');
+            es.close();
+            resolve();
+            return;
+          }
+
+          if (msg.startsWith('[RESULT] ')) {
+            try {
+              const result = JSON.parse(msg.slice(9));
+              card.showResult(result);
+            } catch (_) {}
+            return;
+          }
+
+          card.appendLog(msg);
+        };
+
+        es.onerror = () => {
+          card.setStatus('error');
+          card.appendLog('Connection lost', 'error');
+          es.close();
+          resolve();
+        };
+      });
+    }
+
+    processBtn.disabled = false;
+  }
+
+  // ── Result card helpers ───────────────────────────────────────────────────
+  function createResultCard(filename) {
+    const el = document.createElement('div');
+    el.className = 'result-card';
+    el.innerHTML = `
+      <div class="result-card-header">
+        <span class="rc-filename" title="${filename}">${filename}</span>
+        <span class="status-badge badge-pending">Queued</span>
+      </div>
+      <div class="result-card-log"></div>
+    `;
+
+    const logEl    = el.querySelector('.result-card-log');
+    const badgeEl  = el.querySelector('.status-badge');
+
+    function setStatus(status) {
+      const labels = { pending: 'Queued', running: 'Processing…', done: 'Done', error: 'Error' };
+      const classes = { pending: 'badge-pending', running: 'badge-running', done: 'badge-done', error: 'badge-error' };
+      badgeEl.textContent = labels[status] || status;
+      badgeEl.className = `status-badge ${classes[status] || ''}`;
+    }
+
+    function appendLog(msg, type) {
+      const line = document.createElement('div');
+      if (type === 'error') line.className = 'log-error';
+      else if (type === 'done') line.className = 'log-done';
+      line.textContent = msg === 'Done.' ? '✓ Done' : msg;
+      logEl.appendChild(line);
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    function showResult(result) {
+      const meta = document.createElement('div');
+      meta.className = 'result-card-meta';
+
+      const tagChips = (result.tags || '').split(',')
+        .map(t => t.trim()).filter(Boolean)
+        .map(t => `<span class="tag-chip">${t}</span>`)
+        .join('');
+
+      meta.innerHTML = `
+        <div class="meta-row">
+          <span class="meta-label">Filename</span>
+          <span class="meta-value">${result.filename || '—'}</span>
+        </div>
+        <div class="meta-row">
+          <span class="meta-label">Alt text</span>
+          <span class="meta-value">${result.alt_text || '—'}</span>
+        </div>
+        <div class="meta-row">
+          <span class="meta-label">Tags</span>
+          <span class="meta-value meta-tags">${tagChips || '—'}</span>
+        </div>
+        <div class="meta-row">
+          <span class="meta-label">Location</span>
+          <span class="meta-value">${result.location || '—'}</span>
+        </div>
+      `;
+      el.appendChild(meta);
+    }
+
+    return { el, setStatus, appendLog, showResult };
+  }
+</script>
+</body>
+</html>
