@@ -1,80 +1,79 @@
 # Proxima Image Library
 
-Scans a local image folder, generates alt text and tags via Claude, syncs metadata to Airtable, and provides a web interface for browsing the library.
+AI-powered image asset management for Proxima. Scans a local image folder, generates alt text and tags via Claude vision, syncs metadata to Airtable, and provides a web UI for browsing and stock photo search.
 
-## Quick Start (macOS)
+**Tech stack:** Python 3 · Flask · Claude `claude-sonnet-4-6` · Airtable · Pillow · Vanilla HTML/CSS/JS
 
-Open **Proxima Photos** from `/Applications` — it starts the server, prompts to confirm, and opens the launcher in your browser automatically.
+---
 
-Alternatively, start from the terminal:
+## Quick Start
 
 ```bash
 pip3 install -r requirements.txt
-cp .env.example .env   # fill in API keys and IMAGE_FOLDER
+cp .env.example .env        # fill in keys and IMAGE_FOLDER
+```
 
-# Start in test mode (no Airtable required)
+**Development (no Airtable required):**
+
+```bash
 TEST_MODE=true python3 -m flask --app src.app run --port 5000
+```
 
-# Start with live Airtable
+**Live:**
+
+```bash
 python3 -m flask --app src.app run --port 5000
 ```
 
-Open **http://localhost:5000** in your browser.
+Open **http://localhost:5000**
 
-Required `.env` vars: `AIRTABLE_API_KEY`, `AIRTABLE_BASE_ID`, `AIRTABLE_TABLE_NAME`, `ANTHROPIC_API_KEY`, `IMAGE_FOLDER`
+Minimum `.env` for dev: `ANTHROPIC_API_KEY`, `IMAGE_FOLDER`, `TEST_MODE=true`
+Full setup: see [development.md](development.md#environment-variables-reference)
 
-## Web Launcher
+---
 
-The launcher at **http://localhost:5000** provides four actions:
+## Project Structure
 
-| Card | Description |
-|------|-------------|
-| **Browse Library** | Filter by folder + tags, browse thumbnail grid, view image detail with download |
-| **Scan — Test Mode** | Scan images and generate alt text/tags locally (no Airtable writes) |
-| **Scan — Airtable** | Full sync: scan + generate + write records to Airtable |
-| **Clean Data** | Delete all Airtable records (prompts for confirmation) |
+```text
+src/
+├── app.py              Flask routes, thumbnail serving, SSE streaming
+├── main.py             CLI scan → generate → upload pipeline
+├── ai_generator.py     Claude vision — alt text + tags
+├── airtable_client.py  Airtable CRUD (live mode)
+├── local_client.py     Local JSON store, same interface (TEST_MODE)
+├── image_scanner.py    Recursive image discovery
+├── config.py           Env var validation
+├── rename_assets.py    Batch rename to {prefix}-{slug}.{ext}
+└── stock_client.py     Pexels / Shutterstock / Unsplash search
 
-A **Stop Server** button in the footer shuts down the Flask process cleanly.
-
-### Browser — 4-step flow
-1. **Folders** — select one or more asset folders
-2. **Tags** — filter by tags scoped to the selected folders
-3. **Grid** — thumbnail grid of matching images
-4. **Detail** — filename, location, alt text, image size (px + file size), tags, and a Download Original button
-
-## Sync Pipeline
-
-**Rename images** (run once before first sync):
-```bash
-python3 -m src.rename_assets --prefix proxima          # dry-run preview
-python3 -m src.rename_assets --prefix proxima --apply  # apply renames
-```
-Output format: `proxima-slug-of-name.jpg`. Writes `rename_map.csv` for audit.
-
-**Sync to Airtable:**
-```bash
-python3 -u -m src.main
-```
-Scans `IMAGE_FOLDER`, generates alt text + tags for new images via Claude, creates Airtable records with status `pending-review`.
-
-**Clear all Airtable records (Python):**
-```python
-from dotenv import load_dotenv; load_dotenv('.env')
-from src.airtable_client import AirtableClient
-AirtableClient().delete_all_records()
+templates/              Jinja2 HTML — launcher, library browser, stock search
+tests/                  pytest — rename_assets, ImageScanner
 ```
 
-## Test Mode
+`LocalClient` and `AirtableClient` share identical interfaces. `TEST_MODE=true` swaps between them with zero code changes.
 
-Set `TEST_MODE=true` to use a local JSON store (`test_data/local_table.json`) instead of Airtable. Safe for development — no API calls to Airtable.
+---
 
-## macOS App
+## Key Commands
 
-`Start Server.applescript` and `Stop Server.applescript` in the project root compile to `.app` bundles. The prebuilt **Proxima Photos.app** is installed at `/Applications/Proxima Photos.app`.
+| Task | Command |
+| ---- | ------- |
+| Start server (dev) | `TEST_MODE=true python3 -m flask --app src.app run --port 5000` |
+| Start server (live) | `python3 -m flask --app src.app run --port 5000` |
+| Run tests | `pytest` |
+| Sync images to Airtable | `python3 -u -m src.main` |
+| Rename images (preview) | `python3 -m src.rename_assets --prefix proxima` |
+| Rename images (apply) | `python3 -m src.rename_assets --prefix proxima --apply` |
 
-To recompile and reinstall after editing the AppleScript:
+---
+
+## macOS Launcher
+
+Prebuilt app at `/Applications/Proxima Photos.app` starts the server and opens the browser automatically.
+
+To rebuild after editing `Start Server.applescript`:
+
 ```bash
-cd /path/to/proxima-image-library
 osacompile -o "Start Server.app" "Start Server.applescript"
 cp /tmp/proxima2.icns "Start Server.app/Contents/Resources/applet.icns"
 plutil -replace CFBundleName -string "Proxima Photos" "Start Server.app/Contents/Info.plist"
@@ -82,47 +81,13 @@ plutil -replace CFBundleDisplayName -string "Proxima Photos" "Start Server.app/C
 cp -R "Start Server.app" "/Applications/Proxima Photos.app"
 ```
 
-## Airtable Table Schema
+---
 
-| Field | Type |
-|-------|------|
-| Filename | Text |
-| Alt Text | Long Text |
-| Tags | Text (comma-separated) |
-| Status | Single select (`pending-review`, `reviewed`, `archived`) |
-| Slug | Text |
-| Location | Text (relative path within IMAGE_FOLDER) |
+## Documentation
 
-## Stock Photo Search
-
-A built-in stock photo browser at **http://localhost:5000/stock-search** searches **Pexels**, **Shutterstock**, and **Unsplash** simultaneously and displays results in a tabbed thumbnail grid.
-
-### Setup
-
-Add the following to `.env`:
-
-```
-PEXELS_API_KEY=your_key          # pexels.com/api — free, instant
-SHUTTERSTOCK_CLIENT_ID=your_id   # shutterstock.com/account/developers/apps
-SHUTTERSTOCK_CLIENT_SECRET=your_secret
-UNSPLASH_ACCESS_KEY=your_key     # unsplash.com/developers
-```
-
-### Usage
-1. Open the Stock Search card from the launcher
-2. Paste one or more search phrases (one per line) or upload a `.txt` file
-3. Results appear per phrase — tabs for each library
-4. Click any thumbnail to open the full image on the source site
-
-### Notes
-- Pexels and Unsplash are **free to use** with attribution; Shutterstock shows watermarked previews only
-- Unsplash results display photographer attribution links per [Unsplash API guidelines](https://help.unsplash.com/en/articles/2511245-unsplash-api-guidelines)
-- Shutterstock free developer tier may return limited results; upgrade to a paid plan for full access
-
-## Notes
-
-- If port 5000 is in use on macOS, disable **AirPlay Receiver** in System Settings → General → AirDrop & Handoff
-- SSL warning on every run is non-blocking (urllib3 v2 / LibreSSL incompatibility)
-- Supported formats: `.jpg`, `.jpeg`, `.png`, `.gif`, `.webp` (configurable via `SUPPORTED_FORMATS`)
-- Airtable status value must use a dash: `pending-review` not `pending_review`
-- Images are served directly from `IMAGE_FOLDER` — Airtable holds metadata only
+| Document | Contents |
+| -------- | -------- |
+| [development.md](development.md) | Setup, architecture, how-to guides, code conventions, gotchas |
+| [specification.md](specification.md) | Image output targets, naming, Airtable schema, AI metadata spec |
+| [search-parameter.md](search-parameter.md) | Stock photo API parameters, auth, attribution requirements |
+| [project-scope.md](project-scope.md) | Feature definitions and application parameters |
