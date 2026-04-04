@@ -151,6 +151,35 @@ def api_preview():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/stock-search")
+def stock_search():
+    return render_template("stock_search.html")
+
+
+@app.route("/api/parse-suggestions", methods=["POST"])
+def api_parse_suggestions():
+    data = request.get_json(force=True)
+    content = data.get("content", "")
+    if not content:
+        return jsonify({"error": "No content provided"}), 400
+    from src.stock_client import parse_photo_suggestions
+    phrases = parse_photo_suggestions(content)
+    return jsonify({"phrases": phrases})
+
+
+@app.route("/api/stock-search", methods=["POST"])
+def api_stock_search():
+    data = request.get_json(force=True)
+    phrases = data.get("phrases", [])
+    limit = max(1, min(int(data.get("limit", 8)), 12))
+    if not phrases:
+        return jsonify({"error": "No phrases provided"}), 400
+    phrases = phrases[:20]
+    from src.stock_client import search_all_libraries
+    results = search_all_libraries(phrases, limit)
+    return jsonify({"results": results})
+
+
 @app.route("/run/start-server")
 def run_start_server():
     """Return a simple redirect instruction — server is already running."""

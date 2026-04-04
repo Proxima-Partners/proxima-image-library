@@ -93,6 +93,32 @@ cp -R "Start Server.app" "/Applications/Proxima Photos.app"
 | Slug | Text |
 | Location | Text (relative path within IMAGE_FOLDER) |
 
+## Stock Photo Search
+
+A built-in stock photo browser at **http://localhost:5000/stock-search** searches **Pexels**, **Shutterstock**, and **Unsplash** simultaneously and displays results in a tabbed thumbnail grid.
+
+### Setup
+
+Add the following to `.env`:
+
+```
+PEXELS_API_KEY=your_key          # pexels.com/api — free, instant
+SHUTTERSTOCK_CLIENT_ID=your_id   # shutterstock.com/account/developers/apps
+SHUTTERSTOCK_CLIENT_SECRET=your_secret
+UNSPLASH_ACCESS_KEY=your_key     # unsplash.com/developers
+```
+
+### Usage
+1. Open the Stock Search card from the launcher
+2. Paste one or more search phrases (one per line) or upload a `.txt` file
+3. Results appear per phrase — tabs for each library
+4. Click any thumbnail to open the full image on the source site
+
+### Notes
+- Pexels and Unsplash are **free to use** with attribution; Shutterstock shows watermarked previews only
+- Unsplash results display photographer attribution links per [Unsplash API guidelines](https://help.unsplash.com/en/articles/2511245-unsplash-api-guidelines)
+- Shutterstock free developer tier may return limited results; upgrade to a paid plan for full access
+
 ## Notes
 
 - If port 5000 is in use on macOS, disable **AirPlay Receiver** in System Settings → General → AirDrop & Handoff
