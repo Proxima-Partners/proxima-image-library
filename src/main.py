@@ -7,9 +7,9 @@ from typing import List
 from src.config import Config
 from src.image_scanner import ImageScanner
 from src.ai_generator import AltTextGenerator
-from src.airtable_client import AirtableClient
 from src.local_client import LocalClient
 from src.rename_assets import slugify
+from scripts.migrate_records import map_to_category
 
 
 class AssetLibrary:
@@ -23,13 +23,18 @@ class AssetLibrary:
             print(f"Configuration error: {e}")
             sys.exit(1)
 
-        self.scanner = ImageScanner()
         self.generator = AltTextGenerator()
         if Config.TEST_MODE:
             print("⚠️  TEST MODE — using local JSON store (test_data/local_table.json)")
+            self.scanner = ImageScanner()
             self.airtable = LocalClient()
+            self.sp = None
         else:
-            self.airtable = AirtableClient()
+            from src.sharepoint_client import SharePointScanner, SharePointClient
+            from src.sharepoint_list_client import SharePointListClient
+            self.scanner = SharePointScanner()
+            self.airtable = SharePointListClient()
+            self.sp = SharePointClient()
 
     def sync_new_images(self, dry_run: bool = False) -> int:
         """Scan for new images and add them to Airtable with alt text.
@@ -66,9 +71,20 @@ class AssetLibrary:
             filename = Path(relative_path).name
             print(f"\n[{i}/{len(new_images)}] Processing: {filename}")
 
+            # Get image source — bytes from SharePoint or local file path
+            if self.sp:
+                print("  ⬇️  Downloading from SharePoint...")
+                try:
+                    image_source = self.sp.get_file_bytes(full_path)
+                except Exception as e:
+                    print(f"  ❌ Download failed: {e}")
+                    continue
+            else:
+                image_source = full_path  # local path string
+
             # Generate alt text
             print("  ⏳ Generating alt text...")
-            alt_text = self.generator.generate_alt_text(full_path)
+            alt_text = self.generator.generate_alt_text(image_source, filename=filename)
 
             if not alt_text:
                 print(f"  ❌ Failed to generate alt text")
@@ -78,22 +94,27 @@ class AssetLibrary:
 
             # Generate tags
             print("  ⏳ Generating tags...")
-            tags = self.generator.generate_tags(full_path) or ""
+            tags = self.generator.generate_tags(image_source, filename=filename) or ""
             print(f"  🏷️  Tags: {tags}")
 
             # Derive slug from alt text
             slug = slugify(alt_text)
             print(f"  🔗 Slug: {slug}")
 
-            # Create Airtable record
+            # Build SharePoint-aware location paths
+            category = map_to_category(relative_path, tags)
+            webp_location     = f"{category}/{slug}.webp"
+            high_res_location = f"{category}/{filename}"
+
             if not dry_run:
-                print("  📤 Uploading to Airtable...")
+                print("  📤 Writing to SharePoint List...")
                 record = self.airtable.create_record(
                     filename=filename,
                     alt_text=alt_text,
                     tags=tags,
                     slug=slug,
-                    location=relative_path,
+                    location=webp_location,
+                    high_res_location=high_res_location,
                     status="pending-review",
                 )
 
@@ -101,9 +122,9 @@ class AssetLibrary:
                     print(f"  ✅ Record created: {record.get('id')}")
                     processed_count += 1
                 else:
-                    print(f"  ❌ Failed to create Airtable record")
+                    print(f"  ❌ Failed to create record")
             else:
-                print("  🔍 [DRY RUN] Would create Airtable record")
+                print("  🔍 [DRY RUN] Would create record")
                 processed_count += 1
 
         print(f"\n✨ Processing complete! {processed_count} images synced.")

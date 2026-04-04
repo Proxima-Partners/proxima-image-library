@@ -67,6 +67,7 @@ class AirtableClient:
         status: str = "pending-review",
         slug: str = "",
         location: str = "",
+        high_res_location: str = "",
     ) -> Optional[Dict]:
         """Create a new record in Airtable.
 
@@ -77,7 +78,8 @@ class AirtableClient:
             tags: Comma-separated tags
             status: Status of the record (pending, reviewed, etc.)
             slug: URL-safe slug derived from alt text
-            location: Relative path of the image within IMAGE_FOLDER
+            location: WebP path relative to Images/WebP/ (e.g. Headshots/proxima-mike7.webp)
+            high_res_location: Original path relative to Images/High-Res/ (e.g. Headshots/proxima-mike7-original.jpg)
 
         Returns:
             Created record or None if creation failed
@@ -93,6 +95,7 @@ class AirtableClient:
                             "Status": status,
                             "Slug": slug,
                             "Location": location,
+                            "High-Res Location": high_res_location,
                         }
                     }
                 ]

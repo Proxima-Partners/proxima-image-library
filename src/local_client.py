@@ -55,6 +55,7 @@ class LocalClient:
         status: str = "pending-review",
         slug: str = "",
         location: str = "",
+        high_res_location: str = "",
     ) -> Optional[Dict]:
         records = self._load()
         record = {
@@ -66,6 +67,7 @@ class LocalClient:
                 "Status": status,
                 "Slug": slug,
                 "Location": location,
+                "High-Res Location": high_res_location,
             },
         }
         if image_url:

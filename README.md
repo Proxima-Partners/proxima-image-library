@@ -46,7 +46,7 @@ src/
 ├── rename_assets.py    Batch rename to {prefix}-{slug}.{ext}
 └── stock_client.py     Pexels / Shutterstock / Unsplash search
 
-templates/              Jinja2 HTML — launcher, library browser, stock search
+templates/              Jinja2 HTML — library browser, stock search
 tests/                  pytest — rename_assets, ImageScanner
 ```
 
@@ -64,22 +64,6 @@ tests/                  pytest — rename_assets, ImageScanner
 | Sync images to Airtable | `python3 -u -m src.main` |
 | Rename images (preview) | `python3 -m src.rename_assets --prefix proxima` |
 | Rename images (apply) | `python3 -m src.rename_assets --prefix proxima --apply` |
-
----
-
-## macOS Launcher
-
-Prebuilt app at `/Applications/Proxima Photos.app` starts the server and opens the browser automatically.
-
-To rebuild after editing `Start Server.applescript`:
-
-```bash
-osacompile -o "Start Server.app" "Start Server.applescript"
-cp /tmp/proxima2.icns "Start Server.app/Contents/Resources/applet.icns"
-plutil -replace CFBundleName -string "Proxima Photos" "Start Server.app/Contents/Info.plist"
-plutil -replace CFBundleDisplayName -string "Proxima Photos" "Start Server.app/Contents/Info.plist"
-cp -R "Start Server.app" "/Applications/Proxima Photos.app"
-```
 
 ---
 

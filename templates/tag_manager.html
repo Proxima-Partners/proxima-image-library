@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tag Manager — Proxima Image Library</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #f5f5f7;
+      color: #1d1d1f;
+      padding: 32px 24px;
+    }
+
+    h1 { font-size: 1.5rem; font-weight: 700; margin-bottom: 4px; }
+    .subtitle { color: #6e6e73; font-size: 0.875rem; margin-bottom: 32px; }
+
+    /* Sections */
+    .section { margin-bottom: 40px; }
+    .section-title {
+      font-size: 0.75rem;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: #6e6e73;
+      margin-bottom: 12px;
+    }
+
+    /* Suggestions banner */
+    #suggestions-section {
+      background: #fff8e7;
+      border: 1px solid #f0d060;
+      border-radius: 10px;
+      padding: 16px 20px;
+    }
+    #suggestions-section .section-title { color: #a07000; }
+    .suggestion-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 0;
+      border-bottom: 1px solid #f0e8c0;
+    }
+    .suggestion-item:last-child { border-bottom: none; }
+    .suggestion-tag {
+      flex: 1;
+      font-size: 0.9rem;
+      font-weight: 500;
+      color: #7a5000;
+    }
+    .suggestion-count {
+      font-size: 0.75rem;
+      color: #a07000;
+      background: #f5e28a;
+      padding: 2px 8px;
+      border-radius: 99px;
+    }
+    .suggestion-category {
+      font-size: 0.8rem;
+      border: 1px solid #d4b060;
+      border-radius: 6px;
+      padding: 3px 8px;
+      background: #fff;
+      color: #555;
+    }
+    #suggestions-section.hidden { display: none; }
+
+    /* Category grid */
+    .category-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 16px;
+    }
+
+    .category-card {
+      background: #fff;
+      border: 1px solid #e0e0e5;
+      border-radius: 10px;
+      padding: 16px;
+    }
+    .category-name {
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: #555;
+      margin-bottom: 10px;
+    }
+    .tag-list { display: flex; flex-wrap: wrap; gap: 6px; }
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      background: #e8f0fe;
+      color: #1a56c4;
+      font-size: 0.8rem;
+      padding: 3px 10px;
+      border-radius: 99px;
+    }
+    .tag .remove-btn {
+      cursor: pointer;
+      font-size: 0.7rem;
+      color: #6b90d4;
+      background: none;
+      border: none;
+      padding: 0;
+      line-height: 1;
+    }
+    .tag .remove-btn:hover { color: #c0392b; }
+
+    /* Add tag form */
+    .add-form {
+      background: #fff;
+      border: 1px solid #e0e0e5;
+      border-radius: 10px;
+      padding: 20px;
+      display: flex;
+      gap: 10px;
+      align-items: flex-end;
+      flex-wrap: wrap;
+    }
+    .form-group { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 160px; }
+    label { font-size: 0.75rem; font-weight: 600; color: #6e6e73; }
+    input, select {
+      border: 1px solid #d0d0d5;
+      border-radius: 6px;
+      padding: 8px 10px;
+      font-size: 0.875rem;
+      outline: none;
+    }
+    input:focus, select:focus { border-color: #0071e3; }
+
+    .btn {
+      padding: 8px 18px;
+      border-radius: 6px;
+      font-size: 0.875rem;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+    }
+    .btn-primary { background: #0071e3; color: #fff; }
+    .btn-primary:hover { background: #0058b0; }
+    .btn-sm { padding: 4px 12px; font-size: 0.78rem; font-weight: 600; border-radius: 6px; border: none; cursor: pointer; }
+    .btn-promote { background: #34c759; color: #fff; }
+    .btn-promote:hover { background: #28a745; }
+    .btn-discard { background: #f5f5f7; color: #555; border: 1px solid #d0d0d5; }
+    .btn-discard:hover { background: #e8e8ed; }
+
+    .toast {
+      position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+      background: #1d1d1f; color: #fff; padding: 10px 20px;
+      border-radius: 8px; font-size: 0.875rem; opacity: 0;
+      transition: opacity 0.3s; pointer-events: none; z-index: 999;
+    }
+    .toast.show { opacity: 1; }
+
+    .empty { color: #aaa; font-size: 0.85rem; font-style: italic; }
+  </style>
+</head>
+<body>
+
+  <h1>Tag Manager</h1>
+  <p class="subtitle">Manage the tag vocabulary used by Claude when cataloguing images.</p>
+
+  <!-- Suggestions -->
+  <div class="section" id="suggestions-section">
+    <div class="section-title">Suggested tags — pending review</div>
+    <div id="suggestions-list"><span class="empty">Loading…</span></div>
+  </div>
+
+  <!-- Tag library -->
+  <div class="section">
+    <div class="section-title">Approved tag vocabulary</div>
+    <div class="category-grid" id="category-grid">
+      <span class="empty">Loading…</span>
+    </div>
+  </div>
+
+  <!-- Add tag -->
+  <div class="section">
+    <div class="section-title">Add a new tag</div>
+    <div class="add-form">
+      <div class="form-group">
+        <label for="new-tag">Tag</label>
+        <input id="new-tag" type="text" placeholder="e.g. rooftop-garden">
+      </div>
+      <div class="form-group">
+        <label for="new-category">Category</label>
+        <select id="new-category"></select>
+      </div>
+      <button class="btn btn-primary" onclick="addTag()">Add tag</button>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+<script>
+  let library = {};
+
+  async function loadLibrary() {
+    const res = await fetch('/api/tag-library');
+    library = await res.json();
+    renderLibrary();
+    populateCategorySelect();
+  }
+
+  async function loadSuggestions() {
+    const res = await fetch('/api/tag-library/suggestions');
+    const { suggestions } = await res.json();
+    const el = document.getElementById('suggestions-list');
+    const section = document.getElementById('suggestions-section');
+
+    if (!suggestions.length) {
+      section.classList.add('hidden');
+      return;
+    }
+    section.classList.remove('hidden');
+
+    const categories = Object.keys(library).concat(['Custom']);
+    el.innerHTML = suggestions.map(s => `
+      <div class="suggestion-item" id="sug-${s.tag.replace('?','')}">
+        <span class="suggestion-tag">${s.tag}</span>
+        <span class="suggestion-count">${s.count} image${s.count !== 1 ? 's' : ''}</span>
+        <select class="suggestion-category" id="cat-${s.tag.replace('?','')}">
+          ${categories.map(c => `<option value="${c}">${c}</option>`).join('')}
+        </select>
+        <button class="btn-sm btn-promote" onclick="promote('${s.tag}')">Approve</button>
+        <button class="btn-sm btn-discard" onclick="discard('${s.tag}')">Discard</button>
+      </div>
+    `).join('');
+  }
+
+  function renderLibrary() {
+    const grid = document.getElementById('category-grid');
+    if (!Object.keys(library).length) {
+      grid.innerHTML = '<span class="empty">No tags yet.</span>';
+      return;
+    }
+    grid.innerHTML = Object.entries(library).map(([cat, tags]) => `
+      <div class="category-card">
+        <div class="category-name">${cat}</div>
+        <div class="tag-list">
+          ${tags.map(t => `
+            <span class="tag">
+              ${t}
+              <button class="remove-btn" onclick="removeTag('${t}')" title="Remove">✕</button>
+            </span>
+          `).join('') || '<span class="empty">Empty</span>'}
+        </div>
+      </div>
+    `).join('');
+  }
+
+  function populateCategorySelect() {
+    const sel = document.getElementById('new-category');
+    const cats = Object.keys(library).concat(['Custom']);
+    sel.innerHTML = cats.map(c => `<option value="${c}">${c}</option>`).join('');
+  }
+
+  async function addTag() {
+    const tag = document.getElementById('new-tag').value.trim().toLowerCase().replace(/\s+/g, '-');
+    const category = document.getElementById('new-category').value;
+    if (!tag) return;
+    await fetch('/api/tag-library/add', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ tag, category })
+    });
+    document.getElementById('new-tag').value = '';
+    showToast(`Added "${tag}" to ${category}`);
+    await loadLibrary();
+  }
+
+  async function removeTag(tag) {
+    if (!confirm(`Remove tag "${tag}"?`)) return;
+    await fetch('/api/tag-library/remove', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ tag })
+    });
+    showToast(`Removed "${tag}"`);
+    await loadLibrary();
+  }
+
+  async function promote(tag) {
+    const clean = tag.replace('?', '');
+    const category = document.getElementById(`cat-${clean}`)?.value || 'Custom';
+    await fetch('/api/tag-library/promote', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ tag, category })
+    });
+    showToast(`Approved "${clean}" → ${category}`);
+    await loadLibrary();
+    await loadSuggestions();
+  }
+
+  async function discard(tag) {
+    const clean = tag.replace('?', '');
+    document.getElementById(`sug-${clean}`)?.remove();
+    showToast(`Discarded "${tag}"`);
+  }
+
+  function showToast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 2500);
+  }
+
+  loadLibrary().then(loadSuggestions);
+</script>
+</body>
+</html>

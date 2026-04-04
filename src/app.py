@@ -11,10 +11,10 @@ from urllib.parse import unquote
 from dotenv import load_dotenv
 from typing import List, Optional
 
-from flask import Flask, Response, jsonify, render_template, request, stream_with_context
+from flask import Flask, Response, jsonify, redirect, render_template, request, stream_with_context
+from flask_cors import CORS
 from PIL import Image as PILImage
 
-from src.airtable_client import AirtableClient
 from src.local_client import LocalClient
 from src.config import Config
 
@@ -22,10 +22,15 @@ load_dotenv()
 
 app = Flask(__name__, template_folder="../templates")
 
+# Allow configured origins to call the API (Webflow frontend + localhost dev)
+CORS(app, resources={r"/api/*": {"origins": Config.CORS_ORIGINS}},
+     supports_credentials=False)
+
 _client = None
+_sp_client = None
 _records_cache: Optional[List] = None
 _cache_time: float = 0
-CACHE_TTL = 300  # 5-minute cache to avoid hammering Airtable API
+CACHE_TTL = 300  # 5-minute cache
 
 
 def get_client():
@@ -34,8 +39,17 @@ def get_client():
         if Config.TEST_MODE:
             _client = LocalClient()
         else:
-            _client = AirtableClient()
+            from src.sharepoint_list_client import SharePointListClient
+            _client = SharePointListClient()
     return _client
+
+
+def get_sp_client():
+    global _sp_client
+    if _sp_client is None:
+        from src.sharepoint_client import SharePointClient
+        _sp_client = SharePointClient()
+    return _sp_client
 
 
 def get_all_records() -> list:
@@ -47,10 +61,6 @@ def get_all_records() -> list:
 
 
 @app.route("/")
-def launcher():
-    return render_template("launcher.html")
-
-
 @app.route("/library")
 def index():
     return render_template("index.html")
@@ -267,6 +277,25 @@ def api_image_info():
     if not location:
         return jsonify({"error": "Missing path"}), 400
 
+    if Config.STORAGE_MODE == "sharepoint":
+        try:
+            root = Config.SHAREPOINT_IMAGE_FOLDER
+            webp_path = f"{root}/WebP/{location}" if root else f"WebP/{location}"
+            meta = get_sp_client().get_file_metadata(webp_path)
+            file_bytes = meta.get("size", 0)
+            if file_bytes >= 1_048_576:
+                file_size = f"{file_bytes / 1_048_576:.1f} MB"
+            elif file_bytes >= 1024:
+                file_size = f"{file_bytes / 1024:.1f} KB"
+            else:
+                file_size = f"{file_bytes} B"
+            image_facet = meta.get("image", {})
+            width = image_facet.get("width", 0)
+            height = image_facet.get("height", 0)
+            return jsonify({"width": width, "height": height, "file_size": file_size})
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
     image_folder = Path(os.getenv("IMAGE_FOLDER", "./assets")).resolve()
     full_path = (image_folder / location).resolve()
 
@@ -308,6 +337,18 @@ def _serve_image(thumb: bool) -> Response:
     if not location:
         return Response("Missing path parameter", status=400)
 
+    if Config.STORAGE_MODE == "sharepoint":
+        try:
+            root = Config.SHAREPOINT_IMAGE_FOLDER
+            sp_path = f"{root}/WebP/{location}" if root else f"WebP/{location}"
+            if thumb:
+                url = get_sp_client().get_thumbnail_url(sp_path)
+            else:
+                url = get_sp_client().get_file_url(sp_path)
+            return redirect(url)
+        except Exception as e:
+            return Response(f"Error: {e}", status=500)
+
     image_folder = Path(os.getenv("IMAGE_FOLDER", "./assets")).resolve()
     full_path = (image_folder / location).resolve()
 
@@ -328,6 +369,73 @@ def _serve_image(thumb: bool) -> Response:
         return Response(buf.read(), mimetype="image/jpeg")
     except Exception as e:
         return Response(f"Error reading image: {e}", status=500)
+
+
+# ------------------------------------------------------------------
+# Tag library
+# ------------------------------------------------------------------
+
+@app.route("/tag-manager")
+def tag_manager():
+    return render_template("tag_manager.html")
+
+
+@app.route("/api/tag-library", methods=["GET"])
+def api_tag_library_get():
+    from src.tag_library import TagLibrary
+    return jsonify(TagLibrary.instance().get_all())
+
+
+@app.route("/api/tag-library/suggestions")
+def api_tag_library_suggestions():
+    """Return all ?suggested tags found across existing records."""
+    records = get_all_records()
+    suggestions: dict = {}  # tag → count
+    for rec in records:
+        for tag in rec.get("fields", {}).get("Tags", "").split(","):
+            tag = tag.strip()
+            if tag.startswith("?"):
+                suggestions[tag] = suggestions.get(tag, 0) + 1
+    return jsonify({"suggestions": [
+        {"tag": t, "count": c} for t, c in sorted(suggestions.items())
+    ]})
+
+
+@app.route("/api/tag-library/add", methods=["POST"])
+def api_tag_library_add():
+    data = request.get_json(force=True)
+    tag      = data.get("tag", "").strip()
+    category = data.get("category", "Custom").strip()
+    if not tag:
+        return jsonify({"error": "tag required"}), 400
+    from src.tag_library import TagLibrary
+    TagLibrary.instance().add_tag(tag, category)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/tag-library/remove", methods=["POST"])
+def api_tag_library_remove():
+    data = request.get_json(force=True)
+    tag = data.get("tag", "").strip()
+    if not tag:
+        return jsonify({"error": "tag required"}), 400
+    from src.tag_library import TagLibrary
+    found = TagLibrary.instance().remove_tag(tag)
+    return jsonify({"ok": found})
+
+
+@app.route("/api/tag-library/promote", methods=["POST"])
+def api_tag_library_promote():
+    """Promote a ?suggested tag to an approved tag."""
+    data     = request.get_json(force=True)
+    tag      = data.get("tag", "").strip()
+    category = data.get("category", "Custom").strip()
+    if not tag:
+        return jsonify({"error": "tag required"}), 400
+    from src.tag_library import TagLibrary
+    TagLibrary.instance().promote_suggestion(tag, category)
+    TagLibrary.instance().invalidate_cache()
+    return jsonify({"ok": True})
 
 
 if __name__ == "__main__":

@@ -109,7 +109,6 @@ src/
 └── stock_client.py     Pexels / Shutterstock / Unsplash search, concurrent
 
 templates/
-├── launcher.html       Dashboard — 4 feature cards
 ├── index.html          Library browser — folder → tag → grid → detail
 └── stock_search.html   Stock photo search — upload/paste → phrase chips → results
 
@@ -135,7 +134,6 @@ TEST_MODE=false →  AirtableClient  →  Airtable API
 1. Add the route function to [src/app.py](src/app.py)
 2. If it returns HTML, add a template to `templates/`
 3. If it's an API endpoint, return `jsonify(...)` with a consistent shape
-4. Add a link or card in `templates/launcher.html` if it's a top-level feature
 
 ```python
 @app.route("/my-feature")
@@ -175,31 +173,6 @@ Keep the model pinned to `claude-sonnet-4-6`. Do not change it without discussio
 3. Add the new searcher to the `searchers` dict in `search_all_libraries()`
 4. Add the new tab to the `LIBS` array in `templates/stock_search.html`
 5. Document the API in [search-parameter.md](search-parameter.md)
-
-### Modify the launcher
-
-The launcher at `templates/launcher.html` is a 4-card grid. To add a card:
-
-```html
-<a class="card" href="/my-feature">
-  <div class="card-icon">🔍</div>
-  <div class="card-title">My Feature</div>
-  <div class="card-desc">Short description shown under the title.</div>
-</a>
-```
-
-### Rebuild the macOS app
-
-After editing `Start Server.applescript`:
-
-```bash
-cd /path/to/proxima-image-library
-osacompile -o "Start Server.app" "Start Server.applescript"
-cp /tmp/proxima2.icns "Start Server.app/Contents/Resources/applet.icns"
-plutil -replace CFBundleName -string "Proxima Photos" "Start Server.app/Contents/Info.plist"
-plutil -replace CFBundleDisplayName -string "Proxima Photos" "Start Server.app/Contents/Info.plist"
-cp -R "Start Server.app" "/Applications/Proxima Photos.app"
-```
 
 ---
 
