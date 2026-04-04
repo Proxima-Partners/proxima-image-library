@@ -66,7 +66,6 @@ def search_shutterstock(phrase: str, limit: int = 8) -> dict:
             "query": phrase,
             "per_page": limit,
             "image_type": "photo",
-            "fields": "id,description,assets",
         }
         r = requests.get(
             "https://api.shutterstock.com/v2/images/search",
@@ -93,6 +92,41 @@ def search_shutterstock(phrase: str, limit: int = 8) -> dict:
         return {"results": results, "error": None}
     except requests.HTTPError as e:
         return {"results": [], "error": f"Shutterstock API error {e.response.status_code}"}
+    except Exception as e:
+        return {"results": [], "error": str(e)}
+
+
+def search_pixabay(phrase: str, limit: int = 8) -> dict:
+    """Search Pixabay. Returns {results: [...], error: str|None}."""
+    api_key = os.getenv("PIXABAY_API_KEY", "")
+    if not api_key:
+        return {"results": [], "error": "PIXABAY_API_KEY not configured"}
+    try:
+        params = {
+            "key": api_key,
+            "q": phrase,
+            "image_type": "photo",
+            "per_page": limit,
+            "safesearch": "true",
+        }
+        r = requests.get(
+            "https://pixabay.com/api/",
+            params=params,
+            timeout=10,
+        )
+        r.raise_for_status()
+        data = r.json()
+        results = []
+        for item in data.get("hits", []):
+            tags = item.get("tags", "")
+            results.append({
+                "thumb": item.get("webformatURL", ""),
+                "title": tags,
+                "link": item.get("pageURL", ""),
+            })
+        return {"results": results, "error": None}
+    except requests.HTTPError as e:
+        return {"results": [], "error": f"Pixabay API error {e.response.status_code}"}
     except Exception as e:
         return {"results": [], "error": str(e)}
 
@@ -149,10 +183,11 @@ def search_all_libraries(phrases: list, limit: int = 8) -> list:
         "pexels": search_pexels,
         "shutterstock": search_shutterstock,
         "unsplash": search_unsplash,
+        "pixabay": search_pixabay,
     }
 
     results_map = {p: {} for p in phrases}
-    max_workers = min(len(phrases) * 3, 12)
+    max_workers = min(len(phrases) * 4, 16)
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
         future_to_key = {}

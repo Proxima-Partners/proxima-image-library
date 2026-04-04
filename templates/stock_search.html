@@ -20,6 +20,7 @@
       --pexels-color: #05a081;
       --shutterstock-color: #e81c28;
       --unsplash-color: #111111;
+      --pixabay-color: #2ec66e;
     }
 
     body {
@@ -492,7 +493,7 @@
       if (!phrases.length) { alert('Add at least one phrase.'); return; }
 
       document.getElementById('loading-msg').textContent =
-        `Searching ${phrases.length} phrase${phrases.length !== 1 ? 's' : ''} across Pexels, Shutterstock, and Unsplash…`;
+        `Searching ${phrases.length} phrase${phrases.length !== 1 ? 's' : ''} across Pexels, Shutterstock, Unsplash, and Pixabay…`;
       showOnly('step-loading');
 
       try {
@@ -513,9 +514,10 @@
 
     // ── Render results ───────────────────────────────────────────────────
     const LIBS = [
-      { key: 'pexels',        label: 'Pexels'       },
+      { key: 'pexels',       label: 'Pexels'       },
       { key: 'shutterstock', label: 'Shutterstock' },
       { key: 'unsplash',     label: 'Unsplash'     },
+      { key: 'pixabay',      label: 'Pixabay'      },
     ];
 
     function renderResults(results) {
