@@ -3,7 +3,7 @@
 # SSE streams need long timeout; 2 workers avoids port contention on App Service
 gunicorn \
   --bind=0.0.0.0:8000 \
-  --workers=2 \
+  --workers=1 \
   --timeout=300 \
   --keep-alive=5 \
   --access-logfile=- \

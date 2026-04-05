@@ -453,11 +453,25 @@ def api_tag_library_promote():
 # Feature 2: Catalog external images via upload
 # ------------------------------------------------------------------
 
-# In-memory staging store: file_id → {path, filename}
-# Files are written to tempfile and removed after processing.
-_STAGED: Dict[str, Dict[str, str]] = {}
-
 _UPLOAD_ALLOWED = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
+
+
+def _staged_lookup(file_id: str) -> Optional[Dict[str, str]]:
+    """Find a staged temp file by ID from the filesystem (worker-safe)."""
+    matches = list(Path(tempfile.gettempdir()).glob(f"proxima_{file_id}__*"))
+    if not matches:
+        return None
+    path = matches[0]
+    # Filename is encoded after the double-underscore separator
+    filename = path.name[len(f"proxima_{file_id}__"):]
+    return {"path": str(path), "filename": filename}
+
+
+def _staged_save(file_id: str, original_name: str, data: bytes) -> str:
+    """Write file bytes to a temp path encoding the original name in the filename."""
+    tmp_path = Path(tempfile.gettempdir()) / f"proxima_{file_id}__{original_name}"
+    tmp_path.write_bytes(data)
+    return str(tmp_path)
 
 
 @app.route("/upload")
@@ -481,9 +495,7 @@ def api_upload_stage():
             continue
 
         file_id = uuid.uuid4().hex
-        tmp_path = Path(tempfile.gettempdir()) / f"proxima_{file_id}{ext}"
-        f.save(str(tmp_path))
-        _STAGED[file_id] = {"path": str(tmp_path), "filename": original_name}
+        _staged_save(file_id, original_name, f.read())
         staged.append({"id": file_id, "filename": original_name})
 
     return jsonify({"staged": staged})
@@ -496,12 +508,11 @@ def api_upload_process():
     category = request.args.get("category", "") or None  # None = AI determines it
 
     from src.image_processor import CATEGORIES, process_image
-    if file_id not in _STAGED:
+    staged = _staged_lookup(file_id)
+    if staged is None:
         return jsonify({"error": "Unknown or expired file ID"}), 404
     if category is not None and category not in CATEGORIES:
         return jsonify({"error": f"Invalid category. Must be one of: {CATEGORIES}"}), 400
-
-    staged = _STAGED.pop(file_id)
 
     def generate():
         yield "data: [START]\n\n"
