@@ -416,6 +416,14 @@
       await new Promise(resolve => {
         const url = `/api/upload/process?id=${encodeURIComponent(s.id)}`;
         const es = new EventSource(url);
+        let finished = false;
+
+        function finish() {
+          if (finished) return;
+          finished = true;
+          es.close();
+          resolve();
+        }
 
         es.onmessage = e => {
           const msg = e.data;
@@ -424,16 +432,14 @@
 
           if (msg === '[DONE]') {
             card.setStatus('done');
-            es.close();
-            resolve();
+            finish();
             return;
           }
 
           if (msg.startsWith('[ERROR]')) {
             card.appendLog(msg.slice(7).trim(), 'error');
             card.setStatus('error');
-            es.close();
-            resolve();
+            finish();
             return;
           }
 
@@ -449,10 +455,10 @@
         };
 
         es.onerror = () => {
+          if (finished) return;
           card.setStatus('error');
           card.appendLog('Connection lost', 'error');
-          es.close();
-          resolve();
+          finish();
         };
       });
     }
