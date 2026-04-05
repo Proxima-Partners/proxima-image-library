@@ -67,6 +67,7 @@ def get_all_records() -> list:
 
 
 @app.route("/health")
+@app.route("/healthz")
 def health():
     return jsonify({"status": "ok"})
 
