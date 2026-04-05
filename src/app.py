@@ -66,6 +66,11 @@ def get_all_records() -> list:
     return _records_cache
 
 
+@app.route("/health")
+def health():
+    return jsonify({"status": "ok"})
+
+
 @app.route("/")
 @app.route("/library")
 def index():
