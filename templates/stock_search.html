@@ -362,13 +362,125 @@
     .ss-confirm { padding: 8px 20px; border-radius: 20px; border: none; background: #e81c28; color: #fff; font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit; }
     .ss-confirm:hover { background: #c01020; }
     .ss-confirm:disabled { background: #ccc; cursor: not-allowed; }
+
+    /* ── Download confirmation modal ── */
+    #dl-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.45);
+      z-index: 1000; display: none; align-items: center; justify-content: center;
+      padding: 20px;
+    }
+    #dl-overlay.active { display: flex; }
+    #dl-modal {
+      background: #fff; border-radius: 10px; overflow: hidden;
+      max-width: 500px; width: 100%;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+      max-height: 90vh; display: flex; flex-direction: column;
+    }
+    #dl-color-strip { height: 4px; width: 100%; flex-shrink: 0; }
+    #dl-preview {
+      width: 100%; max-height: 220px; object-fit: cover; display: block;
+      background: #f3f4f6; flex-shrink: 0;
+    }
+    #dl-body { padding: 18px 22px 16px; overflow-y: auto; }
+    .dl-header-row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+    .dl-source-badge {
+      display: inline-block; padding: 2px 10px; border-radius: 20px;
+      font-size: 11px; font-weight: 600; letter-spacing: 0.4px;
+      text-transform: uppercase; color: #fff; flex-shrink: 0;
+    }
+    .dl-source-badge.pexels   { background: var(--pexels-color); }
+    .dl-source-badge.unsplash { background: var(--unsplash-color); }
+    .dl-source-badge.pixabay  { background: var(--pixabay-color); }
+    .dl-editorial-badge {
+      display: inline-block; padding: 2px 10px; border-radius: 20px;
+      font-size: 11px; font-weight: 600; background: #fef3c7; color: #92400e;
+    }
+    #dl-title {
+      font-family: 'Montserrat', sans-serif; font-size: 14px; font-weight: 700;
+      color: #111; margin-bottom: 6px; line-height: 1.4;
+    }
+    #dl-photographer { font-size: 12px; color: #6b7280; margin-bottom: 12px; }
+    #dl-photographer a { color: var(--accent); text-decoration: none; }
+    #dl-photographer a:hover { text-decoration: underline; }
+    #dl-meta-grid {
+      display: flex; flex-wrap: wrap; gap: 6px 16px;
+      margin-bottom: 12px; font-size: 12px; color: #374151;
+    }
+    .dl-meta-item { display: flex; align-items: center; gap: 5px; }
+    .dl-meta-icon { font-size: 13px; line-height: 1; }
+    .dl-color-swatch {
+      width: 13px; height: 13px; border-radius: 3px; border: 1px solid rgba(0,0,0,0.12);
+      flex-shrink: 0;
+    }
+    #dl-tags { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 4px; }
+    .dl-tag {
+      padding: 2px 9px; background: #f3f4f6; border-radius: 20px;
+      font-size: 11px; color: #374151;
+    }
+    .dl-modal-actions {
+      display: flex; gap: 10px; justify-content: flex-end;
+      padding: 12px 22px 16px; border-top: 1px solid #f3f4f6; flex-shrink: 0;
+    }
+    .dl-cancel { padding: 8px 20px; border-radius: 20px; border: 1px solid #e0e0e0; background: #fff; font-size: 13px; font-weight: 600; cursor: pointer; color: #6b7280; font-family: inherit; }
+    .dl-cancel:hover { border-color: var(--accent); color: var(--accent); }
+    .dl-confirm { padding: 8px 20px; border-radius: 20px; border: none; background: var(--accent); color: #fff; font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit; }
+    .dl-confirm:hover { background: var(--accent-hover); }
+
+    /* ── Shutterstock modal image section ── */
+    #ss-img-section {
+      display: flex; gap: 14px; align-items: flex-start;
+      padding-bottom: 16px; margin-bottom: 16px;
+      border-bottom: 1px solid #f3f4f6;
+    }
+    #ss-img-section.hidden { display: none; }
+    #ss-preview {
+      width: 90px; height: 68px; object-fit: cover; border-radius: 6px;
+      flex-shrink: 0; background: #f3f4f6; display: block;
+    }
+    #ss-img-meta { flex: 1; min-width: 0; }
+    #ss-img-title { font-size: 13px; font-weight: 600; color: #111; margin-bottom: 6px; line-height: 1.4; }
+    #ss-img-cats { font-size: 12px; color: #6b7280; margin-bottom: 6px; }
+    #ss-img-keywords { display: flex; flex-wrap: wrap; gap: 4px; }
+    .ss-kw { padding: 1px 7px; background: #f3f4f6; border-radius: 20px; font-size: 11px; color: #374151; }
+    .ss-editorial { font-size: 11px; font-weight: 600; color: #92400e; background: #fef3c7; padding: 2px 8px; border-radius: 20px; display: inline-block; margin-top: 6px; }
   </style>
 </head>
 <body>
 
+<!-- Download confirmation modal -->
+<div id="dl-overlay">
+  <div id="dl-modal">
+    <div id="dl-color-strip"></div>
+    <img id="dl-preview" src="" alt="" />
+    <div id="dl-body">
+      <div class="dl-header-row">
+        <span class="dl-source-badge" id="dl-source-badge"></span>
+        <span class="dl-editorial-badge hidden" id="dl-editorial">Editorial use only</span>
+      </div>
+      <div id="dl-title"></div>
+      <div id="dl-photographer"></div>
+      <div id="dl-meta-grid"></div>
+      <div id="dl-tags"></div>
+    </div>
+    <div class="dl-modal-actions">
+      <button class="dl-cancel" id="dl-cancel">Cancel</button>
+      <button class="dl-confirm" id="dl-confirm">Download</button>
+    </div>
+  </div>
+</div>
+
 <!-- Shutterstock quota modal -->
 <div id="ss-overlay">
   <div id="ss-modal">
+    <div id="ss-img-section" class="hidden">
+      <img id="ss-preview" src="" alt="" />
+      <div id="ss-img-meta">
+        <div id="ss-img-title"></div>
+        <div id="ss-img-cats"></div>
+        <div id="ss-img-keywords"></div>
+        <div class="ss-editorial hidden" id="ss-img-editorial">Editorial use only</div>
+      </div>
+    </div>
     <h3>Open on Shutterstock</h3>
     <p>Proxima has a <strong>10 download limit per month</strong> on Shutterstock. This counter tracks link-outs — please only download images you intend to use.</p>
     <div class="ss-quota-bar"><div class="ss-quota-fill" id="ss-quota-fill"></div></div>
@@ -381,10 +493,10 @@
 </div>
 
   <header>
-    <img src="/static/logo.png" alt="Proxima" style="height:36px;width:36px;border-radius:50%;object-fit:cover;flex-shrink:0;" />
+    <a href="/"><img src="/static/logo.png" alt="Proxima" style="height:36px;width:36px;border-radius:50%;object-fit:cover;flex-shrink:0;" /></a>
     <h1>Stock Photo Search</h1>
     <div class="breadcrumb">
-      <span class="crumb" onclick="location.href='/'">Launcher</span>
+      <span class="crumb" onclick="location.href='/'">Home</span>
       <span class="sep">›</span>
       <span>Stock Photo Search</span>
     </div>
@@ -625,7 +737,31 @@
               a.target = '_blank';
               a.rel    = 'noopener noreferrer';
               a.className = 'thumb-card';
-              if (key === 'shutterstock') a.dataset.ssLink = img.link || '#';
+              if (key === 'shutterstock') {
+                a.dataset.ssLink       = img.link || '#';
+                a.dataset.ssThumb      = img.thumb || '';
+                a.dataset.ssTitle      = img.title || '';
+                a.dataset.ssCategories = JSON.stringify(img.categories || []);
+                a.dataset.ssKeywords   = JSON.stringify(img.keywords || []);
+                a.dataset.ssEditorial  = img.is_editorial ? '1' : '';
+              } else if (img.download_url) {
+                a.dataset.downloadUrl           = img.download_url;
+                a.dataset.downloadTitle         = img.title || img.photographer || key;
+                a.dataset.downloadSource        = key;
+                a.dataset.downloadPhotographer  = img.photographer || '';
+                a.dataset.downloadPhotographerUrl = img.photographer_url || '';
+                a.dataset.downloadWidth         = img.width || '';
+                a.dataset.downloadHeight        = img.height || '';
+                a.dataset.downloadColor         = img.color || '';
+                a.dataset.downloadLikes         = img.likes != null ? img.likes : '';
+                a.dataset.downloadViews         = img.views != null ? img.views : '';
+                a.dataset.downloadDownloads     = img.downloads != null ? img.downloads : '';
+                a.dataset.downloadImageSize     = img.image_size || '';
+                a.dataset.downloadUser          = img.user || '';
+                a.dataset.downloadType          = img.type || '';
+                a.dataset.downloadTags          = JSON.stringify(img.tags || []);
+                if (img.download_location) a.dataset.downloadLocation = img.download_location;
+              }
 
               const imgEl = document.createElement('img');
               imgEl.src     = img.thumb;
@@ -701,15 +837,175 @@
       .catch(() => {});
 
     // Intercept Shutterstock card clicks
+    let pendingSsMeta = {};
     document.addEventListener('click', e => {
       const card = e.target.closest('[data-ss-link]');
       if (!card) return;
       e.preventDefault();
-      pendingSsUrl = card.dataset.ssLink;
+      pendingSsUrl  = card.dataset.ssLink;
+      pendingSsMeta = {
+        thumb:      card.dataset.ssThumb || '',
+        title:      card.dataset.ssTitle || '',
+        categories: JSON.parse(card.dataset.ssCategories || '[]'),
+        keywords:   JSON.parse(card.dataset.ssKeywords   || '[]'),
+        editorial:  card.dataset.ssEditorial === '1',
+      };
       showSsModal();
     });
 
+    // ── Download confirmation modal ──────────────────────────────────────
+    const dlOverlay      = document.getElementById('dl-overlay');
+    const dlColorStrip   = document.getElementById('dl-color-strip');
+    const dlPreview      = document.getElementById('dl-preview');
+    const dlSourceBadge  = document.getElementById('dl-source-badge');
+    const dlEditorial    = document.getElementById('dl-editorial');
+    const dlTitle        = document.getElementById('dl-title');
+    const dlPhotographer = document.getElementById('dl-photographer');
+    const dlMetaGrid     = document.getElementById('dl-meta-grid');
+    const dlTags         = document.getElementById('dl-tags');
+    const dlCancel       = document.getElementById('dl-cancel');
+    const dlConfirm      = document.getElementById('dl-confirm');
+    let pendingDownload  = null;  // { url, filename, dl }
+
+    function fmtNum(n) { return Number(n).toLocaleString(); }
+    function fmtBytes(b) {
+      b = Number(b);
+      if (b >= 1048576) return (b / 1048576).toFixed(1) + ' MB';
+      if (b >= 1024)    return (b / 1024).toFixed(0) + ' KB';
+      return b + ' B';
+    }
+
+    // Intercept free-library card clicks → show confirmation modal
+    document.addEventListener('click', e => {
+      const card = e.target.closest('[data-download-url]');
+      if (!card) return;
+      e.preventDefault();
+
+      const url             = card.dataset.downloadUrl;
+      const titleRaw        = card.dataset.downloadTitle || 'image';
+      const source          = card.dataset.downloadSource || '';
+      const photographer    = card.dataset.downloadPhotographer || '';
+      const photographerUrl = card.dataset.downloadPhotographerUrl || '';
+      const dlLocation      = card.dataset.downloadLocation || '';
+      const color           = card.dataset.downloadColor || '';
+      const width           = card.dataset.downloadWidth;
+      const height          = card.dataset.downloadHeight;
+      const likes           = card.dataset.downloadLikes;
+      const views           = card.dataset.downloadViews;
+      const dlCount         = card.dataset.downloadDownloads;
+      const imageSize       = card.dataset.downloadImageSize;
+      const user            = card.dataset.downloadUser;
+      const type            = card.dataset.downloadType;
+      const tags            = JSON.parse(card.dataset.downloadTags || '[]');
+      const thumbEl         = card.querySelector('img');
+      const raw     = titleRaw.replace(/[^\w\s-]/g, '').trim().replace(/\s+/g, '-').slice(0, 60) || 'image';
+      const ext     = url.split('?')[0].match(/\.(jpe?g|png|gif|webp)$/i)?.[1] || 'jpg';
+      const filename = `${raw}.${ext}`;
+
+      // Color strip
+      dlColorStrip.style.background = color || 'transparent';
+      dlColorStrip.style.height     = color ? '4px' : '0';
+
+      // Image
+      dlPreview.src = thumbEl ? thumbEl.src : '';
+      dlPreview.alt = titleRaw;
+
+      // Badges
+      dlSourceBadge.textContent = source.charAt(0).toUpperCase() + source.slice(1);
+      dlSourceBadge.className   = `dl-source-badge ${source}`;
+      dlEditorial.classList.add('hidden'); // no editorial flag for free sources
+
+      // Title
+      dlTitle.textContent = titleRaw || '(no description)';
+
+      // Photographer / uploader
+      let photoLine = '';
+      if (photographer) {
+        photoLine = photographerUrl
+          ? `Photo by <a href="${escHtml(photographerUrl)}" target="_blank" rel="noopener noreferrer">${escHtml(photographer)}</a>`
+          : `Photo by ${escHtml(photographer)}`;
+      } else if (user) {
+        photoLine = `Uploaded by ${escHtml(user)}`;
+      }
+      if (type && type !== 'photo') photoLine += (photoLine ? ' · ' : '') + type.charAt(0).toUpperCase() + type.slice(1);
+      dlPhotographer.innerHTML = photoLine;
+      dlPhotographer.style.marginBottom = photoLine ? '12px' : '0';
+
+      // Meta grid
+      const metaItems = [];
+      if (width && height) metaItems.push({ icon: '⬛', label: `${fmtNum(width)} × ${fmtNum(height)} px` });
+      if (color)           metaItems.push({ swatch: color, label: color });
+      if (likes != null && likes !== '') metaItems.push({ icon: '♡', label: `${fmtNum(likes)} likes` });
+      if (views != null && views !== '') metaItems.push({ icon: '◎', label: `${fmtNum(views)} views` });
+      if (dlCount != null && dlCount !== '') metaItems.push({ icon: '↓', label: `${fmtNum(dlCount)} downloads` });
+      if (imageSize)       metaItems.push({ icon: '▤', label: fmtBytes(imageSize) });
+
+      dlMetaGrid.innerHTML = metaItems.map(m => {
+        const iconPart = m.swatch
+          ? `<span class="dl-color-swatch" style="background:${escHtml(m.swatch)}"></span>`
+          : `<span class="dl-meta-icon">${m.icon}</span>`;
+        return `<span class="dl-meta-item">${iconPart}<span>${escHtml(m.label)}</span></span>`;
+      }).join('');
+
+      // Tags
+      dlTags.innerHTML = tags.map(t => `<span class="dl-tag">${escHtml(t)}</span>`).join('');
+
+      pendingDownload = { url, filename, dl: dlLocation };
+      dlOverlay.classList.add('active');
+    });
+
+    dlCancel.addEventListener('click', () => {
+      dlOverlay.classList.remove('active');
+      pendingDownload = null;
+    });
+
+    dlOverlay.addEventListener('click', e => {
+      if (e.target === dlOverlay) {
+        dlOverlay.classList.remove('active');
+        pendingDownload = null;
+      }
+    });
+
+    dlConfirm.addEventListener('click', () => {
+      if (!pendingDownload) return;
+      const { url, filename, dl } = pendingDownload;
+      const href = `/api/download-image?url=${encodeURIComponent(url)}&filename=${encodeURIComponent(filename)}&dl=${encodeURIComponent(dl)}`;
+      const a = document.createElement('a');
+      a.href = href;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      dlOverlay.classList.remove('active');
+      pendingDownload = null;
+    });
+
     function showSsModal() {
+      // Image metadata section
+      const ssImgSection  = document.getElementById('ss-img-section');
+      const ssPreview     = document.getElementById('ss-preview');
+      const ssImgTitle    = document.getElementById('ss-img-title');
+      const ssImgCats     = document.getElementById('ss-img-cats');
+      const ssImgKw       = document.getElementById('ss-img-keywords');
+      const ssImgEditorial = document.getElementById('ss-img-editorial');
+
+      if (pendingSsMeta.thumb) {
+        ssPreview.src = pendingSsMeta.thumb;
+        ssPreview.alt = pendingSsMeta.title || '';
+        ssImgTitle.textContent = pendingSsMeta.title || '';
+        ssImgCats.textContent  = pendingSsMeta.categories.length
+          ? pendingSsMeta.categories.join(' · ')
+          : '';
+        ssImgKw.innerHTML = pendingSsMeta.keywords
+          .map(k => `<span class="ss-kw">${escHtml(k)}</span>`)
+          .join('');
+        ssImgEditorial.classList.toggle('hidden', !pendingSsMeta.editorial);
+        ssImgSection.classList.remove('hidden');
+      } else {
+        ssImgSection.classList.add('hidden');
+      }
+
+      // Quota bar
       const remaining = Math.max(0, SS_LIMIT - ssUsed);
       const pct = Math.min(100, (ssUsed / SS_LIMIT) * 100);
       ssFill.style.width = pct + '%';

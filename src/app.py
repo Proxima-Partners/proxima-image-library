@@ -11,7 +11,7 @@ import time
 import uuid
 from io import BytesIO
 from pathlib import Path, PurePosixPath
-from urllib.parse import unquote
+from urllib.parse import unquote, urlparse
 
 from dotenv import load_dotenv
 from typing import Dict, List, Optional
@@ -20,6 +20,7 @@ from werkzeug.utils import secure_filename
 import functools
 
 import msal
+import requests
 from flask import Flask, Response, jsonify, redirect, render_template, request, session, stream_with_context, url_for
 from flask_cors import CORS
 from PIL import Image as PILImage
@@ -267,6 +268,58 @@ def api_stock_search():
     from src.stock_client import search_all_libraries
     results = search_all_libraries(phrases, limit)
     return jsonify({"results": results})
+
+
+_DOWNLOAD_ALLOWED_DOMAINS = {
+    "images.pexels.com",
+    "www.pexels.com",
+    "cdn.pixabay.com",
+    "pixabay.com",
+    "images.unsplash.com",
+}
+
+
+@app.route("/api/download-image")
+@login_required
+def api_download_image():
+    """Proxy-download a stock image so the browser gets a file attachment."""
+    url = request.args.get("url", "").strip()
+    filename = request.args.get("filename", "image.jpg").strip() or "image.jpg"
+    download_location = request.args.get("dl", "").strip()  # Unsplash attribution ping
+
+    if not url:
+        return jsonify({"error": "url required"}), 400
+
+    # Restrict to known stock-photo CDN domains only
+    domain = urlparse(url).netloc.lower()
+    if not any(domain == d or domain.endswith("." + d) for d in _DOWNLOAD_ALLOWED_DOMAINS):
+        return jsonify({"error": "URL not permitted"}), 403
+
+    # Unsplash attribution: fire-and-forget ping to their download endpoint
+    if download_location:
+        dl_domain = urlparse(download_location).netloc.lower()
+        if "unsplash.com" in dl_domain:
+            access_key = os.getenv("UNSPLASH_ACCESS_KEY", "")
+            if access_key:
+                try:
+                    requests.get(
+                        download_location,
+                        headers={"Authorization": f"Client-ID {access_key}"},
+                        timeout=5,
+                    )
+                except Exception:
+                    pass
+
+    resp = requests.get(url, timeout=30)
+    resp.raise_for_status()
+    content_type = resp.headers.get("Content-Type", "image/jpeg").split(";")[0].strip()
+    return Response(
+        resp.content,
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Content-Type": content_type,
+        },
+    )
 
 
 @app.route("/run/start-server")

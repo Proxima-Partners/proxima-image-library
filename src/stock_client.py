@@ -43,8 +43,14 @@ def search_pexels(phrase: str, limit: int = 8) -> dict:
             title = item.get("alt", "") or phrase
             results.append({
                 "thumb": item.get("src", {}).get("medium", ""),
+                "download_url": item.get("src", {}).get("original", ""),
                 "title": title,
                 "link": item.get("url", ""),
+                "photographer": item.get("photographer", ""),
+                "photographer_url": item.get("photographer_url", ""),
+                "width": item.get("width"),
+                "height": item.get("height"),
+                "color": item.get("avg_color", ""),
             })
         return {"results": results, "error": None}
     except requests.HTTPError as e:
@@ -88,6 +94,10 @@ def search_shutterstock(phrase: str, limit: int = 8) -> dict:
                 "thumb": thumb,
                 "title": desc,
                 "link": f"https://www.shutterstock.com/image-photo/{_slug(desc) or 'photo'}-{item_id}",
+                "categories": [c.get("name", "") for c in item.get("categories", [])],
+                "keywords": item.get("keywords", [])[:15],
+                "aspect": item.get("aspect"),
+                "is_editorial": item.get("is_editorial", False),
             })
         return {"results": results, "error": None}
     except requests.HTTPError as e:
@@ -121,8 +131,17 @@ def search_pixabay(phrase: str, limit: int = 8) -> dict:
             tags = item.get("tags", "")
             results.append({
                 "thumb": item.get("webformatURL", ""),
+                "download_url": item.get("largeImageURL", ""),
                 "title": tags,
                 "link": item.get("pageURL", ""),
+                "width": item.get("imageWidth"),
+                "height": item.get("imageHeight"),
+                "image_size": item.get("imageSize"),
+                "views": item.get("views"),
+                "downloads": item.get("downloads"),
+                "likes": item.get("likes"),
+                "user": item.get("user", ""),
+                "type": item.get("type", ""),
             })
         return {"results": results, "error": None}
     except requests.HTTPError as e:
@@ -161,10 +180,17 @@ def search_unsplash(phrase: str, limit: int = 8) -> dict:
             )
             results.append({
                 "thumb": item.get("urls", {}).get("small", ""),
+                "download_url": item.get("urls", {}).get("full", ""),
+                "download_location": item.get("links", {}).get("download_location", ""),
                 "title": item.get("alt_description") or item.get("description") or "",
                 "link": photo_link,
                 "photographer": photographer,
                 "photographer_url": profile_url,
+                "width": item.get("width"),
+                "height": item.get("height"),
+                "color": item.get("color", ""),
+                "likes": item.get("likes"),
+                "tags": [t.get("title", "") for t in item.get("tags", []) if t.get("title")],
             })
         return {"results": results, "error": None}
     except requests.HTTPError as e:
