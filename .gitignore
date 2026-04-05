@@ -17,6 +17,8 @@ env/
 # Local generated artifacts
 sync_log.txt
 rename_map.csv
+maintenance_state.json
+test_data/maintenance_checkpoints/
 
 # IDE
 .vscode/
