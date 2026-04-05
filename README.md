@@ -123,6 +123,6 @@ Register in `~/Library/Application Support/Claude/claude_desktop_config.json`:
 | [development.md](development.md) | Setup, architecture, how-to guides, code conventions, gotchas |
 | [specification.md](specification.md) | Image output targets, naming, SharePoint List schema, AI metadata spec |
 | [search-parameter.md](search-parameter.md) | Stock photo API parameters, auth, attribution requirements |
-| [project-scope.md](project-scope.md) | Feature definitions and application parameters |
+| [project-scope.md](project-scope.md) | Feature definitions, application parameters, and developer onboarding (including guidance for developers using OpenAI-based coding tools) |
 | [EDIT_LIST.md](EDIT_LIST.md) | Applied changes and future development queue |
 | [PRODUCTION_DEPLOY.md](PRODUCTION_DEPLOY.md) | Deployment checklist for Azure App Service |
