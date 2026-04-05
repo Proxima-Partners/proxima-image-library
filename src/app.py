@@ -26,7 +26,7 @@ from src.config import Config
 
 load_dotenv()
 
-app = Flask(__name__, template_folder="../templates")
+app = Flask(__name__, template_folder="../templates", static_folder="../static")
 
 # Allow configured origins to call the API (Webflow frontend + localhost dev)
 CORS(app, resources={r"/api/*": {"origins": Config.CORS_ORIGINS}},
@@ -488,12 +488,12 @@ def api_upload_stage():
 def api_upload_process():
     """SSE stream — run the full pipeline for one staged file."""
     file_id = request.args.get("id", "")
-    category = request.args.get("category", "")
+    category = request.args.get("category", "") or None  # None = AI determines it
 
     from src.image_processor import CATEGORIES, process_image
     if file_id not in _STAGED:
         return jsonify({"error": "Unknown or expired file ID"}), 404
-    if category not in CATEGORIES:
+    if category is not None and category not in CATEGORIES:
         return jsonify({"error": f"Invalid category. Must be one of: {CATEGORIES}"}), 400
 
     staged = _STAGED.pop(file_id)
@@ -527,13 +527,13 @@ def api_upload_process():
                 result = process_image(
                     file_bytes=file_bytes,
                     original_filename=staged["filename"],
-                    category=category,
                     generator=gen,
                     list_client=list_client,
                     sp_client=sp_client,
                     image_folder=Config.IMAGE_FOLDER,
                     storage_mode=storage_mode,
                     on_progress=lambda msg: q.put(("progress", msg)),
+                    category=category,
                 )
                 q.put(("done", result))
             except Exception as exc:

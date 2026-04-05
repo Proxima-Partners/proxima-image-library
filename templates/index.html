@@ -4,6 +4,9 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Proxima Image Library</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Montserrat:wght@600;700;800&display=swap" rel="stylesheet">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -11,34 +14,34 @@
       --bg: #f5f5f5;
       --surface: #ffffff;
       --border: #e0e0e0;
-      --accent: #2563eb;
-      --accent-hover: #1d4ed8;
+      --accent: #05718D;
+      --accent-hover: #045f77;
+      --gold: #EEB11E;
       --text: #111827;
       --muted: #6b7280;
-      --folder-bg: #f0fdf4;
-      --folder-border: #bbf7d0;
-      --folder-color: #166534;
-      --folder-sel-bg: #16a34a;
-      --folder-sel-color: #ffffff;
-      --tag-bg: #e0e7ff;
-      --tag-color: #3730a3;
-      --tag-sel-bg: #2563eb;
+      --tag-bg: #e6f4f8;
+      --tag-color: #045f77;
+      --tag-sel-bg: #05718D;
       --tag-sel-color: #ffffff;
       --radius: 8px;
-      --shadow: 0 1px 3px rgba(0,0,0,0.12);
+      --shadow: 0 1px 3px rgba(0,0,0,0.10);
+      --sidebar-w: 200px;
     }
 
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       background: var(--bg);
       color: var(--text);
       min-height: 100vh;
+      display: flex;
+      flex-direction: column;
     }
 
+    /* ── Header ── */
     header {
       background: var(--surface);
       border-bottom: 1px solid var(--border);
-      padding: 14px 32px;
+      padding: 12px 20px;
       display: flex;
       align-items: center;
       gap: 12px;
@@ -46,492 +49,604 @@
       top: 0;
       z-index: 100;
       box-shadow: var(--shadow);
+      flex-shrink: 0;
     }
-    header h1 { font-size: 17px; font-weight: 700; letter-spacing: -0.3px; white-space: nowrap; }
+    header h1 {
+      font-family: 'Montserrat', sans-serif;
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--accent);
+      white-space: nowrap;
+    }
 
-    .breadcrumb {
+    /* ── Search bar ── */
+    #search-wrap {
+      flex: 1;
       display: flex;
       align-items: center;
-      gap: 6px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 0 14px;
+      gap: 8px;
+      max-width: 480px;
+    }
+    #search-wrap svg { flex-shrink: 0; color: var(--muted); }
+    #search-input {
+      flex: 1;
+      border: none;
+      background: none;
+      font-size: 14px;
+      font-family: inherit;
+      color: var(--text);
+      padding: 8px 0;
+      outline: none;
+    }
+    #search-input::placeholder { color: var(--muted); }
+    #search-clear {
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: var(--muted);
+      font-size: 16px;
+      padding: 0;
+      display: none;
+      line-height: 1;
+    }
+    #search-clear.visible { display: block; }
+
+    #result-count { font-size: 13px; color: var(--muted); white-space: nowrap; margin-left: auto; }
+
+    .header-link {
       font-size: 13px;
       color: var(--muted);
-      margin-left: auto;
-      flex-wrap: wrap;
-    }
-    .breadcrumb .crumb { cursor: pointer; color: var(--accent); }
-    .breadcrumb .crumb:hover { text-decoration: underline; }
-    .breadcrumb .sep { color: var(--border); }
-
-    .view { display: none; }
-    .view.active { display: block; }
-
-    .panel { max-width: 900px; margin: 0 auto; padding: 40px 24px; }
-    .panel h2 { font-size: 22px; font-weight: 600; margin-bottom: 6px; }
-    .panel .subtitle { font-size: 14px; color: var(--muted); margin-bottom: 28px; }
-
-    .chip-controls { display: flex; gap: 10px; margin-bottom: 14px; }
-    .chip-controls button {
-      font-size: 12px; padding: 4px 12px;
-      border: 1px solid var(--border); border-radius: 20px;
-      background: var(--surface); cursor: pointer; color: var(--muted);
-      transition: background 0.15s, color 0.15s;
-    }
-    .chip-controls button:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
-
-    .chip-grid { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 36px; }
-
-    .folder-chip {
-      display: inline-flex; align-items: center; gap: 8px;
-      padding: 8px 16px; border-radius: var(--radius);
-      font-size: 13px; font-weight: 500;
-      background: var(--folder-bg); color: var(--folder-color);
-      border: 2px solid var(--folder-border);
-      cursor: pointer; user-select: none;
-      transition: background 0.15s, color 0.15s, border-color 0.15s;
-    }
-    .folder-chip:hover { border-color: var(--folder-sel-bg); }
-    .folder-chip.selected { background: var(--folder-sel-bg); color: var(--folder-sel-color); border-color: var(--folder-sel-bg); }
-    .folder-chip .icon { font-size: 15px; }
-    .folder-chip .count { font-size: 11px; opacity: 0.7; }
-
-    .tag-chip {
-      display: inline-flex; align-items: center; gap: 6px;
-      padding: 6px 14px; border-radius: 20px;
-      font-size: 13px; font-weight: 500;
-      background: var(--tag-bg); color: var(--tag-color);
-      border: 2px solid transparent;
-      cursor: pointer; user-select: none;
-      transition: background 0.15s, color 0.15s, border-color 0.15s;
-    }
-    .tag-chip:hover { border-color: var(--accent); }
-    .tag-chip.selected { background: var(--tag-sel-bg); color: var(--tag-sel-color); border-color: var(--tag-sel-bg); }
-    .tag-chip .count { font-size: 11px; opacity: 0.7; }
-
-    .btn-primary {
-      display: block; margin: 0 auto;
-      padding: 14px 48px; font-size: 15px; font-weight: 600;
-      background: var(--accent); color: #fff;
-      border: none; border-radius: var(--radius);
-      cursor: pointer; transition: background 0.15s;
-    }
-    .btn-primary:hover { background: var(--accent-hover); }
-    .btn-primary:disabled { opacity: 0.45; cursor: not-allowed; }
-
-    .btn-back {
-      display: inline-flex; align-items: center; gap: 6px;
-      font-size: 13px; padding: 7px 14px;
-      border: 1px solid var(--border); border-radius: var(--radius);
-      background: var(--surface); cursor: pointer; color: var(--text);
+      text-decoration: none;
+      white-space: nowrap;
+      padding: 6px 12px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--surface);
       transition: background 0.15s;
     }
-    .btn-back:hover { background: var(--bg); }
+    .header-link:hover { background: var(--bg); color: var(--accent); border-color: var(--accent); }
 
-    .loading { text-align: center; padding: 60px 0; color: var(--muted); font-size: 14px; }
-    .spinner {
-      width: 32px; height: 32px;
-      border: 3px solid var(--border); border-top-color: var(--accent);
-      border-radius: 50%; animation: spin 0.7s linear infinite; margin: 0 auto 12px;
+    /* ── Layout ── */
+    #layout {
+      display: flex;
+      flex: 1;
+      min-height: 0;
+      overflow: hidden;
     }
-    @keyframes spin { to { transform: rotate(360deg); } }
 
-    #view-grid { padding: 32px 24px; }
-    .grid-header {
-      display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
-      max-width: 1400px; margin: 0 auto 24px;
+    /* ── Sidebar ── */
+    #sidebar {
+      width: var(--sidebar-w);
+      flex-shrink: 0;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      overflow-y: auto;
+      padding: 16px 0 24px;
     }
-    .grid-header h2 { font-size: 18px; font-weight: 600; }
-    .grid-header .count { font-size: 13px; color: var(--muted); }
-    .grid-header .btn-back { margin-left: auto; }
+    .sidebar-section { margin-bottom: 24px; }
+    .sidebar-heading {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      padding: 0 14px 8px;
+    }
+    .sidebar-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 6px 14px;
+      font-size: 13px;
+      cursor: pointer;
+      border-left: 3px solid transparent;
+      transition: background 0.12s;
+      user-select: none;
+    }
+    .sidebar-item:hover { background: #f0f9fb; }
+    .sidebar-item.active {
+      background: #e6f4f8;
+      border-left-color: var(--accent);
+      color: var(--accent);
+      font-weight: 600;
+    }
+    .sidebar-badge {
+      font-size: 11px;
+      background: var(--border);
+      color: var(--muted);
+      border-radius: 10px;
+      padding: 1px 7px;
+      flex-shrink: 0;
+    }
+    .sidebar-item.active .sidebar-badge {
+      background: var(--accent);
+      color: #fff;
+    }
 
-    .image-grid {
+    /* ── Main ── */
+    #main {
+      flex: 1;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── Tag strip ── */
+    #tag-strip {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 10px 16px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      align-items: center;
+      min-height: 48px;
+    }
+    .tag-chip {
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 500;
+      background: var(--tag-bg);
+      color: var(--tag-color);
+      cursor: pointer;
+      border: 1px solid transparent;
+      transition: all 0.12s;
+      user-select: none;
+    }
+    .tag-chip:hover { border-color: var(--accent); }
+    .tag-chip.active { background: var(--tag-sel-bg); color: var(--tag-sel-color); }
+    .tag-clear {
+      font-size: 12px;
+      color: var(--muted);
+      cursor: pointer;
+      padding: 4px 8px;
+      border-radius: 20px;
+      border: 1px solid var(--border);
+      background: none;
+      font-family: inherit;
+    }
+    .tag-clear:hover { border-color: var(--accent); color: var(--accent); }
+    #tag-strip-empty { font-size: 12px; color: var(--muted); }
+
+    /* ── Grid ── */
+    #grid {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-      gap: 16px; max-width: 1400px; margin: 0 auto;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 14px;
+      padding: 16px;
     }
-    .image-card {
-      background: var(--surface); border: 1px solid var(--border);
-      border-radius: var(--radius); overflow: hidden;
-      cursor: pointer; transition: transform 0.15s, box-shadow 0.15s;
+    .img-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      cursor: pointer;
       box-shadow: var(--shadow);
+      transition: transform 0.15s, box-shadow 0.15s;
     }
-    .image-card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
-    .image-card .thumb { width: 100%; aspect-ratio: 1; object-fit: cover; display: block; background: var(--bg); }
-    .image-card .thumb-placeholder {
-      width: 100%; aspect-ratio: 1; background: var(--bg);
-      display: flex; align-items: center; justify-content: center;
-      color: var(--muted); font-size: 12px;
+    .img-card:hover { transform: translateY(-2px); box-shadow: 0 4px 14px rgba(0,0,0,0.12); }
+    .img-card img {
+      width: 100%;
+      aspect-ratio: 1;
+      object-fit: cover;
+      display: block;
+      background: var(--bg);
     }
-    .image-card .card-label {
-      padding: 8px 10px; font-size: 11px; color: var(--muted);
-      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    .img-card-label {
+      padding: 7px 10px;
+      font-size: 11px;
+      color: var(--muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
       border-top: 1px solid var(--border);
     }
 
-    #view-detail { padding: 32px 24px; max-width: 1000px; margin: 0 auto; }
-    .detail-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; align-items: start; }
-    @media (max-width: 640px) { .detail-layout { grid-template-columns: 1fr; } }
-    .detail-image-wrap {
-      background: var(--surface); border: 1px solid var(--border);
-      border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow);
+    /* ── Empty / loading ── */
+    #grid-status {
+      grid-column: 1 / -1;
+      text-align: center;
+      padding: 60px 20px;
+      color: var(--muted);
+      font-size: 14px;
     }
-    .detail-image-wrap img { width: 100%; display: block; object-fit: contain; max-height: 480px; }
-    .detail-info { display: flex; flex-direction: column; gap: 20px; }
-    .btn-download {
-      display: inline-flex; align-items: center; gap: 8px;
-      padding: 11px 24px; font-size: 14px; font-weight: 600;
-      background: var(--accent); color: #fff;
-      border: none; border-radius: var(--radius);
-      cursor: pointer; text-decoration: none;
-      transition: background 0.15s;
-      align-self: flex-start;
+    .spinner {
+      width: 28px; height: 28px;
+      border: 3px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      margin: 0 auto 12px;
     }
-    .btn-download:hover { background: var(--accent-hover); }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Detail modal ── */
+    #detail-overlay {
+      display: none;
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.55);
+      z-index: 200;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    #detail-overlay.open { display: flex; }
+    #detail-panel {
+      background: var(--surface);
+      border-radius: 12px;
+      max-width: 700px;
+      width: 100%;
+      max-height: 90vh;
+      overflow-y: auto;
+      box-shadow: 0 24px 64px rgba(0,0,0,0.3);
+      display: flex;
+      flex-direction: column;
+    }
+    #detail-img-wrap {
+      position: relative;
+      background: #f0f0f0;
+      border-radius: 12px 12px 0 0;
+      overflow: hidden;
+    }
+    #detail-img { width: 100%; max-height: 380px; object-fit: contain; display: block; }
+    #detail-close {
+      position: absolute; top: 12px; right: 12px;
+      background: rgba(0,0,0,0.5); color: #fff;
+      border: none; border-radius: 50%;
+      width: 32px; height: 32px;
+      font-size: 18px; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      line-height: 1;
+    }
+    #detail-body { padding: 20px 24px 24px; display: flex; flex-direction: column; gap: 14px; }
+    #detail-filename {
+      font-family: 'Montserrat', sans-serif;
+      font-size: 15px;
+      font-weight: 700;
+      word-break: break-all;
+    }
+    #detail-dims { font-size: 12px; color: var(--muted); }
     .detail-field label {
-      display: block; font-size: 11px; font-weight: 600;
-      text-transform: uppercase; letter-spacing: 0.6px;
-      color: var(--muted); margin-bottom: 4px;
+      display: block;
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: var(--muted);
+      margin-bottom: 4px;
     }
     .detail-field p {
-      font-size: 14px; line-height: 1.6; color: var(--text);
-      background: var(--surface); border: 1px solid var(--border);
-      border-radius: var(--radius); padding: 10px 12px; word-break: break-word;
+      font-size: 14px;
+      line-height: 1.5;
+      color: var(--text);
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 9px 12px;
+      word-break: break-word;
     }
-    .detail-field .tag-list { display: flex; flex-wrap: wrap; gap: 6px; }
-    .detail-field .tag-badge {
-      padding: 3px 10px; border-radius: 12px;
-      background: var(--tag-bg); color: var(--tag-color);
-      font-size: 12px; font-weight: 500;
+    .detail-tags { display: flex; flex-wrap: wrap; gap: 5px; }
+    .detail-tag {
+      padding: 3px 10px;
+      background: var(--tag-bg);
+      color: var(--tag-color);
+      border-radius: 20px;
+      font-size: 12px;
     }
+    #detail-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 4px; }
+    .btn {
+      padding: 9px 18px;
+      border-radius: var(--radius);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      font-family: inherit;
+      transition: background 0.15s;
+    }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-primary:hover { background: var(--accent-hover); }
+    .btn-ghost { background: none; color: var(--muted); border: 1px solid var(--border); }
+    .btn-ghost:hover { border-color: var(--accent); color: var(--accent); }
   </style>
 </head>
 <body>
 
 <header>
-  <h1>Proxima Image Library</h1>
-  <nav class="breadcrumb" id="breadcrumb"></nav>
-  <div style="display:flex;align-items:center;gap:8px;margin-left:auto;">
-    <a href="/upload" style="font-size:13px; color:var(--muted); text-decoration:none; white-space:nowrap; padding: 6px 12px; border:1px solid var(--border); border-radius:6px; background:var(--surface);" onmouseover="this.style.background='var(--bg)'" onmouseout="this.style.background='var(--surface)'">⬆ Upload</a>
-    <a href="/" style="font-size:13px; color:var(--muted); text-decoration:none; white-space:nowrap; padding: 6px 12px; border:1px solid var(--border); border-radius:6px; background:var(--surface);" onmouseover="this.style.background='var(--bg)'" onmouseout="this.style.background='var(--surface)'">← Launcher</a>
+  <img src="/static/logo.png" alt="Proxima" style="height:36px;width:36px;border-radius:50%;object-fit:cover;flex-shrink:0;" />
+  <h1>Image Library</h1>
+
+  <div id="search-wrap">
+    <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+      <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+    </svg>
+    <input id="search-input" type="search" placeholder="Search by keyword, alt text, or tag…" autocomplete="off" />
+    <button id="search-clear" title="Clear">×</button>
   </div>
+
+  <span id="result-count"></span>
+  <a href="/upload" class="header-link">⬆ Upload</a>
+  <a href="/stock-search" class="header-link">📷 Stock</a>
 </header>
 
-<!-- STEP 1: Folders -->
-<section id="view-folders" class="view active">
-  <div class="panel">
-    <h2>Select a Folder</h2>
-    <p class="subtitle">Choose one or more folders to browse, then continue to filter by tag.</p>
-    <div id="folder-grid" class="chip-grid">
-      <div class="loading"><div class="spinner"></div>Loading folders&hellip;</div>
+<div id="layout">
+  <!-- Sidebar -->
+  <nav id="sidebar">
+    <div class="sidebar-section">
+      <div class="sidebar-heading">Category</div>
+      <div id="folder-list"></div>
     </div>
-    <button id="btn-to-tags" class="btn-primary" disabled>Filter by Tag</button>
-  </div>
-</section>
-
-<!-- STEP 2: Tags -->
-<section id="view-tags" class="view">
-  <div class="panel">
-    <div style="margin-bottom:20px">
-      <button class="btn-back" id="btn-back-folders">&#8592; Back to Folders</button>
-    </div>
-    <h2>Filter by Tag</h2>
-    <p class="subtitle">Select one or more tags, or click Browse Images to see everything in the selected folder(s).</p>
-    <div class="chip-controls">
-      <button id="btn-select-all">Select all</button>
-      <button id="btn-clear-all">Clear</button>
-    </div>
-    <div id="tag-grid" class="chip-grid">
-      <div class="loading"><div class="spinner"></div>Loading tags&hellip;</div>
-    </div>
-    <button id="btn-browse" class="btn-primary">Browse Images</button>
-  </div>
-</section>
-
-<!-- STEP 3: Image Grid -->
-<section id="view-grid" class="view">
-  <div class="grid-header">
-    <h2>Images</h2>
-    <span class="count" id="grid-count"></span>
-    <button class="btn-back" id="btn-back-tags">&#8592; Back to Tags</button>
-  </div>
-  <div id="image-grid" class="image-grid">
-    <div class="loading"><div class="spinner"></div>Loading images&hellip;</div>
-  </div>
-</section>
-
-<!-- STEP 4: Detail -->
-<section id="view-detail" class="view">
-  <button class="btn-back" id="btn-back-grid" style="margin:24px 24px 0">&#8592; Back to Images</button>
-  <div style="padding:24px">
-    <div class="detail-layout">
-      <div class="detail-image-wrap">
-        <img id="detail-img" src="" alt="" />
+    <div class="sidebar-section">
+      <div class="sidebar-heading">Status</div>
+      <div id="status-list">
+        <div class="sidebar-item active" data-status="">All</div>
+        <div class="sidebar-item" data-status="pending-review">Pending review</div>
+        <div class="sidebar-item" data-status="reviewed">Reviewed</div>
+        <div class="sidebar-item" data-status="archived">Archived</div>
       </div>
-      <div class="detail-info">
-        <div class="detail-field">
-          <label>Filename</label>
-          <p id="detail-filename"></p>
-        </div>
-        <div class="detail-field">
-          <label>Location</label>
-          <p id="detail-location"></p>
-        </div>
-        <div class="detail-field">
-          <label>Alt Text</label>
-          <p id="detail-alt"></p>
-        </div>
-        <div class="detail-field">
-          <label>Image Size</label>
-          <p id="detail-size">Loading&hellip;</p>
-        </div>
-        <div class="detail-field">
-          <label>Tags</label>
-          <div class="tag-list" id="detail-tags"></div>
-        </div>
-        <a id="detail-download" class="btn-download" href="" download>
-          &#8595; Download Original
-        </a>
+    </div>
+  </nav>
+
+  <!-- Main content -->
+  <div id="main">
+    <div id="tag-strip"><span id="tag-strip-empty">Loading tags…</span></div>
+    <div id="grid">
+      <div id="grid-status"><div class="spinner"></div>Loading library…</div>
+    </div>
+  </div>
+</div>
+
+<!-- Detail modal -->
+<div id="detail-overlay">
+  <div id="detail-panel">
+    <div id="detail-img-wrap">
+      <img id="detail-img" src="" alt="" />
+      <button id="detail-close">×</button>
+    </div>
+    <div id="detail-body">
+      <div>
+        <div id="detail-filename"></div>
+        <div id="detail-dims"></div>
+      </div>
+      <div class="detail-field">
+        <label>Alt Text</label>
+        <p id="detail-alt"></p>
+      </div>
+      <div class="detail-field">
+        <label>Tags</label>
+        <div class="detail-tags" id="detail-tags"></div>
+      </div>
+      <div class="detail-field">
+        <label>Location</label>
+        <p id="detail-loc" style="font-size:12px;color:var(--muted);"></p>
+      </div>
+      <div id="detail-actions">
+        <button class="btn btn-primary" id="btn-copy">Copy path</button>
+        <button class="btn btn-ghost" id="btn-open">Open full image</button>
+        <button class="btn btn-ghost" id="btn-close-detail">Close</button>
       </div>
     </div>
   </div>
-</section>
+</div>
 
 <script>
-  const state = {
-    folders: [],
-    selectedFolders: new Set(),
-    tags: [],
-    tagCounts: {},
-    selectedTags: new Set(),
-    images: [],
-  };
+(function () {
+  let allImages  = [];
+  let activeFolders = new Set();   // empty = all
+  let activeTags    = new Set();
+  let activeStatus  = '';
+  let searchQ       = '';
+  let currentImage  = null;
 
-  function showView(name) {
-    document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
-    document.getElementById('view-' + name).classList.add('active');
-    updateBreadcrumb(name);
-  }
-
-  function updateBreadcrumb(view) {
-    const bc = document.getElementById('breadcrumb');
-    const steps = {
-      folders: '',
-      tags:   '<span class="crumb" onclick="showView(\'folders\')">Folders</span><span class="sep">›</span>Tags',
-      grid:   '<span class="crumb" onclick="showView(\'folders\')">Folders</span><span class="sep">›</span><span class="crumb" onclick="goTags()">Tags</span><span class="sep">›</span>Images',
-      detail: '<span class="crumb" onclick="showView(\'folders\')">Folders</span><span class="sep">›</span><span class="crumb" onclick="goTags()">Tags</span><span class="sep">›</span><span class="crumb" onclick="showView(\'grid\')">Images</span><span class="sep">›</span>Detail',
-    };
-    bc.innerHTML = steps[view] || '';
-  }
-
-  function goTags() { showView('tags'); }
-
-  // ── STEP 1: Folders ────────────────────────────────────────
-  async function loadFolders() {
-    const res = await fetch('/api/folders');
-    const data = await res.json();
-    state.folders = data.folders;
-    renderFolders();
-  }
-
-  function renderFolders() {
-    const grid = document.getElementById('folder-grid');
-    grid.innerHTML = state.folders.map(f => {
-      const sel = state.selectedFolders.has(f.name) ? 'selected' : '';
-      const label = f.name === '.' ? 'Root' : f.name;
-      return `<div class="folder-chip ${sel}" onclick="toggleFolder(this,'${escJs(f.name)}')">
-        <span class="icon">&#128193;</span>${escHtml(label)}<span class="count">(${f.count})</span>
-      </div>`;
-    }).join('');
-    updateToTagsButton();
-  }
-
-  function toggleFolder(el, name) {
-    if (state.selectedFolders.has(name)) {
-      state.selectedFolders.delete(name);
-      el.classList.remove('selected');
-    } else {
-      state.selectedFolders.add(name);
-      el.classList.add('selected');
-    }
-    updateToTagsButton();
-  }
-
-  function updateToTagsButton() {
-    const btn = document.getElementById('btn-to-tags');
-    const n = state.selectedFolders.size;
-    btn.disabled = n === 0;
-    btn.textContent = n === 0
-      ? 'Filter by Tag'
-      : 'Filter by Tag \u2014 ' + n + ' folder' + (n > 1 ? 's' : '') + ' selected';
-  }
-
-  document.getElementById('btn-to-tags').addEventListener('click', async () => {
-    showView('tags');
-    await loadTagsForFolders();
+  // ── Boot ──────────────────────────────────────────────────────────────────
+  Promise.all([
+    fetch('/api/images').then(r => r.json()),
+    fetch('/api/folders').then(r => r.json()),
+    fetch('/api/tags').then(r => r.json()),
+  ]).then(([imgData, folderData, tagData]) => {
+    allImages = imgData.images || [];
+    renderFolders(folderData.folders || []);
+    renderTagStrip(tagData.tags || []);
+    renderGrid();
+  }).catch(() => {
+    document.getElementById('grid-status').textContent = 'Could not load library. Check server connection.';
   });
 
-  // ── STEP 2: Tags ───────────────────────────────────────────
-  async function loadTagsForFolders() {
-    const tagGrid = document.getElementById('tag-grid');
-    tagGrid.innerHTML = '<div class="loading"><div class="spinner"></div>Loading tags\u2026</div>';
-    state.selectedTags.clear();
+  // ── Search ────────────────────────────────────────────────────────────────
+  const searchInput = document.getElementById('search-input');
+  const searchClear = document.getElementById('search-clear');
 
-    const folders = [...state.selectedFolders];
-    const [tagResults, imgResults] = await Promise.all([
-      Promise.all(folders.map(f =>
-        fetch('/api/tags?folder=' + encodeURIComponent(f)).then(r => r.json())
-      )),
-      Promise.all(folders.map(f =>
-        fetch('/api/images?folder=' + encodeURIComponent(f)).then(r => r.json())
-      )),
-    ]);
+  searchInput.addEventListener('input', function () {
+    searchQ = this.value.trim().toLowerCase();
+    searchClear.classList.toggle('visible', searchQ.length > 0);
+    renderGrid();
+  });
+  searchClear.addEventListener('click', () => {
+    searchInput.value = '';
+    searchQ = '';
+    searchClear.classList.remove('visible');
+    renderGrid();
+  });
 
-    const merged = new Set();
-    tagResults.forEach(d => d.tags.forEach(t => merged.add(t)));
-    state.tags = [...merged].sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+  // ── Folders sidebar ───────────────────────────────────────────────────────
+  function renderFolders(folders) {
+    const el = document.getElementById('folder-list');
+    const total = folders.reduce((s, f) => s + f.count, 0);
 
-    const counts = {};
-    imgResults.forEach(d => d.images.forEach(img => {
-      img.tags.split(',').map(t => t.trim()).filter(Boolean).forEach(t => {
-        counts[t] = (counts[t] || 0) + 1;
+    let html = `<div class="sidebar-item active" data-folder="">All <span class="sidebar-badge">${total}</span></div>`;
+    folders.forEach(f => {
+      const label = f.name === '.' ? 'Root' : f.name.split('/').pop();
+      html += `<div class="sidebar-item" data-folder="${esc(f.name)}">${esc(label)} <span class="sidebar-badge">${f.count}</span></div>`;
+    });
+    el.innerHTML = html;
+
+    el.querySelectorAll('.sidebar-item').forEach(item => {
+      item.addEventListener('click', function () {
+        el.querySelectorAll('.sidebar-item').forEach(i => i.classList.remove('active'));
+        this.classList.add('active');
+        const folder = this.dataset.folder;
+        activeFolders = folder ? new Set([folder]) : new Set();
+        activeTags.clear();
+        // Refresh tags for this folder
+        const url = '/api/tags' + (folder ? '?folder=' + encodeURIComponent(folder) : '');
+        fetch(url).then(r => r.json()).then(d => renderTagStrip(d.tags || []));
+        renderGrid();
       });
-    }));
-    state.tagCounts = counts;
-
-    renderTags();
-    updateBrowseButton();
+    });
   }
 
-  function renderTags() {
-    const grid = document.getElementById('tag-grid');
-    if (!state.tags.length) {
-      grid.innerHTML = '<p style="color:var(--muted);font-size:14px">No tags found in selected folders.</p>';
+  // ── Status sidebar ────────────────────────────────────────────────────────
+  document.getElementById('status-list').querySelectorAll('.sidebar-item').forEach(item => {
+    item.addEventListener('click', function () {
+      document.getElementById('status-list').querySelectorAll('.sidebar-item').forEach(i => i.classList.remove('active'));
+      this.classList.add('active');
+      activeStatus = this.dataset.status;
+      renderGrid();
+    });
+  });
+
+  // ── Tag strip ─────────────────────────────────────────────────────────────
+  function renderTagStrip(tags) {
+    const el = document.getElementById('tag-strip');
+    if (!tags.length) {
+      el.innerHTML = '<span id="tag-strip-empty" style="font-size:12px;color:var(--muted)">No tags in this category</span>';
       return;
     }
-    grid.innerHTML = state.tags.map(tag => {
-      const sel = state.selectedTags.has(tag) ? 'selected' : '';
-      const count = state.tagCounts[tag] || 0;
-      return `<div class="tag-chip ${sel}" onclick="toggleTag(this,'${escJs(tag)}')">${escHtml(tag)}<span class="count">(${count})</span></div>`;
-    }).join('');
+    let html = activeTags.size
+      ? `<button class="tag-clear" id="tag-clear-btn">Clear filters</button>`
+      : '';
+    tags.forEach(t => {
+      const active = activeTags.has(t) ? ' active' : '';
+      html += `<span class="tag-chip${active}" data-tag="${esc(t)}">${esc(t)}</span>`;
+    });
+    el.innerHTML = html;
+
+    el.querySelectorAll('.tag-chip').forEach(chip => {
+      chip.addEventListener('click', function () {
+        const t = this.dataset.tag;
+        if (activeTags.has(t)) activeTags.delete(t); else activeTags.add(t);
+        renderTagStrip(tags);
+        renderGrid();
+      });
+    });
+    const clearBtn = document.getElementById('tag-clear-btn');
+    if (clearBtn) clearBtn.addEventListener('click', () => {
+      activeTags.clear();
+      renderTagStrip(tags);
+      renderGrid();
+    });
   }
 
-  function toggleTag(el, tag) {
-    if (state.selectedTags.has(tag)) {
-      state.selectedTags.delete(tag);
-      el.classList.remove('selected');
-    } else {
-      state.selectedTags.add(tag);
-      el.classList.add('selected');
-    }
-    updateBrowseButton();
-  }
-
-  function updateBrowseButton() {
-    const btn = document.getElementById('btn-browse');
-    const n = state.selectedTags.size;
-    btn.textContent = n === 0
-      ? 'Browse All Images'
-      : 'Browse Images (' + n + ' tag' + (n > 1 ? 's' : '') + ')';
-  }
-
-  document.getElementById('btn-select-all').addEventListener('click', () => {
-    state.tags.forEach(t => state.selectedTags.add(t));
-    renderTags();
-    updateBrowseButton();
-  });
-  document.getElementById('btn-clear-all').addEventListener('click', () => {
-    state.selectedTags.clear();
-    renderTags();
-    updateBrowseButton();
-  });
-
-  document.getElementById('btn-browse').addEventListener('click', loadImages);
-
-  // ── STEP 3: Grid ───────────────────────────────────────────
-  async function loadImages() {
-    showView('grid');
-    document.getElementById('image-grid').innerHTML = '<div class="loading"><div class="spinner"></div>Loading images\u2026</div>';
-    document.getElementById('grid-count').textContent = '';
-
-    const folders = [...state.selectedFolders];
-    const tags = [...state.selectedTags].join(',');
-
-    const results = await Promise.all(folders.map(f => {
-      const params = new URLSearchParams({ folder: f });
-      if (tags) params.set('tags', tags);
-      return fetch('/api/images?' + params).then(r => r.json());
-    }));
-
-    state.images = results.flatMap(d => d.images);
-    renderGrid();
-  }
-
+  // ── Grid ──────────────────────────────────────────────────────────────────
   function renderGrid() {
-    const grid = document.getElementById('image-grid');
-    const n = state.images.length;
-    document.getElementById('grid-count').textContent = '\u2014 ' + n + ' image' + (n !== 1 ? 's' : '');
+    const filtered = allImages.filter(img => {
+      // Folder
+      if (activeFolders.size) {
+        const imgFolder = img.location ? img.location.split('/')[0] : '';
+        if (!activeFolders.has(imgFolder)) return false;
+      }
+      // Status
+      if (activeStatus && img.status !== activeStatus) return false;
+      // Tags
+      if (activeTags.size) {
+        const imgTags = new Set((img.tags || '').split(',').map(t => t.trim()).filter(Boolean));
+        if (![...activeTags].some(t => imgTags.has(t))) return false;
+      }
+      // Keyword
+      if (searchQ) {
+        const haystack = [img.filename, img.alt_text, img.tags].join(' ').toLowerCase();
+        if (!searchQ.split(/\s+/).every(w => haystack.includes(w))) return false;
+      }
+      return true;
+    });
+
+    const n = filtered.length;
+    document.getElementById('result-count').textContent = n + ' image' + (n === 1 ? '' : 's');
+
+    const grid = document.getElementById('grid');
 
     if (!n) {
-      grid.innerHTML = '<p style="color:var(--muted);font-size:14px;padding:20px">No images found.</p>';
+      grid.innerHTML = '<div id="grid-status">No images match your search.</div>';
       return;
     }
-    grid.innerHTML = state.images.map((img, i) =>
-      '<div class="image-card" onclick="showDetail(' + i + ')">' +
-        '<img class="thumb" src="/thumbnail?path=' + encodeURIComponent(img.location) + '"' +
-             ' alt="' + escHtml(img.alt_text) + '"' +
-             ' onerror="this.outerHTML=\'<div class=\\\'thumb-placeholder\\\'>No preview</div>\'" />' +
-        '<div class="card-label">' + escHtml(img.filename) + '</div>' +
-      '</div>'
+
+    grid.innerHTML = filtered.map((img, i) =>
+      `<div class="img-card" data-idx="${i}">
+        <img src="/thumbnail?path=${encodeURIComponent(img.location)}" alt="${esc(img.alt_text)}" loading="lazy"
+             onerror="this.style.background='#e5e7eb'" />
+        <div class="img-card-label">${esc(img.filename)}</div>
+      </div>`
     ).join('');
+
+    grid.querySelectorAll('.img-card').forEach(card => {
+      card.addEventListener('click', function () {
+        openDetail(filtered[+this.dataset.idx]);
+      });
+    });
   }
 
-  document.getElementById('btn-back-tags').addEventListener('click', goTags);
-
-  // ── STEP 4: Detail ─────────────────────────────────────────
-  function showDetail(idx) {
-    const img = state.images[idx];
+  // ── Detail modal ──────────────────────────────────────────────────────────
+  function openDetail(img) {
+    currentImage = img;
     document.getElementById('detail-img').src = '/image?path=' + encodeURIComponent(img.location);
-    document.getElementById('detail-img').alt = img.alt_text;
-    const dl = document.getElementById('detail-download');
-    dl.href = '/image?path=' + encodeURIComponent(img.location);
-    dl.download = img.filename || 'image';
-    document.getElementById('detail-filename').textContent = img.filename || '\u2014';
-    document.getElementById('detail-location').textContent = img.location || '\u2014';
-    document.getElementById('detail-alt').textContent = img.alt_text || '\u2014';
+    document.getElementById('detail-img').alt = img.alt_text || '';
+    document.getElementById('detail-filename').textContent = img.filename || '';
+    document.getElementById('detail-dims').textContent = '';
+    document.getElementById('detail-alt').textContent = img.alt_text || '—';
+    document.getElementById('detail-loc').textContent = img.location || '';
 
-    const tagsEl = document.getElementById('detail-tags');
-    const tags = img.tags.split(',').map(t => t.trim()).filter(Boolean);
-    tagsEl.innerHTML = tags.length
-      ? tags.map(t => '<span class="tag-badge">' + escHtml(t) + '</span>').join('')
+    const tags = (img.tags || '').split(',').map(t => t.trim()).filter(Boolean);
+    document.getElementById('detail-tags').innerHTML = tags.length
+      ? tags.map(t => `<span class="detail-tag">${esc(t)}</span>`).join('')
       : '<span style="color:var(--muted);font-size:13px">None</span>';
 
-    document.getElementById('detail-size').textContent = 'Loading\u2026';
+    document.getElementById('btn-copy').textContent = 'Copy path';
+
+    document.getElementById('detail-overlay').classList.add('open');
+
     fetch('/api/image-info?path=' + encodeURIComponent(img.location))
       .then(r => r.json())
       .then(d => {
-        document.getElementById('detail-size').textContent =
-          d.width && d.height
-            ? d.width + ' \u00d7 ' + d.height + ' px \u2014 ' + d.file_size
-            : d.file_size || '\u2014';
-      })
-      .catch(() => { document.getElementById('detail-size').textContent = '\u2014'; });
-
-    showView('detail');
+        if (d.width) document.getElementById('detail-dims').textContent =
+          `${d.width} × ${d.height} px · ${d.file_size || ''}`;
+      }).catch(() => {});
   }
 
-  document.getElementById('btn-back-grid').addEventListener('click', () => showView('grid'));
-  document.getElementById('btn-back-folders').addEventListener('click', () => showView('folders'));
-
-  // ── Helpers ────────────────────────────────────────────────
-  function escHtml(str) {
-    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-  }
-  function escJs(str) {
-    return String(str).replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+  function closeDetail() {
+    document.getElementById('detail-overlay').classList.remove('open');
+    currentImage = null;
   }
 
-  // ── Boot ───────────────────────────────────────────────────
-  loadFolders();
-  updateBreadcrumb('folders');
+  document.getElementById('detail-close').addEventListener('click', closeDetail);
+  document.getElementById('btn-close-detail').addEventListener('click', closeDetail);
+  document.getElementById('detail-overlay').addEventListener('click', e => {
+    if (e.target === document.getElementById('detail-overlay')) closeDetail();
+  });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeDetail(); });
+
+  document.getElementById('btn-copy').addEventListener('click', () => {
+    if (!currentImage) return;
+    navigator.clipboard.writeText(currentImage.location).then(() => {
+      const btn = document.getElementById('btn-copy');
+      btn.textContent = 'Copied!';
+      setTimeout(() => { btn.textContent = 'Copy path'; }, 2000);
+    });
+  });
+
+  document.getElementById('btn-open').addEventListener('click', () => {
+    if (currentImage) window.open('/image?path=' + encodeURIComponent(currentImage.location), '_blank');
+  });
+
+  // ── Helpers ───────────────────────────────────────────────────────────────
+  function esc(s) {
+    return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+})();
 </script>
 </body>
 </html>

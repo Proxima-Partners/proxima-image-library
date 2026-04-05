@@ -181,6 +181,49 @@ up to 2 new tags by prefixing them with '?' (e.g. ?rooftop-garden)
             print(f"Error generating tags for {image_path}: {e}")
             return None
 
+    def generate_category(
+        self,
+        source: Union[str, bytes],
+        categories: list,
+        filename: str = "",
+    ) -> Optional[str]:
+        """Determine the best category for an image from an approved list.
+
+        Args:
+            source:     Local file path (str) OR raw image bytes
+            categories: List of valid category names to choose from
+            filename:   Original filename — required when source is bytes
+        """
+        try:
+            if isinstance(source, str):
+                if not Path(source).exists():
+                    return None
+                filename = filename or source
+
+            category_list = "\n".join(f"- {c}" for c in categories)
+            prompt = f"""Look at this image and select the single most appropriate category from this list:
+
+{category_list}
+
+Rules:
+- Return ONLY the category name, exactly as written above
+- No explanation, no punctuation, nothing else"""
+
+            result = self._vision_message(source, filename, prompt)
+            # Validate response is one of the allowed categories
+            for cat in categories:
+                if cat.lower() == result.strip().lower():
+                    return cat
+            # Fallback: return first word match
+            for cat in categories:
+                if cat.lower() in result.lower():
+                    return cat
+            return None
+
+        except Exception as e:
+            print(f"Error determining category for {filename or source}: {e}")
+            return None
+
     def batch_generate_alt_text(
         self,
         image_paths: list,

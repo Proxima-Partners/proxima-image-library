@@ -78,13 +78,13 @@ def _unique_slug(base_slug: str, list_client) -> str:
 def process_image(
     file_bytes: bytes,
     original_filename: str,
-    category: str,
     generator,
     list_client,
     sp_client,
     image_folder: str,
     storage_mode: str,
     on_progress: Optional[Callable[[str], None]] = None,
+    category: Optional[str] = None,
 ) -> dict:
     """Full pipeline for a single image.
 
@@ -114,7 +114,7 @@ def process_image(
     Raises:
         Exception on any unrecoverable error.
     """
-    if category not in CATEGORIES:
+    if category is not None and category not in CATEGORIES:
         raise ValueError(f"Invalid category '{category}'. Must be one of: {CATEGORIES}")
 
     ext = Path(original_filename).suffix.lower() or ".jpg"
@@ -126,6 +126,14 @@ def process_image(
     # ── Step 1: Transform ──────────────────────────────────────────────────
     _log("Transforming image to WebP…")
     webp_bytes = transform_to_webp(file_bytes)
+
+    # ── Step 1b: Category (AI-determined if not supplied) ──────────────────
+    if category is None:
+        _log("Determining category via Claude…")
+        category = generator.generate_category(webp_bytes, CATEGORIES, filename="image.webp")
+        if category is None:
+            category = "Situations"  # safe fallback
+        _log(f"Category: {category}")
 
     # ── Step 2: Alt text ───────────────────────────────────────────────────
     _log("Generating alt text via Claude…")

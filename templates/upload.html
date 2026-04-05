@@ -4,6 +4,9 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Upload Images — Proxima</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Montserrat:wght@600;700;800&display=swap" rel="stylesheet">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -11,8 +14,9 @@
       --bg: #f5f5f5;
       --surface: #ffffff;
       --border: #e0e0e0;
-      --accent: #2563eb;
-      --accent-hover: #1d4ed8;
+      --accent: #05718D;
+      --accent-hover: #045f77;
+      --gold: #EEB11E;
       --text: #111827;
       --muted: #6b7280;
       --success: #16a34a;
@@ -26,7 +30,7 @@
     }
 
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       background: var(--bg);
       color: var(--text);
       min-height: 100vh;
@@ -45,7 +49,7 @@
       z-index: 100;
       box-shadow: var(--shadow);
     }
-    header h1 { font-size: 17px; font-weight: 700; letter-spacing: -0.3px; }
+    header h1 { font-family: 'Montserrat', sans-serif; font-size: 17px; font-weight: 700; letter-spacing: -0.3px; color: #05718D; }
     .breadcrumb {
       display: flex;
       align-items: center;
@@ -68,7 +72,7 @@
       border-radius: var(--radius);
       box-shadow: var(--shadow);
     }
-    .panel h2 { font-size: 20px; font-weight: 600; margin-bottom: 6px; }
+    .panel h2 { font-family: 'Montserrat', sans-serif; font-size: 20px; font-weight: 700; margin-bottom: 6px; }
     .panel .subtitle { font-size: 13px; color: var(--muted); margin-bottom: 28px; line-height: 1.5; }
 
     .hidden { display: none !important; }
@@ -86,7 +90,7 @@
     .drop-zone:hover,
     .drop-zone.drag-over {
       border-color: var(--accent);
-      background: #eff6ff;
+      background: #e6f4f8;
     }
     .drop-zone .drop-icon { font-size: 36px; margin-bottom: 8px; }
     .drop-zone .drop-label { font-size: 14px; color: var(--muted); }
@@ -170,7 +174,7 @@
       transition: background 0.15s;
     }
     .btn:hover    { background: var(--accent-hover); }
-    .btn:disabled { background: #93c5fd; cursor: not-allowed; }
+    .btn:disabled { background: #7ab8c8; cursor: not-allowed; }
 
     /* ── Results section ── */
     #results { margin-top: 32px; display: flex; flex-direction: column; gap: 16px; }
@@ -225,8 +229,8 @@
     .meta-value { color: var(--text); word-break: break-word; }
     .meta-tags  { display: flex; flex-wrap: wrap; gap: 4px; }
     .tag-chip {
-      background: #e0e7ff;
-      color: #3730a3;
+      background: #e6f4f8;
+      color: #045f77;
       padding: 2px 8px;
       border-radius: 20px;
       font-size: 11px;
@@ -237,6 +241,7 @@
 <body>
 
 <header>
+  <img src="/static/logo.png" alt="Proxima" style="height:36px;width:36px;border-radius:50%;object-fit:cover;flex-shrink:0;" />
   <h1>Proxima Image Library</h1>
   <nav class="breadcrumb">
     <a href="/library" class="crumb">Library</a>
@@ -262,20 +267,7 @@
       <input type="file" id="file-input" accept=".jpg,.jpeg,.png,.gif,.webp" multiple />
     </div>
 
-    <!-- Category -->
-    <div class="field-row">
-      <label for="category-select">Category</label>
-      <select id="category-select">
-        <option value="">— select a category —</option>
-        <option value="Headshots">Headshots — staff and individual portraits</option>
-        <option value="Community">Community — people in community contexts</option>
-        <option value="Locations">Locations — SF landmarks, urban scenes, architecture</option>
-        <option value="Situations">Situations — conceptual / thematic photos</option>
-        <option value="Graphics">Graphics — logos, icons, illustrations, vectors</option>
-        <option value="Banners">Banners — banner and background images</option>
-      </select>
-      <span class="hint">All files in this batch will be stored under the selected category.</span>
-    </div>
+    <!-- Category determined automatically by Claude -->
 
     <!-- Selected files list -->
     <div id="file-list"></div>
@@ -300,7 +292,6 @@
   const fileListEl  = document.getElementById('file-list');
   const processBtn  = document.getElementById('process-btn');
   const countLabel  = document.getElementById('file-count-label');
-  const categorySel = document.getElementById('category-select');
   const resultsPane = document.getElementById('results-panel');
   const resultsEl   = document.getElementById('results');
 
@@ -324,8 +315,6 @@
     addFiles([...fileInput.files]);
     fileInput.value = '';
   });
-
-  categorySel.addEventListener('change', updateProcessBtn);
 
   // ── File management ───────────────────────────────────────────────────────
   const ALLOWED_EXTS = new Set(['.jpg', '.jpeg', '.png', '.gif', '.webp']);
@@ -375,15 +364,14 @@
   }
 
   function updateProcessBtn() {
-    processBtn.disabled = selectedFiles.length === 0 || !categorySel.value;
+    processBtn.disabled = selectedFiles.length === 0;
   }
 
   // ── Processing ────────────────────────────────────────────────────────────
   processBtn.addEventListener('click', startProcessing);
 
   async function startProcessing() {
-    const category = categorySel.value;
-    if (!category || selectedFiles.length === 0) return;
+    if (selectedFiles.length === 0) return;
 
     processBtn.disabled = true;
     resultsPane.style.display = 'block';
@@ -426,7 +414,7 @@
       card.setStatus('running');
 
       await new Promise(resolve => {
-        const url = `/api/upload/process?id=${encodeURIComponent(s.id)}&category=${encodeURIComponent(category)}`;
+        const url = `/api/upload/process?id=${encodeURIComponent(s.id)}`;
         const es = new EventSource(url);
 
         es.onmessage = e => {
