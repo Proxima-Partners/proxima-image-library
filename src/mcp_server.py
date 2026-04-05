@@ -214,6 +214,36 @@ async def list_tools() -> list[types.Tool]:
                 "required": ["download_url", "original_filename", "category"],
             },
         ),
+        types.Tool(
+            name="catalog_image_from_file",
+            description=(
+                "Catalog an image file that the user has attached to this conversation. "
+                "Accepts raw base64 image data, transforms it to WebP, generates AI alt text "
+                "and tags, stores it in SharePoint, and writes the metadata record. "
+                "Use this when the user shares a file directly in the chat and wants it added to the library. "
+                "IMPORTANT: Confirm with the user which category the image belongs to before calling this tool. "
+                "Returns the final slug, filename, alt_text, tags, and location."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "image_data": {
+                        "type": "string",
+                        "description": "Base64-encoded image data (from the file attachment).",
+                    },
+                    "filename": {
+                        "type": "string",
+                        "description": "Original filename including extension (e.g. photo.jpg).",
+                    },
+                    "category": {
+                        "type": "string",
+                        "enum": ["Headshots", "Community", "Locations", "Situations", "Graphics", "Banners"],
+                        "description": "Storage category. Ask the user if not obvious from context.",
+                    },
+                },
+                "required": ["image_data", "filename", "category"],
+            },
+        ),
     ]
 
 
@@ -225,6 +255,8 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextCont
         return await _search_stock_photos(arguments)
     if name == "catalog_stock_image":
         return await _catalog_stock_image(arguments)
+    if name == "catalog_image_from_file":
+        return await _catalog_image_from_file(arguments)
     raise ValueError(f"Unknown tool: {name}")
 
 
@@ -572,6 +604,55 @@ async def _catalog_stock_image(args: dict) -> list[types.TextContent]:
         result = process_image(
             file_bytes=file_bytes,
             original_filename=original_filename,
+            category=category,
+            generator=gen,
+            list_client=list_client,
+            sp_client=sp_client,
+            image_folder=Config.IMAGE_FOLDER,
+            storage_mode=storage_mode,
+        )
+        result["webp_url"] = _webp_url(result.get("location", ""))
+        return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
+    except Exception as e:
+        return [types.TextContent(type="text", text=json.dumps({"error": str(e)}))]
+
+
+async def _catalog_image_from_file(args: dict) -> list[types.TextContent]:
+    import json
+
+    image_data = args.get("image_data", "").strip()
+    filename = args.get("filename", "image.jpg").strip() or "image.jpg"
+    category = args.get("category", "")
+
+    if not image_data:
+        return [types.TextContent(type="text", text=json.dumps({"error": "image_data is required"}))]
+
+    try:
+        file_bytes = base64.b64decode(image_data)
+    except Exception as e:
+        return [types.TextContent(type="text", text=json.dumps({"error": f"Invalid base64 data: {e}"}))]
+
+    from src.ai_generator import AltTextGenerator
+    from src.image_processor import process_image
+
+    gen = AltTextGenerator()
+
+    if Config.TEST_MODE:
+        from src.local_client import LocalClient
+        list_client = LocalClient()
+        sp_client = None
+        storage_mode = "local"
+    else:
+        from src.sharepoint_list_client import SharePointListClient
+        from src.sharepoint_client import SharePointClient
+        list_client = SharePointListClient()
+        sp_client = SharePointClient()
+        storage_mode = "sharepoint"
+
+    try:
+        result = process_image(
+            file_bytes=file_bytes,
+            original_filename=filename,
             category=category,
             generator=gen,
             list_client=list_client,

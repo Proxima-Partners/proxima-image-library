@@ -85,6 +85,7 @@ def process_image(
     storage_mode: str,
     on_progress: Optional[Callable[[str], None]] = None,
     category: Optional[str] = None,
+    source_context: Optional[str] = None,
 ) -> dict:
     """Full pipeline for a single image.
 
@@ -137,12 +138,12 @@ def process_image(
 
     # ── Step 2: Alt text ───────────────────────────────────────────────────
     _log("Generating alt text via Claude…")
-    alt_text = generator.generate_alt_text(webp_bytes, filename="image.webp") or ""
+    alt_text = generator.generate_alt_text(webp_bytes, context=source_context, filename="image.webp") or ""
     _log(f"Alt text: {alt_text}")
 
     # ── Step 3: Tags ───────────────────────────────────────────────────────
     _log("Generating tags via Claude…")
-    tags = generator.generate_tags(webp_bytes, filename="image.webp") or ""
+    tags = generator.generate_tags(webp_bytes, context=source_context, filename="image.webp") or ""
     _log(f"Tags: {tags}")
 
     # ── Step 4: Slug ───────────────────────────────────────────────────────
@@ -163,7 +164,8 @@ def process_image(
     else:
         base = Path(image_folder)
         _log("Saving files locally…")
-        webp_path = base / category / webp_filename
+        # Store under WebP/ to match the SharePoint folder convention
+        webp_path = base / "WebP" / category / webp_filename
         webp_path.parent.mkdir(parents=True, exist_ok=True)
         webp_path.write_bytes(webp_bytes)
 

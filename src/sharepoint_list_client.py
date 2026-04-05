@@ -149,6 +149,24 @@ class SharePointListClient(SharePointClient):
             print(f"Error updating SharePoint list item {record_id}: {e}")
             return False
 
+    def patch_fields(self, record_id: str, fields: dict) -> bool:
+        """Update arbitrary fields on a record. Keys are app field names."""
+        sp_fields = {self._TO_SP[k]: v for k, v in fields.items() if k in self._TO_SP}
+        if not sp_fields:
+            return False
+        try:
+            resp = requests.patch(
+                f"{self._list_url}/items/{record_id}/fields",
+                headers=self._headers(),
+                json=sp_fields,
+                timeout=15,
+            )
+            resp.raise_for_status()
+            return True
+        except requests.exceptions.RequestException as e:
+            print(f"Error patching SharePoint list item {record_id}: {e}")
+            return False
+
     def delete_records(self, record_ids: List[str]) -> int:
         deleted = 0
         for rid in record_ids:

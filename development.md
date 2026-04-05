@@ -97,7 +97,7 @@ The MCP server exposes three tools so Claude Desktop can search images and catal
 | ---- | ------- | ----------- |
 | `search_image_library` | Auto — after blog/article skill output | Searches local JSON or SharePoint List; returns ranked matches with inline thumbnails |
 | `search_stock_photos` | After internal search returns no selection | Searches Pexels, Shutterstock, Unsplash, Pixabay concurrently; returns inline thumbnails |
-| `catalog_stock_image` | After user explicitly selects a stock photo | Downloads, transforms to WebP, generates alt text + tags, stores in SharePoint, writes metadata record |
+| `catalog_image_from_file` | When user drops a file directly into Claude | Accepts base64 image data, runs full processing pipeline, adds record to library |
 
 ### Register in Claude Desktop
 
@@ -168,18 +168,18 @@ src/
 ├── sharepoint_list_client.py SharePoint List CRUD — live metadata store
 ├── sharepoint_client.py      SharePoint file operations via Microsoft Graph API
 ├── local_client.py           Drop-in local JSON store — identical interface (TEST_MODE)
-├── airtable_client.py        Airtable HTTP wrapper — legacy, not used in current stack
 ├── image_processor.py        Upload/stock image processing pipeline
 ├── image_scanner.py          Recursive image discovery via Path.rglob()
-├── mcp_server.py             MCP stdio server — Claude Desktop tool integration
+├── mcp_server.py             MCP stdio server — search_image_library, search_stock_photos, catalog_image_from_file
 ├── config.py                 Env var loading and Config object
 ├── rename_assets.py          Batch rename to {prefix}-{slug}.{ext} format
 ├── stock_client.py           Pexels / Shutterstock / Unsplash / Pixabay — full metadata
 └── tag_library.py            Tag vocabulary management
 
 templates/
-├── index.html                Library browser — folder/tag filter → grid → detail panel
+├── index.html                Search-first library browser — hero, category tiles, browse grid
 ├── stock_search.html         Stock photo search — phrase chips → results grid → download modal
+├── review.html               Review queue — approve/reject/archive pending images with badge count
 ├── upload.html               Image upload and catalog pipeline with SSE progress
 └── tag_manager.html          Tag vocabulary editor
 
@@ -243,7 +243,7 @@ Security checklist for new routes:
 
 ### Add a new AI-generated field
 
-1. Add a `generate_<field>()` method to `AltTextGenerator` in [src/ai_generator.py](src/ai_generator.py)
+1. Add a `generate_<field>()` method to the generator class in [src/ai_generator.py](src/ai_generator.py)
 2. Call it in the pipeline alongside the existing `generate_alt_text()` / `generate_tags()` calls
 3. Pass the result to `create_record()` (SharePoint field must exist first — see above)
 
@@ -315,6 +315,8 @@ Keep the model pinned to `claude-sonnet-4-6`. Do not change it without discussio
 | Stock search tab shows "not configured" | Missing env var | Add the relevant API key(s) to `.env` |
 | Thumbnail returns 500 | Image format unreadable by Pillow (e.g. CMYK JPEG) | Convert source image to sRGB before adding to `IMAGE_FOLDER` |
 | `build_plan` re-renames already-named files | Slug derived from full stem including prefix | Run rename once per batch — re-running is safe but will double-prefix |
+| `local_table.json` corrupt after concurrent writes | Concurrent PATCH requests (e.g. Approve All) all read-modify-write simultaneously | Fixed: `LocalClient._save()` uses atomic write (`.tmp` + rename) and `_LOCK` threading lock — serialises all reads/writes |
+| Review badge count stale after approving | `get_all_records()` 5-minute cache not invalidated on status change | Fixed: `api_image_status` sets `_records_cache = None` on every successful PATCH |
 
 ---
 
@@ -322,7 +324,7 @@ Keep the model pinned to `claude-sonnet-4-6`. Do not change it without discussio
 
 ### Production deployment
 
-See [PRODUCTION_DEPLOY.md](PRODUCTION_DEPLOY.md) for the full Azure App Service checklist.
+See [PRODUCTION_DEPLOY.md](PRODUCTION_DEPLOY.md) for the full Azure App Service checklist. Complete T1 (pre-production test protocol) and T2 (security audit) before deploying.
 
 ### Writing skills integration
 
@@ -332,14 +334,17 @@ The Proxima Writing Claude Desktop project uses the MCP server tools. After any 
 2. Upload the new `proxima-skills.zip` to the Claude Project knowledge files
 3. If `Project-Instructions.md` changed, update the Proxima Writing system prompt
 
-### Pending features (EDIT_LIST)
+### Future development queue
 
-See [EDIT_LIST.md](EDIT_LIST.md) for the full list. Key pending items:
+See [EDIT_LIST.md](EDIT_LIST.md) for the full queue. Key upcoming items:
 
-- Thumbnail URL caching (item 2) — avoid repeated Graph API calls per page load
-- Image review workflow `/review` page (item 6) — approve/reject queue with status badges
-- `catalog_image_from_file` MCP tool (item 7) — accept base64 uploads from Claude Desktop
-- Align local/SharePoint folder structures (item 8) — eliminate STORAGE_MODE branch in `_serve_image`
+- **M1–M7** — Maintenance utilities (orphan finder, duplicate detector, bulk re-tag, export, purge)
+- **M8** — High-Res source-based folder structure + WebP sync utility
+- **M9** — Remove all remaining Airtable references
+- **T1** — Comprehensive pre-production test protocol
+- **T2** — Security audit checklist
+- **T3** — Full code audit (unused code, redundancy, latency, conventions)
+- **W1** — End-to-end test: Proxima Writing → Image Library → Webflow CMS
 
 ---
 

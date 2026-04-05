@@ -423,21 +423,41 @@
     }
     .dl-cancel { padding: 8px 20px; border-radius: 20px; border: 1px solid #e0e0e0; background: #fff; font-size: 13px; font-weight: 600; cursor: pointer; color: #6b7280; font-family: inherit; }
     .dl-cancel:hover { border-color: var(--accent); color: var(--accent); }
+    .dl-download { padding: 8px 16px; border-radius: 20px; border: 1.5px solid #d1d5db; background: #fff; color: #374151; font-size: 13px; font-weight: 500; cursor: pointer; font-family: inherit; }
+    .dl-download:hover { border-color: #9ca3af; }
     .dl-confirm { padding: 8px 20px; border-radius: 20px; border: none; background: var(--accent); color: #fff; font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit; }
     .dl-confirm:hover { background: var(--accent-hover); }
 
+    /* ── Catalog progress overlay ── */
+    #cat-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+      z-index: 1100; display: none; align-items: center; justify-content: center;
+    }
+    #cat-overlay.active { display: flex; }
+    #cat-modal {
+      background: #fff; border-radius: 10px; padding: 24px;
+      max-width: 420px; width: 100%; box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+    }
+    #cat-header { font-size: 16px; font-weight: 700; color: #111; margin-bottom: 14px; font-family: 'Montserrat', sans-serif; }
+    #cat-log { font-size: 13px; color: #374151; line-height: 1.7; min-height: 60px; max-height: 200px; overflow-y: auto; }
+    #cat-log .cat-err { color: #dc2626; }
+    #cat-result { margin-top: 16px; }
+    #cat-result.hidden { display: none; }
+    #cat-result-inner { font-size: 13px; color: #111; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 6px; padding: 10px 14px; margin-bottom: 12px; line-height: 1.6; }
+    #cat-close { padding: 8px 20px; border-radius: 20px; border: none; background: var(--accent); color: #fff; font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit; }
+
     /* ── Shutterstock modal image section ── */
     #ss-img-section {
-      display: flex; gap: 14px; align-items: flex-start;
+      display: flex; flex-direction: column; gap: 12px;
       padding-bottom: 16px; margin-bottom: 16px;
       border-bottom: 1px solid #f3f4f6;
     }
     #ss-img-section.hidden { display: none; }
     #ss-preview {
-      width: 90px; height: 68px; object-fit: cover; border-radius: 6px;
-      flex-shrink: 0; background: #f3f4f6; display: block;
+      width: 100%; max-height: 220px; object-fit: cover; border-radius: 6px;
+      background: #f3f4f6; display: block;
     }
-    #ss-img-meta { flex: 1; min-width: 0; }
+    #ss-img-meta { min-width: 0; }
     #ss-img-title { font-size: 13px; font-weight: 600; color: #111; margin-bottom: 6px; line-height: 1.4; }
     #ss-img-cats { font-size: 12px; color: #6b7280; margin-bottom: 6px; }
     #ss-img-keywords { display: flex; flex-wrap: wrap; gap: 4px; }
@@ -464,7 +484,20 @@
     </div>
     <div class="dl-modal-actions">
       <button class="dl-cancel" id="dl-cancel">Cancel</button>
-      <button class="dl-confirm" id="dl-confirm">Download</button>
+      <button class="dl-download" id="dl-download">Download</button>
+      <button class="dl-confirm" id="dl-confirm">Add to Library</button>
+    </div>
+  </div>
+</div>
+
+<!-- Catalog progress overlay -->
+<div id="cat-overlay">
+  <div id="cat-modal">
+    <div id="cat-header">Adding to Library…</div>
+    <div id="cat-log"></div>
+    <div id="cat-result" class="hidden">
+      <div id="cat-result-inner"></div>
+      <button id="cat-close">Done</button>
     </div>
   </div>
 </div>
@@ -664,7 +697,7 @@
         const res  = await fetch('/api/stock-search', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ phrases, limit: 8 }),
+          body: JSON.stringify({ phrases, limit: 12 }),
         });
         const data = await res.json();
         if (data.error) throw new Error(data.error);
@@ -865,7 +898,7 @@
     const dlTags         = document.getElementById('dl-tags');
     const dlCancel       = document.getElementById('dl-cancel');
     const dlConfirm      = document.getElementById('dl-confirm');
-    let pendingDownload  = null;  // { url, filename, dl }
+    let pendingDownload  = null;  // { url, filename, dl, source, title, tags, photographer }
 
     function fmtNum(n) { return Number(n).toLocaleString(); }
     function fmtBytes(b) {
@@ -950,7 +983,7 @@
       // Tags
       dlTags.innerHTML = tags.map(t => `<span class="dl-tag">${escHtml(t)}</span>`).join('');
 
-      pendingDownload = { url, filename, dl: dlLocation };
+      pendingDownload = { url, filename, dl: dlLocation, source, title: titleRaw, tags, photographer };
       dlOverlay.classList.add('active');
     });
 
@@ -966,7 +999,8 @@
       }
     });
 
-    dlConfirm.addEventListener('click', () => {
+    const dlDownload = document.getElementById('dl-download');
+    dlDownload.addEventListener('click', () => {
       if (!pendingDownload) return;
       const { url, filename, dl } = pendingDownload;
       const href = `/api/download-image?url=${encodeURIComponent(url)}&filename=${encodeURIComponent(filename)}&dl=${encodeURIComponent(dl)}`;
@@ -978,6 +1012,84 @@
       document.body.removeChild(a);
       dlOverlay.classList.remove('active');
       pendingDownload = null;
+    });
+
+    const catOverlay = document.getElementById('cat-overlay');
+    const catLog     = document.getElementById('cat-log');
+    const catResult  = document.getElementById('cat-result');
+    const catResultInner = document.getElementById('cat-result-inner');
+    const catClose   = document.getElementById('cat-close');
+    catClose.addEventListener('click', () => catOverlay.classList.remove('active'));
+
+    dlConfirm.addEventListener('click', () => {
+      if (!pendingDownload) return;
+      const { url, filename, dl, source, title, tags, photographer } = pendingDownload;
+      dlOverlay.classList.remove('active');
+      pendingDownload = null;
+
+      // Reset progress UI
+      catLog.innerHTML = '';
+      catResult.classList.add('hidden');
+      catResultInner.innerHTML = '';
+      document.getElementById('cat-header').textContent = 'Adding to Library…';
+      catOverlay.classList.add('active');
+
+      const params = new URLSearchParams({
+        download_url: url,
+        filename,
+        dl: dl || '',
+        source: source || '',
+        title: title || '',
+        tags: (tags || []).join(','),
+        photographer: photographer || '',
+      });
+      const es = new EventSource(`/api/catalog-stock?${params}`);
+
+      function logLine(text, cls) {
+        const el = document.createElement('div');
+        if (cls) el.className = cls;
+        el.textContent = text;
+        catLog.appendChild(el);
+        catLog.scrollTop = catLog.scrollHeight;
+      }
+
+      es.onmessage = e => {
+        const msg = e.data;
+        if (msg === '[START]') return;
+        if (msg === '[DONE]') {
+          es.close();
+          document.getElementById('cat-header').textContent = 'Added to Library';
+          return;
+        }
+        if (msg.startsWith('[ERROR]')) {
+          es.close();
+          document.getElementById('cat-header').textContent = 'Error';
+          logLine(msg.slice(7).trim(), 'cat-err');
+          catResult.classList.remove('hidden');
+          catResultInner.style.cssText = 'background:#fef2f2;border-color:#fecaca;';
+          catResultInner.textContent = 'Something went wrong. Please try again.';
+          return;
+        }
+        if (msg.startsWith('[RESULT] ')) {
+          try {
+            const r = JSON.parse(msg.slice(9));
+            catResult.classList.remove('hidden');
+            catResultInner.innerHTML =
+              `<strong>${escHtml(r.alt_text || r.filename)}</strong><br>` +
+              `Slug: ${escHtml(r.slug)}<br>` +
+              `Tags: ${escHtml(r.tags)}<br>` +
+              `Status: ${escHtml(r.status)}`;
+          } catch (_) {}
+          return;
+        }
+        logLine(msg);
+      };
+
+      es.onerror = () => {
+        if (!catOverlay.classList.contains('active')) return;
+        es.close();
+        logLine('Connection lost', 'cat-err');
+      };
     });
 
     function showSsModal() {

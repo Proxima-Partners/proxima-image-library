@@ -261,7 +261,7 @@ def api_parse_suggestions():
 def api_stock_search():
     data = request.get_json(force=True)
     phrases = data.get("phrases", [])
-    limit = max(1, min(int(data.get("limit", 8)), 12))
+    limit = max(1, min(int(data.get("limit", 12)), 20))
     if not phrases:
         return jsonify({"error": "No phrases provided"}), 400
     phrases = phrases[:20]
@@ -277,6 +277,131 @@ _DOWNLOAD_ALLOWED_DOMAINS = {
     "pixabay.com",
     "images.unsplash.com",
 }
+
+
+def _stock_source_context(source: str, title: str, tags: list[str], photographer: str) -> str:
+    """Build a context string from stock API metadata to pass to Claude."""
+    parts = []
+    if source:
+        parts.append(f"Source: {source}")
+    if title:
+        parts.append(f"Title from source: {title}")
+    if photographer:
+        parts.append(f"Photographer: {photographer}")
+    if tags:
+        parts.append(f"Keywords from source: {', '.join(tags)}")
+    if not parts:
+        return ""
+    return (
+        "\n".join(parts) + "\n\n"
+        "Use the above source metadata as a starting point. "
+        "Reconcile keywords against the approved tag vocabulary — keep matches, drop anything off-vocabulary."
+    )
+
+
+@app.route("/api/catalog-stock")
+@login_required
+def api_catalog_stock():
+    """SSE stream — download a stock image and run the full pipeline with source metadata as context."""
+    download_url = request.args.get("download_url", "").strip()
+    filename     = request.args.get("filename", "image.jpg").strip() or "image.jpg"
+    dl_location  = request.args.get("dl", "").strip()   # Unsplash attribution ping
+    source       = request.args.get("source", "").strip()
+    title        = request.args.get("title", "").strip()
+    tags_raw     = request.args.get("tags", "").strip()
+    photographer = request.args.get("photographer", "").strip()
+    category     = request.args.get("category", "").strip() or None
+
+    from src.image_processor import CATEGORIES, process_image
+
+    if not download_url:
+        return jsonify({"error": "download_url required"}), 400
+
+    domain = urlparse(download_url).netloc.lower()
+    if not any(domain == d or domain.endswith("." + d) for d in _DOWNLOAD_ALLOWED_DOMAINS):
+        return jsonify({"error": "URL not permitted"}), 403
+
+    if category is not None and category not in CATEGORIES:
+        return jsonify({"error": f"Invalid category. Must be one of: {CATEGORIES}"}), 400
+
+    tags = [t.strip() for t in tags_raw.split(",") if t.strip()] if tags_raw else []
+    source_context = _stock_source_context(source, title, tags, photographer)
+
+    def generate():
+        yield "data: [START]\n\n"
+        q: queue.Queue = queue.Queue()
+
+        def worker():
+            try:
+                # Unsplash attribution ping
+                if dl_location:
+                    dl_domain = urlparse(dl_location).netloc.lower()
+                    if "unsplash.com" in dl_domain:
+                        access_key = os.getenv("UNSPLASH_ACCESS_KEY", "")
+                        if access_key:
+                            try:
+                                requests.get(dl_location, headers={"Authorization": f"Client-ID {access_key}"}, timeout=5)
+                            except Exception:
+                                pass
+
+                q.put(("progress", f"Downloading from {source or 'source'}…"))
+                resp = requests.get(download_url, timeout=30)
+                resp.raise_for_status()
+                file_bytes = resp.content
+
+                from src.ai_generator import AltTextGenerator
+                gen = AltTextGenerator()
+
+                if Config.TEST_MODE:
+                    list_client = LocalClient()
+                    sp_client = None
+                    storage_mode = "local"
+                else:
+                    from src.sharepoint_list_client import SharePointListClient
+                    from src.sharepoint_client import SharePointClient
+                    list_client = SharePointListClient()
+                    sp_client = SharePointClient()
+                    storage_mode = "sharepoint"
+
+                result = process_image(
+                    file_bytes=file_bytes,
+                    original_filename=filename,
+                    generator=gen,
+                    list_client=list_client,
+                    sp_client=sp_client,
+                    image_folder=Config.IMAGE_FOLDER,
+                    storage_mode=storage_mode,
+                    on_progress=lambda msg: q.put(("progress", msg)),
+                    category=category,
+                    source_context=source_context or None,
+                )
+                q.put(("done", result))
+            except Exception as exc:
+                q.put(("error", str(exc)))
+
+        t = threading.Thread(target=worker, daemon=True)
+        t.start()
+
+        while True:
+            try:
+                kind, value = q.get(timeout=180)
+            except queue.Empty:
+                yield "data: [ERROR] Processing timed out after 3 minutes\n\n"
+                break
+
+            if kind == "progress":
+                yield f"data: {value}\n\n"
+            elif kind == "done":
+                import json as _json
+                yield f"data: [RESULT] {_json.dumps(value)}\n\n"
+                yield "data: [DONE]\n\n"
+                break
+            elif kind == "error":
+                yield f"data: [ERROR] {value}\n\n"
+                break
+
+    return Response(stream_with_context(generate()), mimetype="text/event-stream",
+                    headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
 @app.route("/api/download-image")
@@ -390,6 +515,10 @@ def api_images():
             if rec_folder != folder:
                 continue
         rec_tags = {t.strip() for t in fields.get("Tags", "").split(",") if t.strip()}
+        status = fields.get("Status", "")
+        status_filter = request.args.get("status", "")
+        if status_filter and status != status_filter:
+            continue
         if not selected_tags or (rec_tags & selected_tags):
             results.append(
                 {
@@ -398,9 +527,55 @@ def api_images():
                     "location": location,
                     "alt_text": fields.get("Alt Text", ""),
                     "tags": fields.get("Tags", ""),
+                    "status": status,
                 }
             )
     return jsonify({"images": results})
+
+
+@app.route("/api/pending-count")
+@login_required
+def api_pending_count():
+    records = get_all_records()
+    count = sum(1 for r in records if r.get("fields", {}).get("Status") == "pending-review")
+    return jsonify({"count": count})
+
+
+@app.route("/api/image-status", methods=["PATCH"])
+@login_required
+def api_image_status():
+    data = request.get_json(force=True) or {}
+    record_id = data.get("id", "").strip()
+    status = data.get("status", "").strip()
+    alt_text = data.get("alt_text")  # optional
+
+    valid_statuses = {"pending-review", "approved", "rejected", "archived"}
+    if not record_id:
+        return jsonify({"error": "id required"}), 400
+    if status not in valid_statuses:
+        return jsonify({"error": f"status must be one of {sorted(valid_statuses)}"}), 400
+
+    fields: dict = {"Status": status}
+    if alt_text is not None:
+        fields["Alt Text"] = alt_text.strip()
+
+    if Config.TEST_MODE:
+        ok = LocalClient().patch_fields(record_id, fields)
+    else:
+        from src.sharepoint_list_client import SharePointListClient
+        ok = SharePointListClient().patch_fields(record_id, fields)
+
+    if ok:
+        global _records_cache
+        _records_cache = None  # invalidate so pending-count reflects the change
+        return jsonify({"ok": True})
+    return jsonify({"error": "Record not found or update failed"}), 404
+
+
+@app.route("/review")
+@login_required
+def review():
+    return render_template("review.html", user=session.get("user", {}))
 
 
 @app.route("/api/image-info")
@@ -468,6 +643,21 @@ def image():
 
 
 
+_sp_url_cache: dict[str, tuple[str, float]] = {}  # key → (url, expires_at)
+_SP_URL_TTL = 2700  # 45 minutes (SharePoint CDN URLs expire ~1 hour)
+
+
+def _get_sp_url(sp_path: str, thumb: bool) -> str:
+    """Return a SharePoint CDN URL, using a short-lived cache to avoid repeated Graph API calls."""
+    cache_key = f"{'thumb' if thumb else 'full'}:{sp_path}"
+    cached = _sp_url_cache.get(cache_key)
+    if cached and cached[1] > time.time():
+        return cached[0]
+    url = get_sp_client().get_thumbnail_url(sp_path) if thumb else get_sp_client().get_file_url(sp_path)
+    _sp_url_cache[cache_key] = (url, time.time() + _SP_URL_TTL)
+    return url
+
+
 def _serve_image(thumb: bool) -> Response:
     location = unquote(request.args.get("path", ""))
     if not location:
@@ -477,22 +667,23 @@ def _serve_image(thumb: bool) -> Response:
         try:
             root = Config.SHAREPOINT_IMAGE_FOLDER
             sp_path = f"{root}/WebP/{location}" if root else f"WebP/{location}"
-            if thumb:
-                url = get_sp_client().get_thumbnail_url(sp_path)
-            else:
-                url = get_sp_client().get_file_url(sp_path)
+            url = _get_sp_url(sp_path, thumb)
             return redirect(url)
         except Exception as e:
             return Response(f"Error: {e}", status=500)
 
     image_folder = Path(os.getenv("IMAGE_FOLDER", "./assets")).resolve()
-    full_path = (image_folder / location).resolve()
 
-    # Prevent path traversal
-    if not str(full_path).startswith(str(image_folder)):
-        return Response("Forbidden", status=403)
+    # Prefer WebP/ subdirectory (aligned with SharePoint convention); fall back to
+    # direct path for legacy records that pre-date this convention.
+    full_path = None
+    for candidate in [image_folder / "WebP" / location, image_folder / location]:
+        resolved = candidate.resolve()
+        if str(resolved).startswith(str(image_folder)) and resolved.exists():
+            full_path = resolved
+            break
 
-    if not full_path.exists():
+    if full_path is None:
         return Response("Image not found", status=404)
 
     try:

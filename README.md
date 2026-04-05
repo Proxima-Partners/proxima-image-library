@@ -1,6 +1,6 @@
 # Proxima Image Library
 
-AI-powered image asset management for Proxima. Scans a local image folder, generates alt text and tags via Claude vision, syncs metadata to a SharePoint List, and provides a web UI for browsing, stock photo search, and download.
+AI-powered image asset management for Proxima. Scans a local image folder, generates alt text and tags via Claude vision, syncs metadata to a SharePoint List, and provides a web UI for browsing, stock photo search, image review, and download.
 
 **Tech stack:** Python 3 · Flask · Claude `claude-sonnet-4-6` · SharePoint List · Microsoft Graph API · MSAL · Pillow · Vanilla HTML/CSS/JS
 
@@ -48,15 +48,20 @@ src/
 ├── sharepoint_list_client.py   SharePoint List CRUD (live mode)
 ├── sharepoint_client.py        SharePoint file operations via Graph API
 ├── local_client.py             Local JSON store, same interface (TEST_MODE)
-├── airtable_client.py          Airtable CRUD (legacy — not used in current stack)
 ├── image_scanner.py            Recursive image discovery
 ├── tag_library.py              Tag vocabulary management
 ├── config.py                   Env var loading and Config object
-├── mcp_server.py               MCP server — search_image_library, search_stock_photos, catalog_stock_image
+├── mcp_server.py               MCP server — search_image_library, search_stock_photos, catalog_image_from_file
 ├── rename_assets.py            Batch rename to {prefix}-{slug}.{ext}
 └── stock_client.py             Pexels / Shutterstock / Unsplash / Pixabay search + full metadata
 
-templates/                      Jinja2 HTML — library browser, stock search, upload, tag manager, review
+templates/
+├── index.html                  Search-first library browser — hero, category tiles, browse grid
+├── stock_search.html           Stock photo search — phrase chips → results grid → download modal
+├── review.html                 Review queue — approve/reject/archive pending images
+├── upload.html                 Image upload and catalog pipeline with SSE progress
+└── tag_manager.html            Tag vocabulary editor
+
 tests/                          pytest — rename_assets, ImageScanner
 test_data/                      local_table.json — 253 records for local dev/testing
 ```
@@ -101,6 +106,14 @@ Register in `~/Library/Application Support/Claude/claude_desktop_config.json`:
 
 `TEST_MODE` and `STORAGE_MODE` are set explicitly here because Claude Desktop may not load `.env` from `cwd` reliably.
 
+### MCP Tools
+
+| Tool | Description |
+| ---- | ----------- |
+| `search_image_library` | Search the image library by keyword; returns ranked results with thumbnails |
+| `search_stock_photos` | Search Pexels, Shutterstock, Unsplash, Pixabay concurrently |
+| `catalog_image_from_file` | Accept a base64 image, run the full processing pipeline, add to library |
+
 ---
 
 ## Documentation
@@ -111,5 +124,5 @@ Register in `~/Library/Application Support/Claude/claude_desktop_config.json`:
 | [specification.md](specification.md) | Image output targets, naming, SharePoint List schema, AI metadata spec |
 | [search-parameter.md](search-parameter.md) | Stock photo API parameters, auth, attribution requirements |
 | [project-scope.md](project-scope.md) | Feature definitions and application parameters |
-| [EDIT_LIST.md](EDIT_LIST.md) | Pending and applied changes — build only on approval |
+| [EDIT_LIST.md](EDIT_LIST.md) | Applied changes and future development queue |
 | [PRODUCTION_DEPLOY.md](PRODUCTION_DEPLOY.md) | Deployment checklist for Azure App Service |

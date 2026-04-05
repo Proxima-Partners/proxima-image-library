@@ -1,12 +1,14 @@
 """Local JSON-backed table used in TEST_MODE — mirrors AirtableClient interface."""
 
 import json
+import threading
 import uuid
 from pathlib import Path
 from typing import Dict, List, Optional
 
 
 _DEFAULT_PATH = Path(__file__).parent.parent / "test_data" / "local_table.json"
+_LOCK = threading.Lock()  # serialise concurrent reads/writes across all LocalClient instances
 
 
 class LocalClient:
@@ -27,8 +29,21 @@ class LocalClient:
             return json.load(f)
 
     def _save(self, records: List[Dict]) -> None:
-        with self.db_path.open("w", encoding="utf-8") as f:
+        tmp = self.db_path.with_suffix(".tmp")
+        with tmp.open("w", encoding="utf-8") as f:
             json.dump(records, f, indent=2, ensure_ascii=False)
+        tmp.replace(self.db_path)
+
+    def patch_fields(self, record_id: str, fields: Dict) -> bool:
+        """Thread-safe update of arbitrary fields on a record."""
+        with _LOCK:
+            records = self._load()
+            for r in records:
+                if r["id"] == record_id:
+                    r["fields"].update(fields)
+                    self._save(records)
+                    return True
+        return False
 
     # ------------------------------------------------------------------
     # Public interface (matches AirtableClient)
@@ -85,6 +100,7 @@ class LocalClient:
                 self._save(records)
                 return True
         return False
+
 
     def delete_records(self, record_ids: List[str]) -> int:
         records = self._load()

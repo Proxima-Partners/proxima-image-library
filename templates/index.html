@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Home — Proxima</title>
+  <title>Image Library — Proxima</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Montserrat:wght@600;700;800&display=swap" rel="stylesheet">
@@ -25,6 +25,7 @@
       --tag-sel-color: #ffffff;
       --radius: 8px;
       --shadow: 0 1px 3px rgba(0,0,0,0.10);
+      --shadow-md: 0 4px 14px rgba(0,0,0,0.10);
       --sidebar-w: 200px;
     }
 
@@ -37,11 +38,14 @@
       flex-direction: column;
     }
 
+    .hidden { display: none !important; }
+
     /* ── Header ── */
     header {
       background: var(--surface);
       border-bottom: 1px solid var(--border);
-      padding: 12px 20px;
+      padding: 0 20px;
+      height: 52px;
       display: flex;
       align-items: center;
       gap: 12px;
@@ -51,375 +55,60 @@
       box-shadow: var(--shadow);
       flex-shrink: 0;
     }
-    header h1 {
+    .header-logo { display: flex; align-items: center; gap: 9px; text-decoration: none; flex-shrink: 0; }
+    .header-logo img { height: 30px; width: 30px; border-radius: 50%; object-fit: cover; }
+    .header-logo span {
       font-family: 'Montserrat', sans-serif;
-      font-size: 16px;
-      font-weight: 700;
-      color: var(--accent);
-      white-space: nowrap;
+      font-size: 15px; font-weight: 700;
+      color: var(--accent); white-space: nowrap;
     }
 
-    /* ── Search bar ── */
-    #search-wrap {
-      flex: 1;
-      display: flex;
-      align-items: center;
-      background: var(--bg);
-      border: 1px solid var(--border);
-      border-radius: 20px;
-      padding: 0 14px;
-      gap: 8px;
-      max-width: 480px;
+    /* compact search — visible in browse mode */
+    #header-search-wrap {
+      flex: 1; max-width: 420px;
+      display: flex; align-items: center;
+      background: var(--bg); border: 1px solid var(--border);
+      border-radius: 20px; padding: 0 14px; gap: 8px;
     }
-    #search-wrap svg { flex-shrink: 0; color: var(--muted); }
-    #search-input {
-      flex: 1;
-      border: none;
-      background: none;
-      font-size: 14px;
-      font-family: inherit;
-      color: var(--text);
-      padding: 8px 0;
-      outline: none;
+    #header-search-wrap svg { flex-shrink: 0; color: var(--muted); }
+    #header-search-input {
+      flex: 1; border: none; background: none;
+      font-size: 13px; font-family: inherit;
+      color: var(--text); padding: 7px 0; outline: none;
     }
-    #search-input::placeholder { color: var(--muted); }
-    #search-clear {
-      background: none;
-      border: none;
-      cursor: pointer;
-      color: var(--muted);
-      font-size: 16px;
-      padding: 0;
-      display: none;
-      line-height: 1;
+    #header-search-input::placeholder { color: var(--muted); }
+    #header-search-clear {
+      background: none; border: none; cursor: pointer;
+      color: var(--muted); font-size: 16px; padding: 0;
+      display: none; line-height: 1;
     }
-    #search-clear.visible { display: block; }
+    #header-search-clear.visible { display: block; }
 
     #result-count { font-size: 13px; color: var(--muted); white-space: nowrap; margin-left: auto; }
 
     .header-link {
-      font-size: 13px;
-      color: var(--muted);
-      text-decoration: none;
-      white-space: nowrap;
-      padding: 6px 12px;
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      background: var(--surface);
-      transition: background 0.15s;
+      font-size: 13px; color: var(--muted); text-decoration: none;
+      white-space: nowrap; padding: 5px 11px;
+      border: 1px solid var(--border); border-radius: 6px;
+      background: var(--surface); transition: background 0.15s;
+      flex-shrink: 0;
     }
     .header-link:hover { background: var(--bg); color: var(--accent); border-color: var(--accent); }
 
-    /* ── Layout ── */
-    #layout {
-      display: flex;
-      flex: 1;
-      min-height: 0;
-      overflow: hidden;
-    }
-
-    /* ── Sidebar ── */
-    #sidebar {
-      width: var(--sidebar-w);
-      flex-shrink: 0;
-      background: var(--surface);
-      border-right: 1px solid var(--border);
-      overflow-y: auto;
-      padding: 16px 0 24px;
-    }
-    .sidebar-section { margin-bottom: 24px; }
-    .sidebar-heading {
-      font-size: 10px;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-      color: var(--muted);
-      padding: 0 14px 8px;
-    }
-    .sidebar-item {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 6px 14px;
-      font-size: 13px;
-      cursor: pointer;
-      border-left: 3px solid transparent;
-      transition: background 0.12s;
-      user-select: none;
-    }
-    .sidebar-item:hover { background: #f0f9fb; }
-    .sidebar-item.active {
-      background: #e6f4f8;
-      border-left-color: var(--accent);
-      color: var(--accent);
-      font-weight: 600;
-    }
-    .sidebar-badge {
-      font-size: 11px;
-      background: var(--border);
-      color: var(--muted);
-      border-radius: 10px;
-      padding: 1px 7px;
-      flex-shrink: 0;
-    }
-    .sidebar-item.active .sidebar-badge {
-      background: var(--accent);
-      color: #fff;
-    }
-
-    /* ── Main ── */
-    #main {
-      flex: 1;
-      overflow-y: auto;
-      display: flex;
-      flex-direction: column;
-    }
-
-    /* ── Tag strip ── */
-    #tag-strip {
-      background: var(--surface);
-      border-bottom: 1px solid var(--border);
-      padding: 10px 16px;
-      display: flex;
-      flex-wrap: wrap;
-      gap: 6px;
-      align-items: center;
-      min-height: 48px;
-    }
-    .tag-chip {
-      padding: 4px 12px;
-      border-radius: 20px;
-      font-size: 12px;
-      font-weight: 500;
-      background: var(--tag-bg);
-      color: var(--tag-color);
-      cursor: pointer;
-      border: 1px solid transparent;
-      transition: all 0.12s;
-      user-select: none;
-    }
-    .tag-chip:hover { border-color: var(--accent); }
-    .tag-chip.active { background: var(--tag-sel-bg); color: var(--tag-sel-color); }
-    .tag-clear {
-      font-size: 12px;
-      color: var(--muted);
-      cursor: pointer;
-      padding: 4px 8px;
-      border-radius: 20px;
-      border: 1px solid var(--border);
-      background: none;
-      font-family: inherit;
-    }
-    .tag-clear:hover { border-color: var(--accent); color: var(--accent); }
-    #tag-strip-empty { font-size: 12px; color: var(--muted); }
-
-    /* ── Grid ── */
-    #grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-      gap: 14px;
-      padding: 16px;
-    }
-    .img-card {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      overflow: hidden;
-      cursor: pointer;
-      box-shadow: var(--shadow);
-      transition: transform 0.15s, box-shadow 0.15s;
-    }
-    .img-card:hover { transform: translateY(-2px); box-shadow: 0 4px 14px rgba(0,0,0,0.12); }
-    .img-card img {
-      width: 100%;
-      aspect-ratio: 1;
-      object-fit: cover;
-      display: block;
-      background: var(--bg);
-    }
-    .img-card-label {
-      padding: 7px 10px;
-      font-size: 11px;
-      color: var(--muted);
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      border-top: 1px solid var(--border);
-    }
-
-    /* ── Empty / loading ── */
-    #grid-status {
-      grid-column: 1 / -1;
-      text-align: center;
-      padding: 60px 20px;
-      color: var(--muted);
-      font-size: 14px;
-    }
-    .spinner {
-      width: 28px; height: 28px;
-      border: 3px solid var(--border);
-      border-top-color: var(--accent);
-      border-radius: 50%;
-      animation: spin 0.7s linear infinite;
-      margin: 0 auto 12px;
-    }
-    @keyframes spin { to { transform: rotate(360deg); } }
-
-    /* ── Detail modal ── */
-    #detail-overlay {
-      display: none;
-      position: fixed; inset: 0;
-      background: rgba(0,0,0,0.55);
-      z-index: 200;
-      align-items: center;
-      justify-content: center;
-      padding: 20px;
-    }
-    #detail-overlay.open { display: flex; }
-    #detail-panel {
-      background: var(--surface);
-      border-radius: 12px;
-      max-width: 700px;
-      width: 100%;
-      max-height: 90vh;
-      overflow-y: auto;
-      box-shadow: 0 24px 64px rgba(0,0,0,0.3);
-      display: flex;
-      flex-direction: column;
-    }
-    #detail-img-wrap {
-      position: relative;
-      background: #f0f0f0;
-      border-radius: 12px 12px 0 0;
-      overflow: hidden;
-    }
-    #detail-img { width: 100%; max-height: 380px; object-fit: contain; display: block; }
-    #detail-close {
-      position: absolute; top: 12px; right: 12px;
-      background: rgba(0,0,0,0.5); color: #fff;
-      border: none; border-radius: 50%;
-      width: 32px; height: 32px;
-      font-size: 18px; cursor: pointer;
-      display: flex; align-items: center; justify-content: center;
-      line-height: 1;
-    }
-    #detail-body { padding: 20px 24px 24px; display: flex; flex-direction: column; gap: 14px; }
-    #detail-filename {
-      font-family: 'Montserrat', sans-serif;
-      font-size: 15px;
-      font-weight: 700;
-      word-break: break-all;
-    }
-    #detail-dims { font-size: 12px; color: var(--muted); }
-    .detail-field label {
-      display: block;
-      font-size: 10px;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.07em;
-      color: var(--muted);
-      margin-bottom: 4px;
-    }
-    .detail-field p {
-      font-size: 14px;
-      line-height: 1.5;
-      color: var(--text);
-      background: var(--bg);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 9px 12px;
-      word-break: break-word;
-    }
-    .detail-tags { display: flex; flex-wrap: wrap; gap: 5px; }
-    .detail-tag {
-      padding: 3px 10px;
-      background: var(--tag-bg);
-      color: var(--tag-color);
-      border-radius: 20px;
-      font-size: 12px;
-    }
-    #detail-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 4px; }
-    .btn {
-      padding: 9px 18px;
-      border-radius: var(--radius);
-      font-size: 13px;
-      font-weight: 600;
-      cursor: pointer;
-      border: none;
-      font-family: inherit;
-      transition: background 0.15s;
-    }
-    .btn-primary { background: var(--accent); color: #fff; }
-    .btn-primary:hover { background: var(--accent-hover); }
-    .btn-ghost { background: none; color: var(--muted); border: 1px solid var(--border); }
-    .btn-ghost:hover { border-color: var(--accent); color: var(--accent); }
-
-    /* ── User avatar / logout ── */
     .user-chip {
       display: flex; align-items: center; gap: 8px;
-      font-size: 13px; color: var(--muted); margin-left: 8px;
+      font-size: 13px; color: var(--muted); margin-left: 4px; flex-shrink: 0;
     }
     .user-avatar {
       width: 28px; height: 28px; border-radius: 50%;
       background: var(--accent); color: #fff;
       display: flex; align-items: center; justify-content: center;
-      font-size: 12px; font-weight: 700; flex-shrink: 0;
+      font-size: 12px; font-weight: 700;
     }
-    .user-name { max-width: 120px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .user-name { max-width: 110px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .logout-link { font-size: 12px; color: var(--muted); text-decoration: none; }
     .logout-link:hover { color: var(--accent); }
 
-    /* ── Welcome modal ── */
-    #welcome-overlay {
-      position: fixed; inset: 0; background: rgba(0,0,0,0.45);
-      z-index: 1000; display: flex; align-items: center; justify-content: center;
-      padding: 20px;
-    }
-    #welcome-modal {
-      background: var(--surface); border-radius: 12px;
-      box-shadow: 0 8px 32px rgba(0,0,0,0.18);
-      max-width: 620px; width: 100%; padding: 36px 32px;
-    }
-    #welcome-modal .wm-logo-row {
-      display: flex; align-items: center; gap: 12px; margin-bottom: 20px;
-    }
-    #welcome-modal .wm-logo-row img { height: 44px; width: 44px; border-radius: 50%; }
-    #welcome-modal .wm-logo-row h2 {
-      font-family: 'Montserrat', sans-serif; font-size: 20px; font-weight: 800;
-      color: var(--accent);
-    }
-    #welcome-modal .wm-subtitle {
-      font-size: 14px; color: var(--muted); margin-bottom: 24px; line-height: 1.6;
-    }
-    #welcome-modal .wm-cards {
-      display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 28px;
-    }
-    .wm-card {
-      border: 1px solid var(--border); border-radius: var(--radius);
-      padding: 14px 16px;
-    }
-    .wm-card .wm-card-icon { font-size: 22px; margin-bottom: 6px; }
-    .wm-card .wm-card-title {
-      font-weight: 700; font-size: 13px; margin-bottom: 4px; color: var(--text);
-    }
-    .wm-card .wm-card-desc { font-size: 12px; color: var(--muted); line-height: 1.5; }
-    .wm-card a { color: var(--accent); text-decoration: none; font-weight: 600; }
-    .wm-card a:hover { text-decoration: underline; }
-    #welcome-modal .wm-footer {
-      display: flex; align-items: center; justify-content: space-between;
-    }
-    #welcome-modal .wm-dismiss-check {
-      display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted);
-    }
-    #welcome-modal .wm-dismiss-check input { cursor: pointer; }
-    .wm-got-it {
-      padding: 9px 28px; border-radius: 20px; border: none;
-      background: var(--accent); color: #fff;
-      font-size: 13px; font-weight: 700; cursor: pointer; font-family: inherit;
-    }
-    .wm-got-it:hover { background: var(--accent-hover); }
-
-    /* ── Help button ── */
     .help-btn {
       width: 26px; height: 26px; border-radius: 50%;
       border: 1px solid var(--border); background: var(--surface);
@@ -428,34 +117,387 @@
       flex-shrink: 0;
     }
     .help-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+    /* ── Hero view ── */
+    #hero-view {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+    }
+
+    #hero {
+      background: linear-gradient(160deg, #eef8fb 0%, #f5f5f5 60%);
+      border-bottom: 1px solid var(--border);
+      padding: 64px 24px 52px;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+    }
+    #hero-eyebrow {
+      font-size: 11px; font-weight: 700; letter-spacing: 0.1em;
+      text-transform: uppercase; color: var(--accent); opacity: 0.8;
+    }
+    #hero h2 {
+      font-family: 'Montserrat', sans-serif;
+      font-size: 32px; font-weight: 800;
+      color: var(--text); letter-spacing: -0.5px; line-height: 1.2;
+    }
+    #hero-sub {
+      font-size: 15px; color: var(--muted); max-width: 380px; line-height: 1.6;
+    }
+
+    #hero-search-wrap {
+      display: flex; align-items: center; gap: 0;
+      background: var(--surface);
+      border: 1.5px solid var(--border);
+      border-radius: 32px;
+      padding: 0 6px 0 20px;
+      width: 100%; max-width: 560px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+      margin-top: 8px;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    #hero-search-wrap:focus-within {
+      border-color: var(--accent);
+      box-shadow: 0 2px 16px rgba(5,113,141,0.14);
+    }
+    #hero-search-wrap svg { color: var(--muted); flex-shrink: 0; }
+    #hero-search-input {
+      flex: 1; border: none; background: none;
+      font-size: 15px; font-family: inherit;
+      color: var(--text); padding: 14px 12px; outline: none;
+    }
+    #hero-search-input::placeholder { color: #adb5bd; }
+    #hero-search-btn {
+      background: var(--accent); color: #fff;
+      border: none; border-radius: 24px;
+      padding: 10px 22px; font-size: 13px; font-weight: 700;
+      cursor: pointer; font-family: inherit; white-space: nowrap;
+      transition: background 0.15s;
+    }
+    #hero-search-btn:hover { background: var(--accent-hover); }
+
+    /* ── Category tiles ── */
+    #category-section {
+      padding: 36px 32px 0;
+      max-width: 960px; width: 100%; margin: 0 auto;
+    }
+    #category-section h3 {
+      font-size: 11px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.08em; color: var(--muted); margin-bottom: 16px;
+    }
+    #category-tiles {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+      gap: 12px;
+    }
+    .cat-tile {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 18px 16px 16px;
+      cursor: pointer;
+      transition: transform 0.15s, box-shadow 0.15s, border-color 0.15s;
+      display: flex; flex-direction: column; gap: 8px;
+      border-top: 3px solid var(--tile-color, var(--border));
+      box-shadow: var(--shadow);
+    }
+    .cat-tile:hover {
+      transform: translateY(-2px);
+      box-shadow: var(--shadow-md);
+      border-color: var(--tile-color, var(--accent));
+      border-top-color: var(--tile-color, var(--accent));
+    }
+    .cat-tile-name {
+      font-size: 13px; font-weight: 700; color: var(--text);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .cat-tile-count {
+      font-size: 12px; color: var(--muted);
+    }
+
+    /* ── Recent strip ── */
+    #recent-section {
+      padding: 32px 32px 40px;
+      max-width: 960px; width: 100%; margin: 0 auto;
+    }
+    #recent-section h3 {
+      font-size: 11px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.08em; color: var(--muted); margin-bottom: 16px;
+    }
+    #recent-strip {
+      display: flex; gap: 12px;
+      overflow-x: auto; padding-bottom: 8px;
+    }
+    #recent-strip::-webkit-scrollbar { height: 4px; }
+    #recent-strip::-webkit-scrollbar-track { background: transparent; }
+    #recent-strip::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+    .recent-card {
+      flex-shrink: 0; width: 148px; cursor: pointer;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); overflow: hidden;
+      box-shadow: var(--shadow); transition: transform 0.15s, box-shadow 0.15s;
+    }
+    .recent-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
+    .recent-card img {
+      width: 100%; height: 100px; object-fit: cover; display: block; background: var(--bg);
+    }
+    .recent-card-label {
+      padding: 6px 8px; font-size: 10px; color: var(--muted);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      border-top: 1px solid var(--border);
+    }
+
+    /* ── Browse view ── */
+    #browse-view {
+      flex: 1; display: flex; flex-direction: column; overflow: hidden;
+    }
+
+    #browse-bar {
+      background: var(--surface); border-bottom: 1px solid var(--border);
+      padding: 8px 16px; display: flex; align-items: center; gap: 12px;
+      flex-shrink: 0;
+    }
+    #browse-back {
+      background: none; border: none; cursor: pointer;
+      font-size: 13px; color: var(--accent); font-family: inherit;
+      padding: 4px 0; display: flex; align-items: center; gap: 4px;
+      white-space: nowrap;
+    }
+    #browse-back:hover { text-decoration: underline; }
+    #browse-active-filter {
+      font-size: 12px; color: var(--muted); flex: 1;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    #browse-result-count { font-size: 13px; color: var(--muted); white-space: nowrap; }
+
+    #browse-layout {
+      display: flex; flex: 1; min-height: 0; overflow: hidden;
+    }
+
+    /* ── Sidebar ── */
+    #sidebar {
+      width: var(--sidebar-w); flex-shrink: 0;
+      background: var(--surface); border-right: 1px solid var(--border);
+      overflow-y: auto; padding: 16px 0 24px;
+    }
+    .sidebar-section { margin-bottom: 24px; }
+    .sidebar-heading {
+      font-size: 10px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: 0.08em;
+      color: var(--muted); padding: 0 14px 8px;
+    }
+    .sidebar-item {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 6px 14px; font-size: 13px; cursor: pointer;
+      border-left: 3px solid transparent; transition: background 0.12s;
+      user-select: none;
+    }
+    .sidebar-item:hover { background: #f0f9fb; }
+    .sidebar-item.active {
+      background: #e6f4f8; border-left-color: var(--accent);
+      color: var(--accent); font-weight: 600;
+    }
+    .sidebar-badge {
+      font-size: 11px; background: var(--border); color: var(--muted);
+      border-radius: 10px; padding: 1px 7px; flex-shrink: 0;
+    }
+    .sidebar-item.active .sidebar-badge { background: var(--accent); color: #fff; }
+
+    /* ── Main ── */
+    #main { flex: 1; overflow-y: auto; display: flex; flex-direction: column; }
+
+    /* ── Tag strip ── */
+    #tag-strip {
+      background: var(--surface); border-bottom: 1px solid var(--border);
+      padding: 10px 16px; display: flex; flex-wrap: wrap;
+      gap: 6px; align-items: center; min-height: 48px;
+    }
+    .tag-chip {
+      padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 500;
+      background: var(--tag-bg); color: var(--tag-color);
+      cursor: pointer; border: 1px solid transparent; transition: all 0.12s;
+      user-select: none;
+    }
+    .tag-chip:hover { border-color: var(--accent); }
+    .tag-chip.active { background: var(--tag-sel-bg); color: var(--tag-sel-color); }
+    .tag-clear {
+      font-size: 12px; color: var(--muted); cursor: pointer;
+      padding: 4px 8px; border-radius: 20px; border: 1px solid var(--border);
+      background: none; font-family: inherit;
+    }
+    .tag-clear:hover { border-color: var(--accent); color: var(--accent); }
+    #tag-strip-empty { font-size: 12px; color: var(--muted); }
+
+    /* ── Grid ── */
+    #grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 14px; padding: 16px;
+    }
+    .img-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); overflow: hidden; cursor: pointer;
+      box-shadow: var(--shadow); transition: transform 0.15s, box-shadow 0.15s;
+      position: relative;
+    }
+    .img-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
+    .img-card img {
+      width: 100%; aspect-ratio: 1; object-fit: cover; display: block; background: var(--bg);
+    }
+    .img-card-label {
+      padding: 7px 10px; font-size: 11px; color: var(--muted);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      border-top: 1px solid var(--border);
+    }
+    .status-dot {
+      position: absolute; top: 6px; right: 6px;
+      width: 8px; height: 8px; border-radius: 50%;
+      border: 1.5px solid rgba(255,255,255,0.8);
+    }
+    .status-dot.pending-review { background: #f59e0b; }
+    .status-dot.approved { background: #16a34a; }
+    .status-dot.rejected { background: #dc2626; }
+    .status-dot.archived { background: #9ca3af; }
+
+    #grid-status {
+      grid-column: 1 / -1; text-align: center;
+      padding: 60px 20px; color: var(--muted); font-size: 14px;
+    }
+    .spinner {
+      width: 28px; height: 28px; border: 3px solid var(--border);
+      border-top-color: var(--accent); border-radius: 50%;
+      animation: spin 0.7s linear infinite; margin: 0 auto 12px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Detail modal ── */
+    #detail-overlay {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,0.55); z-index: 200;
+      align-items: center; justify-content: center; padding: 20px;
+    }
+    #detail-overlay.open { display: flex; }
+    #detail-panel {
+      background: var(--surface); border-radius: 12px;
+      max-width: 700px; width: 100%; max-height: 90vh;
+      overflow-y: auto; box-shadow: 0 24px 64px rgba(0,0,0,0.3);
+      display: flex; flex-direction: column;
+    }
+    #detail-img-wrap {
+      position: relative; background: #f0f0f0;
+      border-radius: 12px 12px 0 0; overflow: hidden;
+    }
+    #detail-img { width: 100%; max-height: 380px; object-fit: contain; display: block; }
+    #detail-close {
+      position: absolute; top: 12px; right: 12px;
+      background: rgba(0,0,0,0.5); color: #fff; border: none;
+      border-radius: 50%; width: 32px; height: 32px;
+      font-size: 18px; cursor: pointer;
+      display: flex; align-items: center; justify-content: center; line-height: 1;
+    }
+    #detail-body { padding: 20px 24px 24px; display: flex; flex-direction: column; gap: 14px; }
+    #detail-filename {
+      font-family: 'Montserrat', sans-serif;
+      font-size: 15px; font-weight: 700; word-break: break-all;
+    }
+    #detail-dims { font-size: 12px; color: var(--muted); }
+    .detail-field label {
+      display: block; font-size: 10px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: 0.07em;
+      color: var(--muted); margin-bottom: 4px;
+    }
+    .detail-field p {
+      font-size: 14px; line-height: 1.5; color: var(--text);
+      background: var(--bg); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 9px 12px; word-break: break-word;
+    }
+    .detail-tags { display: flex; flex-wrap: wrap; gap: 5px; }
+    .detail-tag {
+      padding: 3px 10px; background: var(--tag-bg);
+      color: var(--tag-color); border-radius: 20px; font-size: 12px;
+    }
+    #detail-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 4px; }
+    .btn {
+      padding: 9px 18px; border-radius: var(--radius); font-size: 13px;
+      font-weight: 600; cursor: pointer; border: none; font-family: inherit;
+      transition: background 0.15s;
+    }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-primary:hover { background: var(--accent-hover); }
+    .btn-ghost { background: none; color: var(--muted); border: 1px solid var(--border); }
+    .btn-ghost:hover { border-color: var(--accent); color: var(--accent); }
+
+    /* ── Welcome modal ── */
+    #welcome-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.45);
+      z-index: 1000; display: flex; align-items: center; justify-content: center;
+      padding: 20px;
+    }
+    #welcome-modal {
+      background: var(--surface); border-radius: 14px;
+      box-shadow: 0 8px 40px rgba(0,0,0,0.2);
+      max-width: 560px; width: 100%; padding: 36px 32px;
+    }
+    .wm-logo-row { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+    .wm-logo-row img { height: 40px; width: 40px; border-radius: 50%; }
+    .wm-logo-row h2 {
+      font-family: 'Montserrat', sans-serif; font-size: 20px;
+      font-weight: 800; color: var(--accent);
+    }
+    .wm-subtitle { font-size: 14px; color: var(--muted); margin-bottom: 24px; line-height: 1.6; margin-top: 6px; }
+    .wm-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 28px; }
+    .wm-card { border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; }
+    .wm-card-title { font-weight: 700; font-size: 13px; margin-bottom: 4px; color: var(--text); }
+    .wm-card-desc { font-size: 12px; color: var(--muted); line-height: 1.5; }
+    .wm-card a { color: var(--accent); text-decoration: none; font-weight: 600; }
+    .wm-card a:hover { text-decoration: underline; }
+    .wm-footer { display: flex; align-items: center; justify-content: space-between; }
+    .wm-dismiss-check { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
+    .wm-dismiss-check input { cursor: pointer; }
+    .wm-got-it {
+      padding: 9px 28px; border-radius: 20px; border: none;
+      background: var(--accent); color: #fff;
+      font-size: 13px; font-weight: 700; cursor: pointer; font-family: inherit;
+    }
+    .wm-got-it:hover { background: var(--accent-hover); }
   </style>
 </head>
 <body>
 
+<!-- ── Header ── -->
 <header>
-  <a href="/"><img src="/static/logo.png" alt="Proxima" style="height:36px;width:36px;border-radius:50%;object-fit:cover;flex-shrink:0;" /></a>
-  <h1>Image Library</h1>
+  <a href="/" class="header-logo">
+    <img src="/static/logo.png" alt="Proxima" />
+    <span>Image Library</span>
+  </a>
 
-  <div id="search-wrap">
-    <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+  <!-- compact search — only visible in browse mode -->
+  <div id="header-search-wrap" class="hidden">
+    <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
       <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
     </svg>
-    <input id="search-input" type="search" placeholder="Search by keyword, alt text, or tag…" autocomplete="off" />
-    <button id="search-clear" title="Clear">×</button>
+    <input id="header-search-input" type="search" placeholder="Search…" autocomplete="off" />
+    <button id="header-search-clear" title="Clear">×</button>
   </div>
 
-  <span id="result-count"></span>
-  <a href="/upload" class="header-link">⬆ Upload</a>
-  <a href="/stock-search" class="header-link">📷 Stock</a>
-  <button class="help-btn" id="help-btn" title="Help">?</button>
-  <div class="user-chip">
-    <div class="user-avatar" id="user-avatar">{{ (user.name or user.preferred_username or '?')[0] | upper }}</div>
-    <span class="user-name" title="{{ user.name or user.preferred_username or '' }}">{{ user.name or user.preferred_username or 'User' }}</span>
-    <a href="/logout" class="logout-link">Sign out</a>
+  <div style="margin-left:auto;display:flex;align-items:center;gap:10px;">
+    <a href="/upload" class="header-link">Upload</a>
+    <a href="/stock-search" class="header-link">Stock</a>
+    <a href="/review" class="header-link" id="review-link">Review<span id="review-badge" style="display:none;margin-left:6px;background:#EEB11E;color:#fff;font-size:11px;font-weight:700;padding:1px 6px;border-radius:20px;vertical-align:middle;"></span></a>
+    <button class="help-btn" id="help-btn" title="Help">?</button>
+    <div class="user-chip">
+      <div class="user-avatar">{{ (user.name or user.preferred_username or '?')[0] | upper }}</div>
+      <span class="user-name" title="{{ user.name or user.preferred_username or '' }}">{{ user.name or user.preferred_username or 'User' }}</span>
+      <a href="/logout" class="logout-link">Sign out</a>
+    </div>
   </div>
 </header>
 
-<!-- Welcome modal -->
+<!-- ── Welcome modal ── -->
 <div id="welcome-overlay" style="display:none;">
   <div id="welcome-modal">
     <div class="wm-logo-row">
@@ -463,29 +505,25 @@
       <h2>Welcome to Proxima</h2>
     </div>
     <p class="wm-subtitle">
-      A central hub for Proxima's photography, graphics, and stock images —
+      A central hub for photography, graphics, and stock images —
       searchable, tagged with AI, and ready to use in your projects.
     </p>
     <div class="wm-cards">
       <div class="wm-card">
-        <div class="wm-card-icon">🔍</div>
-        <div class="wm-card-title">Browse &amp; Search</div>
-        <div class="wm-card-desc">Search by keyword, filter by category or tag. Click any image to copy its path or download.</div>
+        <div class="wm-card-title">Search &amp; Browse</div>
+        <div class="wm-card-desc">Search by keyword or filter by category. Click any image to copy its path or download.</div>
       </div>
       <div class="wm-card">
-        <div class="wm-card-icon">⬆</div>
         <div class="wm-card-title">Upload Images</div>
-        <div class="wm-card-desc">Drop photos or graphics on the <a href="/upload">Upload page</a>. Claude generates alt text, tags, and category automatically.</div>
+        <div class="wm-card-desc">Drop photos on the <a href="/upload">Upload page</a>. Claude generates alt text, tags, and category automatically.</div>
       </div>
       <div class="wm-card">
-        <div class="wm-card-icon">📷</div>
         <div class="wm-card-title">Stock Search</div>
-        <div class="wm-card-desc">Search Pexels, Unsplash, Shutterstock &amp; Pixabay on the <a href="/stock-search">Stock page</a> without leaving the app.</div>
+        <div class="wm-card-desc">Search Pexels, Unsplash, Shutterstock &amp; Pixabay from the <a href="/stock-search">Stock page</a>. Add to library in one click.</div>
       </div>
       <div class="wm-card">
-        <div class="wm-card-icon">🏷</div>
-        <div class="wm-card-title">Manage Tags</div>
-        <div class="wm-card-desc">Add, rename, or remove tags from the approved vocabulary in the <a href="/tag-manager">Tag Manager</a>.</div>
+        <div class="wm-card-title">Review Queue</div>
+        <div class="wm-card-desc">New uploads land in <a href="/review">Review</a> for approval before appearing in search results.</div>
       </div>
     </div>
     <div class="wm-footer">
@@ -497,34 +535,71 @@
   </div>
 </div>
 
-<div id="layout">
-  <!-- Sidebar -->
-  <nav id="sidebar">
-    <div class="sidebar-section">
-      <div class="sidebar-heading">Category</div>
-      <div id="folder-list"></div>
-    </div>
-    <div class="sidebar-section">
-      <div class="sidebar-heading">Status</div>
-      <div id="status-list">
-        <div class="sidebar-item active" data-status="">All</div>
-        <div class="sidebar-item" data-status="pending-review">Pending review</div>
-        <div class="sidebar-item" data-status="reviewed">Reviewed</div>
-        <div class="sidebar-item" data-status="archived">Archived</div>
-      </div>
-    </div>
-  </nav>
+<!-- ── Hero view ── -->
+<div id="hero-view">
 
-  <!-- Main content -->
-  <div id="main">
-    <div id="tag-strip"><span id="tag-strip-empty">Loading tags…</span></div>
-    <div id="grid">
-      <div id="grid-status"><div class="spinner"></div>Loading library…</div>
+  <div id="hero">
+    <p id="hero-eyebrow">Proxima Image Library</p>
+    <h2>Find the right image, fast.</h2>
+    <p id="hero-sub">Search across photography, graphics, and stock — all in one place.</p>
+    <div id="hero-search-wrap">
+      <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+      </svg>
+      <input id="hero-search-input" type="search" placeholder="Search keywords, alt text, tags…" autocomplete="off" />
+      <button id="hero-search-btn">Search</button>
+    </div>
+  </div>
+
+  <div id="category-section">
+    <h3>Browse by category</h3>
+    <div id="category-tiles">
+      <!-- populated by JS -->
+    </div>
+  </div>
+
+  <div id="recent-section">
+    <h3>Recently added</h3>
+    <div id="recent-strip">
+      <!-- populated by JS -->
+    </div>
+  </div>
+
+</div>
+
+<!-- ── Browse view ── -->
+<div id="browse-view" class="hidden">
+  <div id="browse-bar">
+    <button id="browse-back">← Home</button>
+    <span id="browse-active-filter"></span>
+    <span id="browse-result-count"></span>
+  </div>
+  <div id="browse-layout">
+    <nav id="sidebar">
+      <div class="sidebar-section">
+        <div class="sidebar-heading">Category</div>
+        <div id="folder-list"></div>
+      </div>
+      <div class="sidebar-section">
+        <div class="sidebar-heading">Status</div>
+        <div id="status-list">
+          <div class="sidebar-item active" data-status="">All</div>
+          <div class="sidebar-item" data-status="pending-review">Pending review</div>
+          <div class="sidebar-item" data-status="reviewed">Reviewed</div>
+          <div class="sidebar-item" data-status="archived">Archived</div>
+        </div>
+      </div>
+    </nav>
+    <div id="main">
+      <div id="tag-strip"><span id="tag-strip-empty">Loading tags…</span></div>
+      <div id="grid">
+        <div id="grid-status"><div class="spinner"></div>Loading library…</div>
+      </div>
     </div>
   </div>
 </div>
 
-<!-- Detail modal -->
+<!-- ── Detail modal ── -->
 <div id="detail-overlay">
   <div id="detail-panel">
     <div id="detail-img-wrap">
@@ -559,55 +634,202 @@
 
 <script>
 (function () {
-  let allImages  = [];
-  let activeFolders = new Set();   // empty = all
+  // ── State ──────────────────────────────────────────────────────────────────
+  let allImages     = [];
+  let allFolders    = [];
+  let allTags       = [];
+  let activeFolders = new Set();
   let activeTags    = new Set();
   let activeStatus  = '';
   let searchQ       = '';
   let currentImage  = null;
+  let inBrowseMode  = false;
 
-  // ── Boot ──────────────────────────────────────────────────────────────────
+  function esc(s) {
+    return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  // ── Category colors ────────────────────────────────────────────────────────
+  const CAT_COLORS = {
+    headshot: '#05718D', communit: '#3b82f6', locat: '#16a34a',
+    situat: '#7c3aed', graphic: '#ea580c', banner: '#db2777',
+    photograph: '#d97706', stor: '#0891b2', brand: '#be185d',
+    icon: '#4f46e5', logo: '#0f766e', vector: '#065f46',
+  };
+  function tileColor(name) {
+    const n = name.toLowerCase();
+    for (const [key, color] of Object.entries(CAT_COLORS)) {
+      if (n.includes(key)) return color;
+    }
+    return '#6b7280';
+  }
+
+  // ── Boot ───────────────────────────────────────────────────────────────────
   Promise.all([
     fetch('/api/images').then(r => r.json()),
     fetch('/api/folders').then(r => r.json()),
     fetch('/api/tags').then(r => r.json()),
   ]).then(([imgData, folderData, tagData]) => {
-    allImages = imgData.images || [];
-    renderFolders(folderData.folders || []);
-    renderTagStrip(tagData.tags || []);
-    renderGrid();
+    allImages  = imgData.images || [];
+    allFolders = folderData.folders || [];
+    allTags    = tagData.tags || [];
+    renderFolders(allFolders);
+    renderTagStrip(allTags);
+    renderCategoryTiles(allFolders);
+    renderRecentStrip();
   }).catch(() => {
-    document.getElementById('grid-status').textContent = 'Could not load library. Check server connection.';
+    document.getElementById('grid-status').textContent = 'Could not load library.';
   });
 
-  // ── Search ────────────────────────────────────────────────────────────────
-  const searchInput = document.getElementById('search-input');
-  const searchClear = document.getElementById('search-clear');
+  function refreshReviewBadge() {
+    fetch('/api/pending-count').then(r => r.json()).then(d => {
+      const b = document.getElementById('review-badge');
+      if (d.count > 0) {
+        b.textContent = d.count;
+        b.style.display = '';
+      } else {
+        b.style.display = 'none';
+      }
+    }).catch(() => {});
+  }
+  refreshReviewBadge();
+  setInterval(refreshReviewBadge, 30000); // poll every 30 s
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') refreshReviewBadge();
+  });
+  window.addEventListener('pageshow', () => refreshReviewBadge());
 
-  searchInput.addEventListener('input', function () {
+  // ── Hero ───────────────────────────────────────────────────────────────────
+  function renderCategoryTiles(folders) {
+    const el = document.getElementById('category-tiles');
+    if (!folders.length) { el.style.display = 'none'; return; }
+    el.innerHTML = folders.map(f => {
+      const label = f.name === '.' ? 'Root' : f.name.split('/').pop();
+      const color = tileColor(label);
+      return `<div class="cat-tile" data-folder="${esc(f.name)}" style="--tile-color:${color}">
+        <div class="cat-tile-name">${esc(label)}</div>
+        <div class="cat-tile-count">${f.count} image${f.count === 1 ? '' : 's'}</div>
+      </div>`;
+    }).join('');
+    el.querySelectorAll('.cat-tile').forEach(tile => {
+      tile.addEventListener('click', () => {
+        const folder = tile.dataset.folder;
+        const label = folder === '.' ? 'Root' : folder.split('/').pop();
+        activeFolders = folder ? new Set([folder]) : new Set();
+        activeTags.clear();
+        searchQ = '';
+        syncHeaderSearch('');
+        enterBrowse(`Category: ${label}`);
+        // sync sidebar
+        document.getElementById('folder-list').querySelectorAll('.sidebar-item').forEach(i => {
+          i.classList.toggle('active', i.dataset.folder === folder);
+        });
+        fetch('/api/tags' + (folder ? '?folder=' + encodeURIComponent(folder) : ''))
+          .then(r => r.json()).then(d => renderTagStrip(d.tags || []));
+        renderGrid();
+      });
+    });
+  }
+
+  function renderRecentStrip() {
+    const el = document.getElementById('recent-strip');
+    const recent = allImages.slice(-10).reverse();
+    if (!recent.length) {
+      document.getElementById('recent-section').style.display = 'none';
+      return;
+    }
+    el.innerHTML = recent.map((img, i) =>
+      `<div class="recent-card" data-ridx="${i}">
+        <img src="/thumbnail?path=${encodeURIComponent(img.location)}" alt="${esc(img.alt_text)}" loading="lazy"
+             onerror="this.style.background='#e5e7eb'" />
+        <div class="recent-card-label">${esc(img.filename)}</div>
+      </div>`
+    ).join('');
+    el.querySelectorAll('.recent-card').forEach(card => {
+      card.addEventListener('click', () => openDetail(recent[+card.dataset.ridx]));
+    });
+  }
+
+  // ── Hero search ────────────────────────────────────────────────────────────
+  const heroInput = document.getElementById('hero-search-input');
+  const heroBtn   = document.getElementById('hero-search-btn');
+
+  function doHeroSearch() {
+    const q = heroInput.value.trim();
+    if (!q) return;
+    searchQ = q.toLowerCase();
+    activeFolders.clear();
+    activeTags.clear();
+    syncHeaderSearch(q);
+    enterBrowse(`"${q}"`);
+    renderGrid();
+  }
+
+  heroBtn.addEventListener('click', doHeroSearch);
+  heroInput.addEventListener('keydown', e => { if (e.key === 'Enter') doHeroSearch(); });
+
+  // ── Browse mode toggle ─────────────────────────────────────────────────────
+  function enterBrowse(filterLabel) {
+    inBrowseMode = true;
+    document.getElementById('hero-view').classList.add('hidden');
+    document.getElementById('browse-view').classList.remove('hidden');
+    document.getElementById('header-search-wrap').classList.remove('hidden');
+    document.getElementById('browse-active-filter').textContent = filterLabel || '';
+    renderGrid();
+  }
+
+  function exitBrowse() {
+    inBrowseMode = false;
+    searchQ = ''; activeFolders.clear(); activeTags.clear(); activeStatus = '';
+    syncHeaderSearch('');
+    heroInput.value = '';
+    document.getElementById('browse-view').classList.add('hidden');
+    document.getElementById('hero-view').classList.remove('hidden');
+    document.getElementById('header-search-wrap').classList.add('hidden');
+    // reset sidebar
+    document.getElementById('folder-list').querySelectorAll('.sidebar-item').forEach(i => {
+      i.classList.toggle('active', i.dataset.folder === '');
+    });
+    document.getElementById('status-list').querySelectorAll('.sidebar-item').forEach(i => {
+      i.classList.toggle('active', i.dataset.status === '');
+    });
+    renderTagStrip(allTags);
+  }
+
+  document.getElementById('browse-back').addEventListener('click', exitBrowse);
+
+  // ── Header (compact) search ────────────────────────────────────────────────
+  const headerInput = document.getElementById('header-search-input');
+  const headerClear = document.getElementById('header-search-clear');
+
+  function syncHeaderSearch(val) {
+    headerInput.value = val;
+    headerClear.classList.toggle('visible', val.length > 0);
+  }
+
+  headerInput.addEventListener('input', function () {
     searchQ = this.value.trim().toLowerCase();
-    searchClear.classList.toggle('visible', searchQ.length > 0);
+    headerClear.classList.toggle('visible', searchQ.length > 0);
+    document.getElementById('browse-active-filter').textContent = searchQ ? `"${this.value.trim()}"` : '';
     renderGrid();
   });
-  searchClear.addEventListener('click', () => {
-    searchInput.value = '';
+  headerClear.addEventListener('click', () => {
     searchQ = '';
-    searchClear.classList.remove('visible');
+    syncHeaderSearch('');
+    document.getElementById('browse-active-filter').textContent = '';
     renderGrid();
   });
 
-  // ── Folders sidebar ───────────────────────────────────────────────────────
+  // ── Folders sidebar ────────────────────────────────────────────────────────
   function renderFolders(folders) {
     const el = document.getElementById('folder-list');
     const total = folders.reduce((s, f) => s + f.count, 0);
-
     let html = `<div class="sidebar-item active" data-folder="">All <span class="sidebar-badge">${total}</span></div>`;
     folders.forEach(f => {
       const label = f.name === '.' ? 'Root' : f.name.split('/').pop();
       html += `<div class="sidebar-item" data-folder="${esc(f.name)}">${esc(label)} <span class="sidebar-badge">${f.count}</span></div>`;
     });
     el.innerHTML = html;
-
     el.querySelectorAll('.sidebar-item').forEach(item => {
       item.addEventListener('click', function () {
         el.querySelectorAll('.sidebar-item').forEach(i => i.classList.remove('active'));
@@ -615,40 +837,42 @@
         const folder = this.dataset.folder;
         activeFolders = folder ? new Set([folder]) : new Set();
         activeTags.clear();
-        // Refresh tags for this folder
-        const url = '/api/tags' + (folder ? '?folder=' + encodeURIComponent(folder) : '');
-        fetch(url).then(r => r.json()).then(d => renderTagStrip(d.tags || []));
+        const label = folder ? folder.split('/').pop() : 'All images';
+        if (!inBrowseMode) enterBrowse(`Category: ${label}`);
+        else {
+          document.getElementById('browse-active-filter').textContent = folder ? `Category: ${label}` : 'All images';
+        }
+        fetch('/api/tags' + (folder ? '?folder=' + encodeURIComponent(folder) : ''))
+          .then(r => r.json()).then(d => renderTagStrip(d.tags || []));
         renderGrid();
       });
     });
   }
 
-  // ── Status sidebar ────────────────────────────────────────────────────────
+  // ── Status sidebar ─────────────────────────────────────────────────────────
   document.getElementById('status-list').querySelectorAll('.sidebar-item').forEach(item => {
     item.addEventListener('click', function () {
       document.getElementById('status-list').querySelectorAll('.sidebar-item').forEach(i => i.classList.remove('active'));
       this.classList.add('active');
       activeStatus = this.dataset.status;
+      if (!inBrowseMode) enterBrowse(activeStatus ? `Status: ${activeStatus}` : 'All images');
       renderGrid();
     });
   });
 
-  // ── Tag strip ─────────────────────────────────────────────────────────────
+  // ── Tag strip ──────────────────────────────────────────────────────────────
   function renderTagStrip(tags) {
     const el = document.getElementById('tag-strip');
     if (!tags.length) {
       el.innerHTML = '<span id="tag-strip-empty" style="font-size:12px;color:var(--muted)">No tags in this category</span>';
       return;
     }
-    let html = activeTags.size
-      ? `<button class="tag-clear" id="tag-clear-btn">Clear filters</button>`
-      : '';
+    let html = activeTags.size ? `<button class="tag-clear" id="tag-clear-btn">Clear filters</button>` : '';
     tags.forEach(t => {
       const active = activeTags.has(t) ? ' active' : '';
       html += `<span class="tag-chip${active}" data-tag="${esc(t)}">${esc(t)}</span>`;
     });
     el.innerHTML = html;
-
     el.querySelectorAll('.tag-chip').forEach(chip => {
       chip.addEventListener('click', function () {
         const t = this.dataset.tag;
@@ -659,28 +883,22 @@
     });
     const clearBtn = document.getElementById('tag-clear-btn');
     if (clearBtn) clearBtn.addEventListener('click', () => {
-      activeTags.clear();
-      renderTagStrip(tags);
-      renderGrid();
+      activeTags.clear(); renderTagStrip(tags); renderGrid();
     });
   }
 
-  // ── Grid ──────────────────────────────────────────────────────────────────
+  // ── Grid ───────────────────────────────────────────────────────────────────
   function renderGrid() {
     const filtered = allImages.filter(img => {
-      // Folder
       if (activeFolders.size) {
         const imgFolder = img.location ? img.location.split('/')[0] : '';
         if (!activeFolders.has(imgFolder)) return false;
       }
-      // Status
       if (activeStatus && img.status !== activeStatus) return false;
-      // Tags
       if (activeTags.size) {
         const imgTags = new Set((img.tags || '').split(',').map(t => t.trim()).filter(Boolean));
         if (![...activeTags].some(t => imgTags.has(t))) return false;
       }
-      // Keyword
       if (searchQ) {
         const haystack = [img.filename, img.alt_text, img.tags].join(' ').toLowerCase();
         if (!searchQ.split(/\s+/).every(w => haystack.includes(w))) return false;
@@ -689,52 +907,47 @@
     });
 
     const n = filtered.length;
-    document.getElementById('result-count').textContent = n + ' image' + (n === 1 ? '' : 's');
+    document.getElementById('browse-result-count').textContent = n + ' image' + (n === 1 ? '' : 's');
 
     const grid = document.getElementById('grid');
-
     if (!n) {
       grid.innerHTML = '<div id="grid-status">No images match your search.</div>';
       return;
     }
 
-    grid.innerHTML = filtered.map((img, i) =>
-      `<div class="img-card" data-idx="${i}">
+    grid.innerHTML = filtered.map((img, i) => {
+      const dot = img.status && img.status !== 'approved'
+        ? `<span class="status-dot ${esc(img.status)}" title="${esc(img.status)}"></span>` : '';
+      return `<div class="img-card" data-idx="${i}">
         <img src="/thumbnail?path=${encodeURIComponent(img.location)}" alt="${esc(img.alt_text)}" loading="lazy"
              onerror="this.style.background='#e5e7eb'" />
+        ${dot}
         <div class="img-card-label">${esc(img.filename)}</div>
-      </div>`
-    ).join('');
+      </div>`;
+    }).join('');
 
     grid.querySelectorAll('.img-card').forEach(card => {
-      card.addEventListener('click', function () {
-        openDetail(filtered[+this.dataset.idx]);
-      });
+      card.addEventListener('click', function () { openDetail(filtered[+this.dataset.idx]); });
     });
   }
 
-  // ── Detail modal ──────────────────────────────────────────────────────────
+  // ── Detail modal ───────────────────────────────────────────────────────────
   function openDetail(img) {
     currentImage = img;
-    document.getElementById('detail-img').src = '/image?path=' + encodeURIComponent(img.location);
-    document.getElementById('detail-img').alt = img.alt_text || '';
+    document.getElementById('detail-img').src  = '/image?path=' + encodeURIComponent(img.location);
+    document.getElementById('detail-img').alt  = img.alt_text || '';
     document.getElementById('detail-filename').textContent = img.filename || '';
     document.getElementById('detail-dims').textContent = '';
-    document.getElementById('detail-alt').textContent = img.alt_text || '—';
-    document.getElementById('detail-loc').textContent = img.location || '';
-
+    document.getElementById('detail-alt').textContent  = img.alt_text || '—';
+    document.getElementById('detail-loc').textContent  = img.location || '';
     const tags = (img.tags || '').split(',').map(t => t.trim()).filter(Boolean);
     document.getElementById('detail-tags').innerHTML = tags.length
       ? tags.map(t => `<span class="detail-tag">${esc(t)}</span>`).join('')
       : '<span style="color:var(--muted);font-size:13px">None</span>';
-
     document.getElementById('btn-copy').textContent = 'Copy path';
-
     document.getElementById('detail-overlay').classList.add('open');
-
     fetch('/api/image-info?path=' + encodeURIComponent(img.location))
-      .then(r => r.json())
-      .then(d => {
+      .then(r => r.json()).then(d => {
         if (d.width) document.getElementById('detail-dims').textContent =
           `${d.width} × ${d.height} px · ${d.file_size || ''}`;
       }).catch(() => {});
@@ -751,7 +964,6 @@
     if (e.target === document.getElementById('detail-overlay')) closeDetail();
   });
   document.addEventListener('keydown', e => { if (e.key === 'Escape') closeDetail(); });
-
   document.getElementById('btn-copy').addEventListener('click', () => {
     if (!currentImage) return;
     navigator.clipboard.writeText(currentImage.location).then(() => {
@@ -760,46 +972,27 @@
       setTimeout(() => { btn.textContent = 'Copy path'; }, 2000);
     });
   });
-
   document.getElementById('btn-open').addEventListener('click', () => {
     if (currentImage) window.open('/image?path=' + encodeURIComponent(currentImage.location), '_blank');
   });
-
-  // ── Helpers ───────────────────────────────────────────────────────────────
-  function esc(s) {
-    return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-  }
 })();
 
-// ── Welcome modal ─────────────────────────────────────────────────────────
+// ── Welcome modal ──────────────────────────────────────────────────────────
 (function () {
   const overlay  = document.getElementById('welcome-overlay');
   const gotItBtn = document.getElementById('wm-got-it');
   const dontShow = document.getElementById('wm-dont-show');
   const helpBtn  = document.getElementById('help-btn');
-  const STORAGE_KEY = 'proxima_welcome_dismissed';
+  const KEY = 'proxima_welcome_dismissed';
 
-  function showModal() { overlay.style.display = 'flex'; }
-  function hideModal() { overlay.style.display = 'none'; }
-
-  // Show on first visit unless dismissed
-  if (!localStorage.getItem(STORAGE_KEY)) showModal();
+  if (!localStorage.getItem(KEY)) overlay.style.display = 'flex';
 
   gotItBtn.addEventListener('click', () => {
-    if (dontShow.checked) localStorage.setItem(STORAGE_KEY, '1');
-    hideModal();
+    if (dontShow.checked) localStorage.setItem(KEY, '1');
+    overlay.style.display = 'none';
   });
-
-  // Close on overlay click (outside modal)
-  overlay.addEventListener('click', e => {
-    if (e.target === overlay) hideModal();
-  });
-
-  // Help button re-opens modal
-  helpBtn.addEventListener('click', () => {
-    dontShow.checked = false;
-    showModal();
-  });
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.style.display = 'none'; });
+  helpBtn.addEventListener('click', () => { dontShow.checked = false; overlay.style.display = 'flex'; });
 })();
 </script>
 </body>

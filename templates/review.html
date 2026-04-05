@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Review Queue — Proxima</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Montserrat:wght@600;700;800&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #f5f5f5;
+      --surface: #ffffff;
+      --border: #e0e0e0;
+      --accent: #05718D;
+      --accent-hover: #045f77;
+      --gold: #EEB11E;
+      --text: #111827;
+      --muted: #6b7280;
+      --radius: 8px;
+      --shadow: 0 1px 3px rgba(0,0,0,0.12);
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    /* ── Header ── */
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 14px 32px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      box-shadow: var(--shadow);
+    }
+    header a.logo-link { text-decoration: none; }
+    header h1 { font-family: 'Montserrat', sans-serif; font-size: 17px; font-weight: 700; letter-spacing: -0.3px; color: var(--accent); }
+    .breadcrumb {
+      display: flex; align-items: center; gap: 6px;
+      font-size: 13px; color: var(--muted);
+    }
+    .breadcrumb a { color: var(--accent); text-decoration: none; }
+    .breadcrumb a:hover { text-decoration: underline; }
+    .breadcrumb .sep { color: var(--border); }
+    .header-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+    .user-chip { display: flex; align-items: center; gap: 8px; }
+    .user-avatar { width: 28px; height: 28px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+    .user-name { font-size: 13px; font-weight: 500; }
+    .logout-link { font-size: 12px; color: var(--muted); text-decoration: none; margin-left: 4px; }
+    .logout-link:hover { color: var(--accent); }
+
+    /* ── Main ── */
+    #main { max-width: 1100px; margin: 0 auto; padding: 32px 24px; }
+    #page-header { display: flex; align-items: center; gap: 14px; margin-bottom: 24px; }
+    #page-header h2 { font-family: 'Montserrat', sans-serif; font-size: 22px; font-weight: 700; }
+    #pending-label { font-size: 13px; color: var(--muted); }
+    .btn-approve-all {
+      margin-left: auto; padding: 8px 18px; border-radius: 20px; border: none;
+      background: #16a34a; color: #fff; font-size: 13px; font-weight: 600;
+      cursor: pointer; font-family: inherit;
+    }
+    .btn-approve-all:hover { background: #15803d; }
+    .hidden { display: none !important; }
+    #queue-status { font-size: 14px; color: var(--muted); text-align: center; padding: 60px 0; }
+    .spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.7s linear infinite; vertical-align: middle; margin-right: 6px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Review grid ── */
+    #review-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 20px; }
+
+    .review-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      transition: box-shadow 0.15s;
+    }
+    .review-card.done { opacity: 0.45; pointer-events: none; }
+
+    .review-thumb {
+      width: 100%; height: 200px; object-fit: cover; background: #f3f4f6; display: block;
+    }
+
+    .review-body { padding: 14px 16px; flex: 1; display: flex; flex-direction: column; gap: 10px; }
+
+    .review-filename { font-size: 12px; color: var(--muted); word-break: break-all; }
+
+    .alt-label { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 4px; }
+    .alt-textarea {
+      width: 100%; font-size: 13px; font-family: inherit; color: var(--text);
+      border: 1px solid var(--border); border-radius: 5px; padding: 7px 10px;
+      resize: vertical; min-height: 60px; line-height: 1.5;
+      transition: border-color 0.15s;
+    }
+    .alt-textarea:focus { outline: none; border-color: var(--accent); }
+
+    .tags-row { display: flex; flex-wrap: wrap; gap: 4px; }
+    .tag-chip { padding: 2px 8px; background: #f3f4f6; border-radius: 20px; font-size: 11px; color: #374151; }
+
+    .review-actions { display: flex; gap: 8px; padding: 12px 16px; border-top: 1px solid #f3f4f6; }
+    .btn-approve { flex: 1; padding: 8px; border-radius: 6px; border: none; background: #16a34a; color: #fff; font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit; }
+    .btn-approve:hover { background: #15803d; }
+    .btn-reject  { flex: 1; padding: 8px; border-radius: 6px; border: 1.5px solid #d1d5db; background: #fff; color: #dc2626; font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit; }
+    .btn-reject:hover { border-color: #dc2626; background: #fef2f2; }
+    .btn-archive { padding: 8px 14px; border-radius: 6px; border: 1.5px solid #d1d5db; background: #fff; color: var(--muted); font-size: 13px; cursor: pointer; font-family: inherit; }
+    .btn-archive:hover { border-color: #9ca3af; }
+
+    .saving-indicator { font-size: 12px; color: var(--muted); padding: 0 16px 10px; min-height: 24px; }
+    .saving-indicator.error { color: #dc2626; font-weight: 600; }
+
+    /* ── Toast ── */
+    #toast-container { position: fixed; bottom: 24px; right: 24px; display: flex; flex-direction: column; gap: 8px; z-index: 9999; pointer-events: none; }
+    .toast {
+      display: flex; align-items: center; gap: 10px;
+      padding: 11px 16px; border-radius: 8px; min-width: 240px; max-width: 340px;
+      font-size: 13px; font-weight: 500; color: #fff;
+      box-shadow: 0 4px 14px rgba(0,0,0,0.18);
+      opacity: 0; transform: translateY(8px);
+      transition: opacity 0.2s ease, transform 0.2s ease;
+      pointer-events: none;
+    }
+    .toast.show { opacity: 1; transform: translateY(0); }
+    .toast.approved { background: #16a34a; }
+    .toast.rejected { background: #dc2626; }
+    .toast.archived { background: #6b7280; }
+    .toast-icon { font-size: 15px; flex-shrink: 0; }
+    .toast-msg { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  </style>
+</head>
+<body>
+
+<header>
+  <a href="/" class="logo-link"><h1>Image Library</h1></a>
+  <div class="breadcrumb">
+    <span class="sep">/</span>
+    <span>Review Queue</span>
+  </div>
+  <div class="header-right">
+    <div class="user-chip">
+      <div class="user-avatar">{{ (user.name or user.preferred_username or '?')[0] | upper }}</div>
+      <span class="user-name">{{ user.name or user.preferred_username or 'User' }}</span>
+      <a href="/logout" class="logout-link">Sign out</a>
+    </div>
+  </div>
+</header>
+
+<div id="main">
+  <div id="page-header">
+    <h2>Review Queue</h2>
+    <span id="pending-label"></span>
+    <button id="approve-all-btn" class="btn-approve-all hidden">Approve all</button>
+  </div>
+  <div id="queue-status"><span class="spinner"></span>Loading…</div>
+  <div id="review-grid"></div>
+</div>
+
+<div id="toast-container"></div>
+
+<script>
+(function () {
+  function esc(s) {
+    return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function showToast(status, filename) {
+    const icons = { approved: '✓', rejected: '✗', archived: '○' };
+    const labels = { approved: 'Approved', rejected: 'Rejected', archived: 'Archived' };
+    const t = document.createElement('div');
+    t.className = `toast ${status}`;
+    t.innerHTML = `<span class="toast-icon">${icons[status] || '•'}</span><span class="toast-msg">${labels[status] || status} — ${esc(filename)}</span>`;
+    document.getElementById('toast-container').appendChild(t);
+    requestAnimationFrame(() => { requestAnimationFrame(() => { t.classList.add('show'); }); });
+    setTimeout(() => {
+      t.classList.remove('show');
+      setTimeout(() => t.remove(), 220);
+    }, 2500);
+  }
+
+  let items = [];
+
+  fetch('/api/images?status=pending-review')
+    .then(r => r.json())
+    .then(data => {
+      items = data.images || [];
+      document.getElementById('queue-status').style.display = 'none';
+      const label = document.getElementById('pending-label');
+      label.textContent = items.length === 0
+        ? 'Nothing to review'
+        : `${items.length} image${items.length === 1 ? '' : 's'} pending`;
+
+      if (!items.length) {
+        document.getElementById('queue-status').style.display = '';
+        document.getElementById('queue-status').textContent = 'No images pending review.';
+        return;
+      }
+      renderGrid();
+    })
+    .catch(() => {
+      document.getElementById('queue-status').textContent = 'Could not load review queue.';
+    });
+
+  function renderGrid() {
+    const grid = document.getElementById('review-grid');
+    grid.innerHTML = items.map((img, i) => {
+      const tags = (img.tags || '').split(',').map(t => t.trim()).filter(Boolean);
+      return `
+        <div class="review-card" id="card-${i}" data-idx="${i}">
+          <img class="review-thumb"
+               src="/thumbnail?path=${encodeURIComponent(img.location)}"
+               alt="${esc(img.alt_text)}"
+               onerror="this.style.background='#e5e7eb'" />
+          <div class="review-body">
+            <div class="review-filename">${esc(img.filename)}</div>
+            <div>
+              <div class="alt-label">Alt Text</div>
+              <textarea class="alt-textarea" id="alt-${i}" rows="3">${esc(img.alt_text)}</textarea>
+            </div>
+            ${tags.length ? `<div class="tags-row">${tags.map(t => `<span class="tag-chip">${esc(t)}</span>`).join('')}</div>` : ''}
+          </div>
+          <div class="saving-indicator" id="saving-${i}"></div>
+          <div class="review-actions">
+            <button class="btn-approve" data-action="approved">Approve</button>
+            <button class="btn-reject"  data-action="rejected">Reject</button>
+            <button class="btn-archive" data-action="archived">Archive</button>
+          </div>
+        </div>`;
+    }).join('');
+
+    // Event delegation — one listener on the grid
+    grid.addEventListener('click', e => {
+      const btn = e.target.closest('[data-action]');
+      if (!btn) return;
+      const card = btn.closest('[data-idx]');
+      if (!card) return;
+      doAction(+card.dataset.idx, btn.dataset.action);
+    });
+
+    document.getElementById('approve-all-btn').classList.remove('hidden');
+  }
+
+  async function doAction(idx, status) {
+    const card = document.getElementById(`card-${idx}`);
+    if (card.classList.contains('done')) return;
+    const img = items[idx];
+    const altText = document.getElementById(`alt-${idx}`)?.value ?? img.alt_text;
+    const savingEl = document.getElementById(`saving-${idx}`);
+    savingEl.textContent = 'Saving…';
+
+    try {
+      const resp = await fetch('/api/image-status', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: img.id, status, alt_text: altText }),
+      });
+      if (!resp.ok) throw new Error(await resp.text());
+      savingEl.textContent = status === 'approved' ? '✓ Approved' : status === 'rejected' ? '✗ Rejected' : '○ Archived';
+      card.classList.add('done');
+      showToast(status, img.filename);
+      updateCount();
+    } catch (e) {
+      savingEl.textContent = 'Error — try again';
+      savingEl.classList.add('error');
+      console.error(e);
+    }
+  }
+
+  function updateCount() {
+    const remaining = document.querySelectorAll('.review-card:not(.done)').length;
+    const label = document.getElementById('pending-label');
+    label.textContent = remaining === 0 ? 'All done!' : `${remaining} image${remaining === 1 ? '' : 's'} remaining`;
+    if (remaining === 0) document.getElementById('approve-all-btn').classList.add('hidden');
+  }
+
+  document.getElementById('approve-all-btn').addEventListener('click', async () => {
+    const pending = [...document.querySelectorAll('.review-card:not(.done)')];
+    if (!pending.length) return;
+    const btn = document.getElementById('approve-all-btn');
+    btn.disabled = true;
+    btn.textContent = 'Approving…';
+    await Promise.all(pending.map(card => doAction(+card.dataset.idx, 'approved')));
+    btn.disabled = false;
+    btn.textContent = 'Approve all';
+  });
+})();
+</script>
+</body>
+</html>
