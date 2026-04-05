@@ -17,7 +17,10 @@ from dotenv import load_dotenv
 from typing import Dict, List, Optional
 from werkzeug.utils import secure_filename
 
-from flask import Flask, Response, jsonify, redirect, render_template, request, stream_with_context
+import functools
+
+import msal
+from flask import Flask, Response, jsonify, redirect, render_template, request, session, stream_with_context, url_for
 from flask_cors import CORS
 from PIL import Image as PILImage
 
@@ -27,10 +30,70 @@ from src.config import Config
 load_dotenv()
 
 app = Flask(__name__, template_folder="../templates", static_folder="../static")
+app.secret_key = Config.FLASK_SECRET_KEY
 
 # Allow configured origins to call the API (Webflow frontend + localhost dev)
 CORS(app, resources={r"/api/*": {"origins": Config.CORS_ORIGINS}},
      supports_credentials=False)
+
+
+# ---------------------------------------------------------------------------
+# Auth helpers
+# ---------------------------------------------------------------------------
+
+def _msal_app():
+    return msal.ConfidentialClientApplication(
+        Config.MSAL_CLIENT_ID,
+        authority=Config.MSAL_AUTHORITY,
+        client_credential=Config.MSAL_CLIENT_SECRET,
+    )
+
+
+def login_required(f):
+    @functools.wraps(f)
+    def decorated(*args, **kwargs):
+        if not session.get("user"):
+            session["next"] = request.url
+            return redirect(url_for("login"))
+        return f(*args, **kwargs)
+    return decorated
+
+
+@app.route("/login")
+def login():
+    flow = _msal_app().initiate_auth_code_flow(
+        Config.MSAL_SCOPES,
+        redirect_uri=Config.MSAL_REDIRECT_URI,
+    )
+    session["auth_flow"] = flow
+    return redirect(flow["auth_uri"])
+
+
+@app.route("/auth/callback")
+def auth_callback():
+    try:
+        result = _msal_app().acquire_token_by_auth_code_flow(
+            session.get("auth_flow", {}),
+            request.args,
+        )
+        if "error" in result:
+            return render_template("login_error.html", error=result.get("error_description", "Authentication failed")), 401
+        session["user"] = result.get("id_token_claims", {})
+    except Exception as e:
+        return render_template("login_error.html", error=str(e)), 401
+
+    next_url = session.pop("next", url_for("index"))
+    return redirect(next_url)
+
+
+@app.route("/logout")
+def logout():
+    session.clear()
+    logout_url = (
+        f"{Config.MSAL_AUTHORITY}/oauth2/v2.0/logout"
+        f"?post_logout_redirect_uri={url_for('index', _external=True)}"
+    )
+    return redirect(logout_url)
 
 _client = None
 _sp_client = None
@@ -74,8 +137,9 @@ def health():
 
 @app.route("/")
 @app.route("/library")
+@login_required
 def index():
-    return render_template("index.html")
+    return render_template("index.html", user=session.get("user", {}))
 
 
 # ------------------------------------------------------------------
@@ -174,6 +238,7 @@ def api_preview():
 
 
 @app.route("/stock-search")
+@login_required
 def stock_search():
     return render_template("stock_search.html")
 
@@ -335,11 +400,13 @@ def api_image_info():
 
 
 @app.route("/thumbnail")
+@login_required
 def thumbnail():
     return _serve_image(thumb=True)
 
 
 @app.route("/image")
+@login_required
 def image():
     return _serve_image(thumb=False)
 
@@ -388,6 +455,7 @@ def _serve_image(thumb: bool) -> Response:
 # ------------------------------------------------------------------
 
 @app.route("/tag-manager")
+@login_required
 def tag_manager():
     return render_template("tag_manager.html")
 
@@ -476,6 +544,7 @@ def _staged_save(file_id: str, original_name: str, data: bytes) -> str:
 
 
 @app.route("/upload")
+@login_required
 def upload():
     return render_template("upload.html")
 

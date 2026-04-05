@@ -27,6 +27,17 @@ class Config:
     # Storage mode — "local" uses IMAGE_FOLDER; "sharepoint" uses Microsoft Graph API
     STORAGE_MODE = os.getenv("STORAGE_MODE", "local").lower()
 
+    # Flask session
+    FLASK_SECRET_KEY = os.getenv("FLASK_SECRET_KEY", "dev-secret-change-in-prod")
+
+    # MSAL user authentication
+    MSAL_CLIENT_ID = os.getenv("MSAL_CLIENT_ID", "")
+    MSAL_CLIENT_SECRET = os.getenv("MSAL_CLIENT_SECRET", "")
+    MSAL_TENANT_ID = os.getenv("MSAL_TENANT_ID", os.getenv("SHAREPOINT_TENANT_ID", ""))
+    MSAL_REDIRECT_URI = os.getenv("MSAL_REDIRECT_URI", "http://localhost:5000/auth/callback")
+    MSAL_AUTHORITY = f"https://login.microsoftonline.com/{os.getenv('MSAL_TENANT_ID', os.getenv('SHAREPOINT_TENANT_ID', ''))}"
+    MSAL_SCOPES = ["User.Read"]
+
     # CORS — comma-separated list of allowed origins for /api/* routes
     # e.g. https://yoursite.webflow.io,https://yourdomain.com
     CORS_ORIGINS = [
