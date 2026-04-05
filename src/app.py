@@ -71,6 +71,25 @@ def health():
     return jsonify({"status": "ok"})
 
 
+@app.route("/debug/config")
+def debug_config():
+    import traceback
+    try:
+        records = get_all_records()
+        return jsonify({
+            "storage_mode": Config.STORAGE_MODE,
+            "test_mode": Config.TEST_MODE,
+            "list_name": Config.SHAREPOINT_LIST_NAME,
+            "site_id_set": bool(Config.SHAREPOINT_SITE_ID),
+            "client_id_set": bool(Config.SHAREPOINT_CLIENT_ID),
+            "secret_set": bool(Config.SHAREPOINT_CLIENT_SECRET),
+            "record_count": len(records),
+            "ok": True,
+        })
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e), "trace": traceback.format_exc()}), 500
+
+
 @app.route("/")
 @app.route("/library")
 def index():
