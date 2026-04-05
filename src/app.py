@@ -53,6 +53,8 @@ def login_required(f):
     @functools.wraps(f)
     def decorated(*args, **kwargs):
         if not session.get("user"):
+            if request.path.startswith("/api/") or request.is_json:
+                return jsonify({"error": "Authentication required"}), 401
             session["next"] = request.url
             return redirect(url_for("login"))
         return f(*args, **kwargs)
@@ -655,6 +657,58 @@ def api_upload_process():
         mimetype="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+# ---------------------------------------------------------------------------
+# Shutterstock quota tracking
+# ---------------------------------------------------------------------------
+
+SS_QUOTA_LIMIT = 10
+# /home persists on Azure App Service; fall back to project root locally
+_SS_COUNTER_PATH = Path(
+    "/home/proxima_ss_counter.json"
+    if Path("/home").exists() and os.getenv("WEBSITE_INSTANCE_ID")
+    else "proxima_ss_counter.json"
+)
+_ss_lock = threading.Lock()
+
+
+def _ss_read() -> dict:
+    """Return {month: 'YYYY-MM', count: int}."""
+    try:
+        if _SS_COUNTER_PATH.exists():
+            return json.loads(_SS_COUNTER_PATH.read_text())
+    except Exception:
+        pass
+    return {"month": "", "count": 0}
+
+
+def _ss_write(data: dict) -> None:
+    _SS_COUNTER_PATH.write_text(json.dumps(data))
+
+
+@app.route("/api/shutterstock/quota")
+@login_required
+def api_ss_quota():
+    with _ss_lock:
+        data = _ss_read()
+        current_month = time.strftime("%Y-%m")
+        if data.get("month") != current_month:
+            data = {"month": current_month, "count": 0}
+    return jsonify({"used": data["count"], "limit": SS_QUOTA_LIMIT, "month": data["month"]})
+
+
+@app.route("/api/shutterstock/track", methods=["POST"])
+@login_required
+def api_ss_track():
+    with _ss_lock:
+        data = _ss_read()
+        current_month = time.strftime("%Y-%m")
+        if data.get("month") != current_month:
+            data = {"month": current_month, "count": 0}
+        data["count"] += 1
+        _ss_write(data)
+    return jsonify({"used": data["count"], "limit": SS_QUOTA_LIMIT})
 
 
 if __name__ == "__main__":

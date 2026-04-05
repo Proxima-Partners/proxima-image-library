@@ -329,9 +329,56 @@
       color: var(--muted);
       text-decoration: underline;
     }
+
+    /* ── Shutterstock quota modal ── */
+    #ss-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.45);
+      z-index: 1000; display: none; align-items: center; justify-content: center;
+      padding: 20px;
+    }
+    #ss-overlay.active { display: flex; }
+    #ss-modal {
+      background: #fff; border-radius: 10px; padding: 28px 28px 24px;
+      max-width: 420px; width: 100%;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+    }
+    #ss-modal h3 {
+      font-family: 'Montserrat', sans-serif; font-size: 16px; font-weight: 700;
+      margin-bottom: 10px; color: #111;
+    }
+    #ss-modal p { font-size: 13px; color: #6b7280; line-height: 1.6; margin-bottom: 16px; }
+    .ss-quota-bar {
+      background: #f3f4f6; border-radius: 20px; height: 8px; margin-bottom: 6px; overflow: hidden;
+    }
+    .ss-quota-fill {
+      height: 100%; border-radius: 20px; background: var(--accent); transition: width 0.3s;
+    }
+    .ss-quota-fill.warn  { background: #f59e0b; }
+    .ss-quota-fill.danger { background: #ef4444; }
+    .ss-quota-label { font-size: 12px; color: #6b7280; margin-bottom: 20px; }
+    .ss-modal-actions { display: flex; gap: 10px; justify-content: flex-end; }
+    .ss-cancel { padding: 8px 20px; border-radius: 20px; border: 1px solid #e0e0e0; background: #fff; font-size: 13px; font-weight: 600; cursor: pointer; color: #6b7280; font-family: inherit; }
+    .ss-cancel:hover { border-color: var(--accent); color: var(--accent); }
+    .ss-confirm { padding: 8px 20px; border-radius: 20px; border: none; background: #e81c28; color: #fff; font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit; }
+    .ss-confirm:hover { background: #c01020; }
+    .ss-confirm:disabled { background: #ccc; cursor: not-allowed; }
   </style>
 </head>
 <body>
+
+<!-- Shutterstock quota modal -->
+<div id="ss-overlay">
+  <div id="ss-modal">
+    <h3>Open on Shutterstock</h3>
+    <p>Proxima has a <strong>10 download limit per month</strong> on Shutterstock. This counter tracks link-outs — please only download images you intend to use.</p>
+    <div class="ss-quota-bar"><div class="ss-quota-fill" id="ss-quota-fill"></div></div>
+    <div class="ss-quota-label" id="ss-quota-label"></div>
+    <div class="ss-modal-actions">
+      <button class="ss-cancel" id="ss-cancel">Cancel</button>
+      <button class="ss-confirm" id="ss-confirm">Open Shutterstock</button>
+    </div>
+  </div>
+</div>
 
   <header>
     <img src="/static/logo.png" alt="Proxima" style="height:36px;width:36px;border-radius:50%;object-fit:cover;flex-shrink:0;" />
@@ -578,6 +625,7 @@
               a.target = '_blank';
               a.rel    = 'noopener noreferrer';
               a.className = 'thumb-card';
+              if (key === 'shutterstock') a.dataset.ssLink = img.link || '#';
 
               const imgEl = document.createElement('img');
               imgEl.src     = img.thumb;
@@ -635,6 +683,72 @@
     function escHtml(str) {
       return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
     }
+
+    // ── Shutterstock quota gate ──────────────────────────────────────────
+    const ssOverlay = document.getElementById('ss-overlay');
+    const ssConfirm = document.getElementById('ss-confirm');
+    const ssCancel  = document.getElementById('ss-cancel');
+    const ssLabel   = document.getElementById('ss-quota-label');
+    const ssFill    = document.getElementById('ss-quota-fill');
+    let pendingSsUrl = null;
+    let ssUsed = 0;
+    const SS_LIMIT = 10;
+
+    // Fetch current quota on page load
+    fetch('/api/shutterstock/quota')
+      .then(r => r.json())
+      .then(d => { ssUsed = d.used || 0; })
+      .catch(() => {});
+
+    // Intercept Shutterstock card clicks
+    document.addEventListener('click', e => {
+      const card = e.target.closest('[data-ss-link]');
+      if (!card) return;
+      e.preventDefault();
+      pendingSsUrl = card.dataset.ssLink;
+      showSsModal();
+    });
+
+    function showSsModal() {
+      const remaining = Math.max(0, SS_LIMIT - ssUsed);
+      const pct = Math.min(100, (ssUsed / SS_LIMIT) * 100);
+      ssFill.style.width = pct + '%';
+      ssFill.className = 'ss-quota-fill' + (ssUsed >= 8 ? ' danger' : ssUsed >= 6 ? ' warn' : '');
+      if (ssUsed >= SS_LIMIT) {
+        ssLabel.textContent = `Quota reached — ${SS_LIMIT}/${SS_LIMIT} used this month.`;
+        ssConfirm.disabled = true;
+        ssConfirm.textContent = 'Limit reached';
+      } else {
+        ssLabel.textContent = `${ssUsed} of ${SS_LIMIT} used this month — ${remaining} remaining.`;
+        ssConfirm.disabled = false;
+        ssConfirm.textContent = 'Open Shutterstock';
+      }
+      ssOverlay.classList.add('active');
+    }
+
+    ssCancel.addEventListener('click', () => {
+      ssOverlay.classList.remove('active');
+      pendingSsUrl = null;
+    });
+
+    ssOverlay.addEventListener('click', e => {
+      if (e.target === ssOverlay) {
+        ssOverlay.classList.remove('active');
+        pendingSsUrl = null;
+      }
+    });
+
+    ssConfirm.addEventListener('click', () => {
+      if (!pendingSsUrl || ssUsed >= SS_LIMIT) return;
+      ssOverlay.classList.remove('active');
+      // Track server-side
+      fetch('/api/shutterstock/track', { method: 'POST' })
+        .then(r => r.json())
+        .then(d => { ssUsed = d.used || ssUsed + 1; })
+        .catch(() => { ssUsed++; });
+      window.open(pendingSsUrl, '_blank', 'noopener,noreferrer');
+      pendingSsUrl = null;
+    });
   </script>
 
 </body>
