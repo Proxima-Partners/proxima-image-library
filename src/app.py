@@ -466,6 +466,8 @@ def image():
     return _serve_image(thumb=False)
 
 
+
+
 def _serve_image(thumb: bool) -> Response:
     location = unquote(request.args.get("path", ""))
     if not location:

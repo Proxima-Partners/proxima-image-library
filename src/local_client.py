@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 
-_DEFAULT_PATH = Path("test_data/local_table.json")
+_DEFAULT_PATH = Path(__file__).parent.parent / "test_data" / "local_table.json"
 
 
 class LocalClient:

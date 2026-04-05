@@ -6,6 +6,42 @@ Pending changes — rebuild only on approval.
 
 ## Pending
 
+### 8. Align local and SharePoint folder structures
+
+- Local `IMAGE_FOLDER` and SharePoint store files at different path depths, requiring separate code paths in `_serve_image` (local: `location` directly; SharePoint: prepends `WebP/`)
+- Align so both use the same relative path convention — either both include the `WebP/` prefix in the stored `Location` field, or neither does
+- Eliminates the need for the `STORAGE_MODE` branch in `_serve_image` and reduces risk of env-dependent bugs (e.g. wrong mode loaded on restart)
+- Applies to: `src/app.py` `_serve_image()`, upload pipeline in `src/image_processor.py`, and `test_data/local_table.json` location values
+
+### 7. MCP tool: catalog image from file upload
+
+- Add a new `catalog_image_from_file` MCP tool that accepts base64 image data directly
+- Allows Claude Desktop to receive a file attachment from the user and pass it to the pipeline without requiring a URL
+- Currently, file uploads in Claude Desktop have no pathway to the library — users must go to `/upload` manually
+- Tool would accept: `image_data` (base64), `filename`, `category`
+- Applies to: `src/mcp_server.py`, `src/image_processor.py`
+- Also update Project-Instructions.md to remove the manual upload redirect once this is built
+
+### 6. Image review workflow utility
+
+**Status values:** `pending-review` · `approved` · `rejected` · `archived`
+
+**Review Queue page (`/review`):**
+- Queue of all `pending-review` images with thumbnail, AI alt text, and tags
+- Approve / Reject / Archive buttons per image
+- Inline alt text editing before approving
+- Pending count badge in the nav
+
+**Library integration:**
+- Colour-coded status badge on each image card (amber / green / red / grey)
+- Status filter in the filter bar; default view shows `approved` only
+- Toggle to show all statuses
+
+**Backend:**
+- `PATCH /api/image-status` endpoint to update status on a single record
+- Add `status` filter param to `GET /api/images`
+- Applies to: `src/app.py`, `src/sharepoint_list_client.py`, `templates/index.html`, new `templates/review.html`
+
 ### 5. Hybrid metadata for stock photo downloads
 
 - When a stock image is downloaded via the app, pre-populate title, alt text, and tags from the source API metadata before passing to Claude

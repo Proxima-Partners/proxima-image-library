@@ -20,14 +20,18 @@ Register in Claude Desktop (~/Library/Application Support/Claude/claude_desktop_
   }
 """
 
+import base64
+import concurrent.futures
 import re
 import sys
 from pathlib import Path
 from typing import Any
 
+import requests as _requests
+
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(Path(__file__).parent.parent / ".env")
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
@@ -73,6 +77,36 @@ def _webp_url(location: str) -> str:
     if Config.STORAGE_MODE == "sharepoint":
         return f"served-via-sharepoint:{location}"
     return f"http://localhost:5000/image?path={location}"
+
+
+def _fetch_thumb(url: str) -> types.ImageContent | None:
+    """Fetch a thumbnail URL and return as MCP ImageContent, or None on failure."""
+    if not url:
+        return None
+    try:
+        resp = _requests.get(url, timeout=10)
+        resp.raise_for_status()
+        mime = resp.headers.get("Content-Type", "image/jpeg").split(";")[0].strip()
+        data = base64.b64encode(resp.content).decode()
+        return types.ImageContent(type="image", data=data, mimeType=mime)
+    except Exception:
+        return None
+
+
+def _thumb_local(location: str) -> types.ImageContent | None:
+    """Read a local image file and return as MCP ImageContent."""
+    if not location:
+        return None
+    try:
+        path = Path(Config.IMAGE_FOLDER) / location
+        if not path.exists():
+            return None
+        suffix = path.suffix.lower()
+        mime = "image/webp" if suffix == ".webp" else "image/jpeg" if suffix in (".jpg", ".jpeg") else "image/png"
+        data = base64.b64encode(path.read_bytes()).decode()
+        return types.ImageContent(type="image", data=data, mimeType=mime)
+    except Exception:
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -155,7 +189,9 @@ async def list_tools() -> list[types.Tool]:
             description=(
                 "Download a stock photo by URL, transform it to WebP, generate AI alt text "
                 "and tags, store it in SharePoint, and write the metadata record. "
-                "Call this after the user selects a stock photo result. "
+                "IMPORTANT: Never call this automatically. You MUST show the search results "
+                "and thumbnails to the user first and wait for them to explicitly confirm "
+                "which image they want before calling this tool. "
                 "Returns the final slug, filename, alt_text, tags, and location."
             ),
             inputSchema={
@@ -237,7 +273,36 @@ async def _search_image_library(args: dict) -> list[types.TextContent]:
         )]
 
     import json
-    return [types.TextContent(type="text", text=json.dumps(results, indent=2))]
+    contents: list = [types.TextContent(type="text", text=json.dumps(results, indent=2))]
+
+    # Fetch thumbnails in parallel
+    def _get_thumb(item):
+        loc = item.get("location", "")
+        if Config.STORAGE_MODE == "sharepoint":
+            return item, _fetch_thumb(f"http://localhost:5000/thumbnail?path={loc}")
+        return item, _thumb_local(loc)
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as ex:
+        futures = {ex.submit(_get_thumb, r): i for i, r in enumerate(results)}
+        thumb_map = {}
+        for f in concurrent.futures.as_completed(futures):
+            idx = futures[f]
+            try:
+                item, img = f.result()
+                if img:
+                    thumb_map[idx] = (item, img)
+            except Exception:
+                pass
+
+    for idx in sorted(thumb_map):
+        item, img = thumb_map[idx]
+        contents.append(types.TextContent(
+            type="text",
+            text=f"**Library #{idx + 1}** — {item.get('alt_text', item.get('filename', ''))[:80]}"
+        ))
+        contents.append(img)
+
+    return contents
 
 
 async def _search_stock_photos(args: dict) -> list[types.TextContent]:
@@ -246,7 +311,6 @@ async def _search_stock_photos(args: dict) -> list[types.TextContent]:
         search_pexels, search_shutterstock, search_unsplash,
         search_pixabay, search_all_libraries,
     )
-    import concurrent.futures
 
     phrases = args.get("phrases", [])[:20]
     limit = max(1, min(int(args.get("limit", 6)), 12))
@@ -425,7 +489,46 @@ async def _search_stock_photos(args: dict) -> list[types.TextContent]:
             except Exception as e:
                 output[phrase][lib] = {"results": [], "error": str(e)}
 
-    return [types.TextContent(type="text", text=json.dumps(output, indent=2))]
+    contents: list = [types.TextContent(type="text", text=json.dumps(output, indent=2))]
+
+    # Collect thumbnails to fetch: (phrase, source, index, url, title)
+    to_fetch = []
+    for phrase, libs in output.items():
+        for source, lib_data in libs.items():
+            for i, img in enumerate(lib_data.get("results", [])[:3]):
+                thumb_url = img.get("thumb", "")
+                if thumb_url:
+                    to_fetch.append((phrase, source, i + 1, thumb_url, img.get("title", "")))
+
+    # Fetch all thumbnails in parallel
+    def _fetch(entry):
+        phrase, source, idx, url, title = entry
+        return phrase, source, idx, title, _fetch_thumb(url)
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=16) as ex:
+        futures = {ex.submit(_fetch, e): e for e in to_fetch}
+        fetched = []
+        for f in concurrent.futures.as_completed(futures):
+            try:
+                phrase, source, idx, title, img = f.result()
+                if img:
+                    fetched.append((phrase, source, idx, title, img))
+            except Exception:
+                pass
+
+    # Sort: by phrase order, then source, then index
+    phrase_order = {p: i for i, p in enumerate(output.keys())}
+    source_order = {"pexels": 0, "unsplash": 1, "pixabay": 2, "shutterstock": 3}
+    fetched.sort(key=lambda x: (phrase_order.get(x[0], 99), source_order.get(x[1], 99), x[2]))
+
+    for phrase, source, idx, title, img in fetched:
+        label = f'**"{phrase}"** — {source.capitalize()} #{idx}'
+        if title:
+            label += f": {title[:60]}"
+        contents.append(types.TextContent(type="text", text=label))
+        contents.append(img)
+
+    return contents
 
 
 async def _catalog_stock_image(args: dict) -> list[types.TextContent]:
