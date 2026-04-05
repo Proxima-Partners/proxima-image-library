@@ -18,6 +18,9 @@ env/
 sync_log.txt
 rename_map.csv
 
+# IDE
+.vscode/
+
 # macOS
 .DS_Store
 
