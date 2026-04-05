@@ -6,11 +6,6 @@ Pending changes — rebuild only on approval.
 
 ## Pending
 
-### Delete webflow/ directory
-
-- Remove `webflow/library.html`, `webflow/maintenance.html`, `webflow/stock-search.html`, `webflow/upload.html`
-- Webflow integration removed; templates no longer used or maintained
-
 ---
 
 ## Future Development Queue
