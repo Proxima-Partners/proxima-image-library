@@ -89,11 +89,18 @@ class SharePointListClient(SharePointClient):
         return ids
 
     def record_exists(self, filename: str) -> bool:
-        safe = filename.replace("'", "''")
-        url = f"{self._list_url}/items?expand=fields&$filter=fields/Title eq '{safe}'&$top=1"
-        resp = requests.get(url, headers=self._headers(), timeout=15)
-        resp.raise_for_status()
-        return len(resp.json().get("value", [])) > 0
+        # SharePoint $filter on list fields requires indexed columns.
+        # Fetch all item titles and check locally to avoid that requirement.
+        url = f"{self._list_url}/items?$expand=fields($select=Title)&$top=999"
+        while url:
+            resp = requests.get(url, headers=self._headers(), timeout=15)
+            resp.raise_for_status()
+            data = resp.json()
+            for item in data.get("value", []):
+                if item.get("fields", {}).get("Title", "") == filename:
+                    return True
+            url = data.get("@odata.nextLink")
+        return False
 
     def create_record(
         self,
