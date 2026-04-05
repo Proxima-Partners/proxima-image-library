@@ -12,10 +12,11 @@ class ImageScanner:
         """Initialize the image scanner.
 
         Args:
-            folder: Path to the image folder (uses config if not provided)
+            folder: Path to the image folder (defaults to IMAGE_FOLDER/High-Res)
             supported_formats: List of supported file extensions
         """
-        self.folder = Path(folder or Config.IMAGE_FOLDER)
+        default_folder = Path(Config.IMAGE_FOLDER) / "High-Res"
+        self.folder = Path(folder or default_folder)
         self.supported_formats = supported_formats or Config.SUPPORTED_FORMATS
 
     def get_all_images(self) -> List[Tuple[str, str]]:
@@ -37,7 +38,7 @@ class ImageScanner:
         for image_file in self.folder.rglob("*"):
             if image_file.is_file() and image_file.suffix.lower() in formats:
                 full_path = str(image_file.resolve())
-                relative_path = str(image_file.relative_to(self.folder))
+                relative_path = image_file.relative_to(self.folder).as_posix()
                 images.append((full_path, relative_path))
 
         return images

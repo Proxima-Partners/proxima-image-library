@@ -1,16 +1,16 @@
 - [x] Verify that the copilot-instructions.md file in the .github directory is created.
 
 - [x] Clarify Project Requirements
-	- Python project for asset library with Airtable + Claude integration
+	- Python project for asset library with SharePoint List + Claude integration
 	- Auto-generate alt text for images using AI
-	- Batch process and sync to Airtable
+	- Batch process and sync to SharePoint List
 
 - [x] Scaffold the Project
 	- Created folder structure: src/, tests/, assets/, .github/
-	- Created all core modules: main.py, config.py, airtable_client.py, ai_generator.py, image_scanner.py
+	- Created all core modules: main.py, config.py, sharepoint_list_client.py, local_client.py, ai_generator.py, image_scanner.py
 
 - [x] Customize the Project
-	- Implemented Airtable API client for record management
+	- Implemented SharePoint/local metadata clients for record management
 	- Implemented Claude vision integration for alt-text generation
 	- Implemented image scanner for recursive folder traversal
 	- Created main orchestrator with sync and status tracking

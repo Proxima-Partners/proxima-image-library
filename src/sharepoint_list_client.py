@@ -1,6 +1,7 @@
-"""SharePoint List client — drop-in replacement for AirtableClient using Microsoft Graph API."""
+"""SharePoint List client using Microsoft Graph API."""
 
 import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Dict, List, Optional
 
 import requests
@@ -11,8 +12,7 @@ from src.sharepoint_client import SharePointClient
 class SharePointListClient(SharePointClient):
     """Stores image metadata in a SharePoint List via Microsoft Graph API.
 
-    Implements the same interface as AirtableClient so the rest of the app
-    needs no changes when switching from Airtable to SharePoint.
+    Implements the metadata-store interface used across the app.
 
     Expected SharePoint List columns (internal names):
         Title           — Filename  (built-in required field, repurposed)
@@ -22,6 +22,7 @@ class SharePointListClient(SharePointClient):
         Slug            — Slug
         Location        — Location  (WebP path, e.g. Headshots/proxima-mike7.webp)
         HighResLocation — High-Res Location
+        Source          — Source folder / provenance
     """
 
     # App field name → SharePoint internal column name
@@ -33,6 +34,7 @@ class SharePointListClient(SharePointClient):
         "Slug": "Slug",
         "Location": "Location",
         "High-Res Location": "HighResLocation",
+        "Source": "Source",
     }
 
     # SharePoint internal column name → app field name
@@ -57,7 +59,7 @@ class SharePointListClient(SharePointClient):
         return {"id": str(item["id"]), "fields": fields}
 
     # ------------------------------------------------------------------
-    # Public interface (matches AirtableClient / LocalClient)
+    # Public interface (matches LocalClient)
     # ------------------------------------------------------------------
 
     def get_records(self, limit: int = 100) -> List[Dict]:
@@ -112,6 +114,7 @@ class SharePointListClient(SharePointClient):
         slug: str = "",
         location: str = "",
         high_res_location: str = "",
+        source: str = "Internal",
     ) -> Optional[Dict]:
         fields = {
             "Title": filename,
@@ -121,6 +124,7 @@ class SharePointListClient(SharePointClient):
             "Slug": slug,
             "Location": location,
             "HighResLocation": high_res_location,
+            "Source": source,
         }
         try:
             resp = requests.post(
@@ -166,6 +170,75 @@ class SharePointListClient(SharePointClient):
         except requests.exceptions.RequestException as e:
             print(f"Error patching SharePoint list item {record_id}: {e}")
             return False
+
+    def bulk_patch_fields(self, patches: List[tuple[str, Dict]], max_workers: int = 4) -> Dict:
+        """Update many records with bounded parallelism."""
+        if not patches:
+            return {"updated": 0, "failed_ids": [], "missing_ids": []}
+
+        deduped: Dict[str, Dict] = {}
+        for record_id, fields in patches:
+            rid = str(record_id or "").strip()
+            if not rid or not isinstance(fields, dict) or not fields:
+                continue
+            deduped.setdefault(rid, {}).update(fields)
+
+        if not deduped:
+            return {"updated": 0, "failed_ids": [], "missing_ids": []}
+
+        max_workers = max(1, min(int(max_workers), 8))
+        updated = 0
+        failed_ids: List[str] = []
+
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_map = {
+                executor.submit(self.patch_fields, rid, fields): rid
+                for rid, fields in deduped.items()
+            }
+            for future in as_completed(future_map):
+                rid = future_map[future]
+                try:
+                    ok = bool(future.result())
+                except Exception:
+                    ok = False
+                if ok:
+                    updated += 1
+                else:
+                    failed_ids.append(rid)
+
+        return {"updated": updated, "failed_ids": failed_ids, "missing_ids": []}
+
+    def bulk_delete_records(self, record_ids: List[str], max_workers: int = 4) -> int:
+        """Delete many records with bounded parallelism."""
+        ids = [str(rid or "").strip() for rid in record_ids if str(rid or "").strip()]
+        ids = list(dict.fromkeys(ids))
+        if not ids:
+            return 0
+
+        max_workers = max(1, min(int(max_workers), 8))
+
+        def _delete_one(rid: str) -> bool:
+            try:
+                resp = requests.delete(
+                    f"{self._list_url}/items/{rid}",
+                    headers=self._headers(),
+                    timeout=15,
+                )
+                return resp.status_code in (200, 204)
+            except requests.exceptions.RequestException as e:
+                print(f"Error deleting SharePoint list item {rid}: {e}")
+                return False
+
+        deleted = 0
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = [executor.submit(_delete_one, rid) for rid in ids]
+            for future in as_completed(futures):
+                try:
+                    if future.result():
+                        deleted += 1
+                except Exception:
+                    continue
+        return deleted
 
     def delete_records(self, record_ids: List[str]) -> int:
         deleted = 0

@@ -3,13 +3,18 @@
 import json
 import os
 import queue
+import re
+import hashlib
 import subprocess
 import sys
 import tempfile
 import threading
 import time
 import uuid
-from io import BytesIO
+import csv
+from datetime import date, datetime
+from difflib import SequenceMatcher
+from io import BytesIO, StringIO
 from pathlib import Path, PurePosixPath
 from urllib.parse import unquote, urlparse
 
@@ -29,6 +34,7 @@ from src.local_client import LocalClient
 from src.config import Config
 
 load_dotenv()
+Config.validate_runtime()
 
 app = Flask(__name__, template_folder="../templates", static_folder="../static")
 app.secret_key = Config.FLASK_SECRET_KEY
@@ -42,6 +48,10 @@ CORS(app, resources={r"/api/*": {"origins": Config.CORS_ORIGINS}},
 # Auth helpers
 # ---------------------------------------------------------------------------
 
+def _auth_bypass_enabled() -> bool:
+    # Local-only bypass for faster TEST_MODE development.
+    return Config.TEST_MODE and Config.DEV_AUTH_BYPASS
+
 def _msal_app():
     return msal.ConfidentialClientApplication(
         Config.MSAL_CLIENT_ID,
@@ -53,6 +63,9 @@ def _msal_app():
 def login_required(f):
     @functools.wraps(f)
     def decorated(*args, **kwargs):
+        if _auth_bypass_enabled():
+            session.setdefault("user", {"name": "Local Dev User", "auth": "bypass"})
+            return f(*args, **kwargs)
         if not session.get("user"):
             if request.path.startswith("/api/") or request.is_json:
                 return jsonify({"error": "Authentication required"}), 401
@@ -62,8 +75,56 @@ def login_required(f):
     return decorated
 
 
+def _user_identity_values(user_claims: Dict) -> set[str]:
+    values = set()
+    for key in ("email", "preferred_username", "upn", "unique_name"):
+        val = str(user_claims.get(key, "") or "").strip().lower()
+        if val:
+            values.add(val)
+    return values
+
+
+def _is_maintenance_admin_user(user_claims: Dict) -> bool:
+    # In local bypass mode, keep maintenance available for development workflows.
+    if _auth_bypass_enabled():
+        return True
+
+    allowed = set(Config.MAINTENANCE_ADMIN_USERS)
+    if not allowed:
+        return False
+
+    return bool(_user_identity_values(user_claims) & allowed)
+
+
+@app.before_request
+def enforce_maintenance_admin_access():
+    path = request.path or ""
+    if path != "/maintenance" and not path.startswith("/api/maintenance/"):
+        return None
+
+    if _auth_bypass_enabled():
+        return None
+
+    user_claims = session.get("user")
+    if not user_claims:
+        if path.startswith("/api/") or request.is_json:
+            return jsonify({"error": "Authentication required"}), 401
+        session["next"] = request.url
+        return redirect(url_for("login"))
+
+    if _is_maintenance_admin_user(user_claims):
+        return None
+
+    if path.startswith("/api/") or request.is_json:
+        return jsonify({"error": "Admin access required"}), 403
+    return render_template("login_error.html", error="Admin access required"), 403
+
+
 @app.route("/login")
 def login():
+    if _auth_bypass_enabled():
+        session.setdefault("user", {"name": "Local Dev User", "auth": "bypass"})
+        return redirect(url_for("index"))
     flow = _msal_app().initiate_auth_code_flow(
         Config.MSAL_SCOPES,
         redirect_uri=Config.MSAL_REDIRECT_URI,
@@ -92,6 +153,8 @@ def auth_callback():
 @app.route("/logout")
 def logout():
     session.clear()
+    if _auth_bypass_enabled():
+        return redirect(url_for("index"))
     logout_url = (
         f"{Config.MSAL_AUTHORITY}/oauth2/v2.0/logout"
         f"?post_logout_redirect_uri={url_for('index', _external=True)}"
@@ -185,6 +248,7 @@ def _stream_command(cmd: list, env: dict = None):
 
 
 @app.route("/run/scan-test")
+@login_required
 def run_scan_test():
     return _stream_command(
         [sys.executable, "-u", "-m", "src.main"],
@@ -192,43 +256,46 @@ def run_scan_test():
     )
 
 
-@app.route("/run/scan-airtable")
-def run_scan_airtable():
+@app.route("/run/scan-live")
+@login_required
+def run_scan_live():
     return _stream_command([sys.executable, "-u", "-m", "src.main"])
 
 
 @app.route("/run/clean")
+@login_required
 def run_clean():
     mode = request.args.get("mode", "test")
     env = {"TEST_MODE": "true"} if mode == "test" else {}
+    test_mode_value = "true" if mode == "test" else "false"
     script = (
+        "import os\n"
+        f"os.environ['TEST_MODE'] = '{test_mode_value}'\n"
         "from dotenv import load_dotenv; load_dotenv('.env')\n"
         "from src.config import Config\n"
         "from src.local_client import LocalClient\n"
-        "from src.airtable_client import AirtableClient\n"
-        "import os; os.environ.setdefault('TEST_MODE', '" + ("true" if mode == "test" else "false") + "')\n"
-        "client = LocalClient() if Config.TEST_MODE else AirtableClient()\n"
+        "from src.sharepoint_list_client import SharePointListClient\n"
+        "client = LocalClient() if Config.TEST_MODE else SharePointListClient()\n"
         "client.delete_all_records()\n"
     )
     return _stream_command([sys.executable, "-u", "-c", script], env=env)
 
 
 @app.route("/api/preview")
+@login_required
 def api_preview():
     """Return counts of total images and how many are new (not yet in the store)."""
     mode = request.args.get("mode", "test")
     try:
         from src.image_scanner import ImageScanner
         from src.local_client import LocalClient
-        from src.airtable_client import AirtableClient
-        from src.config import Config
-        import os
+        from src.sharepoint_list_client import SharePointListClient
 
         scanner = ImageScanner()
         all_images = scanner.get_all_images()
         total = len(all_images)
 
-        client = LocalClient() if mode == "test" else AirtableClient()
+        client = LocalClient() if mode == "test" else SharePointListClient()
         existing = {r["fields"].get("Filename") for r in client.get_all_records()}
 
         new_count = sum(
@@ -247,6 +314,7 @@ def stock_search():
 
 
 @app.route("/api/parse-suggestions", methods=["POST"])
+@login_required
 def api_parse_suggestions():
     data = request.get_json(force=True)
     content = data.get("content", "")
@@ -258,6 +326,7 @@ def api_parse_suggestions():
 
 
 @app.route("/api/stock-search", methods=["POST"])
+@login_required
 def api_stock_search():
     data = request.get_json(force=True)
     phrases = data.get("phrases", [])
@@ -297,6 +366,11 @@ def _stock_source_context(source: str, title: str, tags: list[str], photographer
         "Use the above source metadata as a starting point. "
         "Reconcile keywords against the approved tag vocabulary — keep matches, drop anything off-vocabulary."
     )
+
+
+def _normalized_formats() -> set[str]:
+    formats = [fmt if fmt.startswith(".") else f".{fmt}" for fmt in Config.SUPPORTED_FORMATS]
+    return {fmt.lower() for fmt in formats}
 
 
 @app.route("/api/catalog-stock")
@@ -374,6 +448,7 @@ def api_catalog_stock():
                     on_progress=lambda msg: q.put(("progress", msg)),
                     category=category,
                     source_context=source_context or None,
+                    source=source or None,
                 )
                 q.put(("done", result))
             except Exception as exc:
@@ -448,12 +523,14 @@ def api_download_image():
 
 
 @app.route("/run/start-server")
+@login_required
 def run_start_server():
     """Return a simple redirect instruction — server is already running."""
     return jsonify({"url": "/library"})
 
 
 @app.route("/run/stop", methods=["POST"])
+@login_required
 def run_stop():
     """Shut the server down gracefully after sending the response."""
     import threading, os, signal
@@ -466,6 +543,7 @@ def run_stop():
 
 
 @app.route("/api/folders")
+@login_required
 def api_folders():
     records = get_all_records()
     folder_counts: dict = {}
@@ -481,6 +559,7 @@ def api_folders():
 
 
 @app.route("/api/tags")
+@login_required
 def api_tags():
     folder = request.args.get("folder", "")
     records = get_all_records()
@@ -501,6 +580,7 @@ def api_tags():
 
 
 @app.route("/api/images")
+@login_required
 def api_images():
     folder = request.args.get("folder", "")
     selected = request.args.get("tags", "")
@@ -528,6 +608,7 @@ def api_images():
                     "alt_text": fields.get("Alt Text", ""),
                     "tags": fields.get("Tags", ""),
                     "status": status,
+                    "source": fields.get("Source", ""),
                 }
             )
     return jsonify({"images": results})
@@ -579,6 +660,7 @@ def review():
 
 
 @app.route("/api/image-info")
+@login_required
 def api_image_info():
     location = unquote(request.args.get("path", ""))
     if not location:
@@ -708,13 +790,3212 @@ def tag_manager():
     return render_template("tag_manager.html")
 
 
+@app.route("/maintenance")
+@login_required
+def maintenance():
+    return render_template("maintenance.html", user=session.get("user", {}))
+
+
+_MAINTENANCE_PURGE_STATUSES = {"rejected", "archived"}
+_MAINTENANCE_CANONICAL_CATEGORIES = [
+    "Headshots",
+    "Community",
+    "Locations",
+    "Situations",
+    "Graphics",
+    "Banners",
+]
+_MAINTENANCE_CATEGORY_ALIASES = {
+    "headshot": "Headshots",
+    "headshots": "Headshots",
+    "community": "Community",
+    "communities": "Community",
+    "location": "Locations",
+    "locations": "Locations",
+    "situation": "Situations",
+    "situations": "Situations",
+    "graphic": "Graphics",
+    "graphics": "Graphics",
+    "banner": "Banners",
+    "banners": "Banners",
+}
+
+_MAINTENANCE_STATE_LOCK = threading.Lock()
+_MAINTENANCE_STATE_PATH = Path(
+    "/home/proxima_maintenance_state.json"
+    if Path("/home").exists() and os.getenv("WEBSITE_INSTANCE_ID")
+    else "maintenance_state.json"
+)
+_MAINTENANCE_CHECKPOINT_DIR = Path(
+    "/home/proxima_maintenance_checkpoints"
+    if Path("/home").exists() and os.getenv("WEBSITE_INSTANCE_ID")
+    else "test_data/maintenance_checkpoints"
+)
+
+
+def _now_utc_iso() -> str:
+    return f"{datetime.utcnow().replace(microsecond=0).isoformat()}Z"
+
+
+def _maintenance_default_guardrails() -> Dict:
+    return {
+        "max_batch_size": 500,
+        "require_preview_for_destructive": True,
+        "two_step_approval_required": False,
+        "checkpoint_before_destructive": False,
+    }
+
+
+def _maintenance_default_state() -> Dict:
+    return {
+        "guardrails": _maintenance_default_guardrails(),
+        "jobs": {
+            "enabled": False,
+            "interval_minutes": 1440,
+            "job_names": [
+                "health_snapshot",
+                "integrity_scorecard",
+                "aging_drift_scan",
+            ],
+            "last_runs": {},
+        },
+        "audit_trail": [],
+        "checkpoints": [],
+        "approvals": [],
+    }
+
+
+def _atomic_json_write(path: Path, payload) -> None:
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = path.with_suffix(path.suffix + ".tmp")
+    with tmp_path.open("w", encoding="utf-8") as f:
+        json.dump(payload, f, indent=2, ensure_ascii=False)
+    tmp_path.replace(path)
+
+
+def _maintenance_load_state() -> Dict:
+    state = _maintenance_default_state()
+    try:
+        if _MAINTENANCE_STATE_PATH.exists():
+            loaded = json.loads(_MAINTENANCE_STATE_PATH.read_text(encoding="utf-8"))
+            if isinstance(loaded, dict):
+                state.update(loaded)
+    except Exception:
+        pass
+
+    guardrails = _maintenance_default_guardrails()
+    guardrails.update(state.get("guardrails", {}))
+    state["guardrails"] = guardrails
+
+    jobs = {
+        "enabled": False,
+        "interval_minutes": 1440,
+        "job_names": [
+            "health_snapshot",
+            "integrity_scorecard",
+            "aging_drift_scan",
+        ],
+        "last_runs": {},
+    }
+    jobs.update(state.get("jobs", {}))
+    if not isinstance(jobs.get("last_runs", {}), dict):
+        jobs["last_runs"] = {}
+    if not isinstance(jobs.get("job_names", []), list):
+        jobs["job_names"] = [
+            "health_snapshot",
+            "integrity_scorecard",
+            "aging_drift_scan",
+        ]
+    state["jobs"] = jobs
+
+    if not isinstance(state.get("audit_trail", []), list):
+        state["audit_trail"] = []
+    if not isinstance(state.get("checkpoints", []), list):
+        state["checkpoints"] = []
+    if not isinstance(state.get("approvals", []), list):
+        state["approvals"] = []
+    return state
+
+
+def _maintenance_save_state(state: Dict) -> None:
+    _atomic_json_write(_MAINTENANCE_STATE_PATH, state)
+
+
+def _maintenance_actor() -> str:
+    claims = session.get("user", {}) if isinstance(session.get("user", {}), dict) else {}
+    identity_values = _user_identity_values(claims)
+    if identity_values:
+        return sorted(identity_values)[0]
+    return "local-dev" if _auth_bypass_enabled() else "unknown"
+
+
+def _maintenance_record_hash(record_ids: List[str]) -> str:
+    stable = "\n".join(sorted(str(rid).strip() for rid in record_ids if str(rid).strip()))
+    return hashlib.sha256(stable.encode("utf-8")).hexdigest()
+
+
+def _maintenance_append_audit(action: str, outcome: str, details: Dict) -> None:
+    with _MAINTENANCE_STATE_LOCK:
+        state = _maintenance_load_state()
+        audit_trail = state.get("audit_trail", [])
+        audit_trail.append({
+            "id": f"aud_{uuid.uuid4().hex[:10]}",
+            "timestamp": _now_utc_iso(),
+            "actor": _maintenance_actor(),
+            "action": str(action or "").strip() or "unknown",
+            "outcome": str(outcome or "").strip() or "ok",
+            "details": details or {},
+        })
+        state["audit_trail"] = audit_trail[-500:]
+        _maintenance_save_state(state)
+
+
+def _maintenance_guardrails() -> Dict:
+    with _MAINTENANCE_STATE_LOCK:
+        state = _maintenance_load_state()
+        guardrails = _maintenance_default_guardrails()
+        guardrails.update(state.get("guardrails", {}))
+        return guardrails
+
+
+def _category_from_location(location: str) -> str:
+    rel = _sanitize_relative_path(location)
+    if not rel:
+        return ""
+    parts = list(PurePosixPath(rel).parts)
+    if not parts:
+        return ""
+    return parts[0]
+
+
+def _canonical_category_name(raw: str) -> str:
+    key = _normalize_filter_key(raw)
+    if not key:
+        return ""
+    return _MAINTENANCE_CATEGORY_ALIASES.get(key, "")
+
+
+def _build_integrity_scorecard(records: List[Dict]) -> Dict:
+    categories: Dict[str, Dict] = {}
+    unknown_status_count = 0
+    valid_statuses = {"pending-review", "approved", "rejected", "archived"}
+
+    for rec in records:
+        fields = rec.get("fields", {})
+        category = _category_from_location(fields.get("Location", "")) or "Uncategorized"
+        bucket = categories.setdefault(category, {
+            "category": category,
+            "total": 0,
+            "missing_alt": 0,
+            "missing_tags": 0,
+            "missing_slug": 0,
+            "missing_location": 0,
+            "missing_high_res_location": 0,
+            "missing_source": 0,
+            "statuses": {
+                "pending-review": 0,
+                "approved": 0,
+                "rejected": 0,
+                "archived": 0,
+            },
+        })
+        bucket["total"] += 1
+
+        alt_text = str(fields.get("Alt Text", "") or "").strip()
+        tags = [t.strip() for t in str(fields.get("Tags", "") or "").split(",") if t.strip()]
+        slug = str(fields.get("Slug", "") or "").strip()
+        location = str(fields.get("Location", "") or "").strip()
+        high_res_location = str(fields.get("High-Res Location", "") or "").strip()
+        source = str(fields.get("Source", "") or "").strip()
+
+        if not alt_text:
+            bucket["missing_alt"] += 1
+        if not tags:
+            bucket["missing_tags"] += 1
+        if not slug:
+            bucket["missing_slug"] += 1
+        if not location:
+            bucket["missing_location"] += 1
+        if not high_res_location:
+            bucket["missing_high_res_location"] += 1
+        if not source:
+            bucket["missing_source"] += 1
+
+        status = str(fields.get("Status", "") or "").strip()
+        if status in bucket["statuses"]:
+            bucket["statuses"][status] += 1
+        if status not in valid_statuses:
+            unknown_status_count += 1
+
+    rows = []
+    for row in categories.values():
+        total = max(1, row["total"])
+        missing_total = (
+            row["missing_alt"]
+            + row["missing_tags"]
+            + row["missing_slug"]
+            + row["missing_location"]
+            + row["missing_high_res_location"]
+            + row["missing_source"]
+        )
+        row["integrity_score"] = round(max(0.0, 100.0 - ((missing_total / (total * 6)) * 100.0)), 1)
+        rows.append(row)
+
+    rows.sort(key=lambda r: (r["integrity_score"], r["category"].lower()))
+
+    return {
+        "generated_at": _now_utc_iso(),
+        "record_count": len(records),
+        "unknown_status_count": unknown_status_count,
+        "categories": rows,
+    }
+
+
+def _collect_drift_candidates(
+    records: List[Dict],
+    stale_pending_days: int = 14,
+    stale_approved_days: int = 180,
+    min_alt_chars: int = 40,
+    min_tag_count: int = 2,
+    limit: int = 200,
+) -> Dict:
+    today = date.today()
+    candidates = []
+    reason_counts: Dict[str, int] = {}
+
+    for rec in records:
+        fields = rec.get("fields", {})
+        rec_id = str(rec.get("id", "") or "").strip()
+        if not rec_id:
+            continue
+
+        filename = str(fields.get("Filename", "") or "").strip()
+        status = str(fields.get("Status", "") or "").strip()
+        alt_text = str(fields.get("Alt Text", "") or "").strip()
+        tags = [t.strip() for t in str(fields.get("Tags", "") or "").split(",") if t.strip()]
+        slug = str(fields.get("Slug", "") or "").strip()
+        source = str(fields.get("Source", "") or "").strip()
+        location = str(fields.get("Location", "") or "").strip()
+
+        reasons = []
+        rec_date = _record_date_value(rec)
+        days_old = (today - rec_date).days if rec_date is not None else None
+
+        if status == "pending-review" and days_old is not None and days_old >= stale_pending_days:
+            reasons.append("pending-review-stale")
+        if status == "approved" and days_old is not None and days_old >= stale_approved_days:
+            reasons.append("approved-stale")
+        if len(alt_text) < max(1, min_alt_chars):
+            reasons.append("short-alt")
+        if len(tags) < max(0, min_tag_count):
+            reasons.append("sparse-tags")
+        if any(t.lower() == "?missing-file" for t in tags):
+            reasons.append("missing-file-marker")
+        if not slug:
+            reasons.append("missing-slug")
+        if not source:
+            reasons.append("missing-source")
+        if not location:
+            reasons.append("missing-location")
+
+        if not reasons:
+            continue
+
+        for reason in reasons:
+            reason_counts[reason] = reason_counts.get(reason, 0) + 1
+
+        candidates.append({
+            "id": rec_id,
+            "filename": filename,
+            "status": status,
+            "location": location,
+            "category": _category_from_location(location),
+            "date": rec_date.isoformat() if rec_date is not None else "",
+            "days_old": days_old,
+            "reasons": reasons,
+        })
+
+    candidates.sort(key=lambda c: (
+        -len(c.get("reasons", [])),
+        -(c.get("days_old") or 0),
+        str(c.get("filename", "")).lower(),
+    ))
+
+    limit = max(10, min(int(limit), 2000))
+    return {
+        "generated_at": _now_utc_iso(),
+        "record_count": len(records),
+        "candidate_count": len(candidates),
+        "reason_counts": reason_counts,
+        "display_limit": limit,
+        "truncated": len(candidates) > limit,
+        "candidates": candidates[:limit],
+    }
+
+
+def _build_category_normalization_preview(records: List[Dict], limit: int = 200) -> Dict:
+    candidates = []
+    for rec in records:
+        fields = rec.get("fields", {})
+        rec_id = str(rec.get("id", "") or "").strip()
+        location = _sanitize_relative_path(fields.get("Location", ""))
+        if not rec_id or not location:
+            continue
+
+        parts = list(PurePosixPath(location).parts)
+        if not parts:
+            continue
+        current_category = parts[0]
+        canonical = _canonical_category_name(current_category)
+        if not canonical:
+            continue
+        if current_category == canonical:
+            continue
+
+        proposed_location = str(PurePosixPath(canonical, *parts[1:]))
+        candidates.append({
+            "id": rec_id,
+            "filename": str(fields.get("Filename", "") or "").strip(),
+            "current_category": current_category,
+            "normalized_category": canonical,
+            "current_location": location,
+            "proposed_location": proposed_location,
+            "status": str(fields.get("Status", "") or "").strip(),
+        })
+
+    candidates.sort(key=lambda c: (str(c.get("current_category", "")).lower(), str(c.get("filename", "")).lower()))
+    limit = max(10, min(int(limit), 2000))
+    return {
+        "generated_at": _now_utc_iso(),
+        "candidate_count": len(candidates),
+        "display_limit": limit,
+        "truncated": len(candidates) > limit,
+        "candidates": candidates[:limit],
+    }
+
+
+def _create_maintenance_checkpoint(name: str, note: str = "", records: Optional[List[Dict]] = None) -> Dict:
+    checkpoint_id = f"ckpt_{uuid.uuid4().hex[:10]}"
+    created_at = _now_utc_iso()
+    actor = _maintenance_actor()
+    record_pool = list(records) if records is not None else _records_snapshot(use_cache=False)
+
+    _MAINTENANCE_CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
+    checkpoint_path = _MAINTENANCE_CHECKPOINT_DIR / f"{checkpoint_id}.json"
+    payload = {
+        "checkpoint_id": checkpoint_id,
+        "created_at": created_at,
+        "created_by": actor,
+        "name": name,
+        "note": note,
+        "record_count": len(record_pool),
+        "records": record_pool,
+    }
+    _atomic_json_write(checkpoint_path, payload)
+
+    with _MAINTENANCE_STATE_LOCK:
+        state = _maintenance_load_state()
+        checkpoints = state.get("checkpoints", [])
+        checkpoints.append({
+            "checkpoint_id": checkpoint_id,
+            "name": name,
+            "note": note,
+            "created_at": created_at,
+            "created_by": actor,
+            "record_count": len(record_pool),
+            "path": str(checkpoint_path),
+        })
+        state["checkpoints"] = checkpoints[-100:]
+        _maintenance_save_state(state)
+
+    return {
+        "checkpoint_id": checkpoint_id,
+        "name": name,
+        "note": note,
+        "created_at": created_at,
+        "created_by": actor,
+        "record_count": len(record_pool),
+    }
+
+
+def _approval_error(action: str, message: str, status_code: int = 403):
+    return jsonify({"error": message, "action": action}), status_code
+
+
+def _consume_approved_token(action: str, record_ids: List[str], approval_token: str):
+    now_epoch = time.time()
+    rec_hash = _maintenance_record_hash(record_ids)
+
+    with _MAINTENANCE_STATE_LOCK:
+        state = _maintenance_load_state()
+        approvals = state.get("approvals", [])
+        target = None
+        for item in approvals:
+            if str(item.get("token", "")) != approval_token:
+                continue
+            target = item
+            break
+
+        if target is None:
+            return _approval_error(action, "Invalid approval token", 404)
+        if str(target.get("action", "")) != action:
+            return _approval_error(action, "Approval token action mismatch", 409)
+        if str(target.get("status", "")) != "approved":
+            return _approval_error(action, "Approval token is not approved", 409)
+        if float(target.get("expires_at_epoch", 0) or 0) <= now_epoch:
+            return _approval_error(action, "Approval token has expired", 409)
+        if str(target.get("record_hash", "")) != rec_hash:
+            return _approval_error(action, "Approval token does not match selected records", 409)
+
+        target["status"] = "consumed"
+        target["consumed_at"] = _now_utc_iso()
+        target["consumed_by"] = _maintenance_actor()
+        state["approvals"] = approvals[-300:]
+        _maintenance_save_state(state)
+
+    return None
+
+
+def _validate_destructive_guardrails(
+    action: str,
+    record_ids: List[str],
+    expected_count: Optional[int],
+    approval_token: str,
+):
+    guardrails = _maintenance_guardrails()
+    count = len(record_ids)
+
+    max_batch = int(guardrails.get("max_batch_size", 500) or 0)
+    if max_batch > 0 and count > max_batch:
+        return jsonify({
+            "error": f"Batch exceeds guardrail max_batch_size={max_batch}",
+            "action": action,
+            "record_count": count,
+        }), 400
+
+    if guardrails.get("require_preview_for_destructive", True) and expected_count is None:
+        return jsonify({
+            "error": "expected_count is required by guardrails for destructive actions",
+            "action": action,
+        }), 400
+
+    if expected_count is not None and expected_count != count:
+        return jsonify({
+            "error": "expected_count does not match target selection",
+            "action": action,
+            "expected_count": expected_count,
+            "record_count": count,
+        }), 409
+
+    if guardrails.get("two_step_approval_required", False):
+        token = str(approval_token or "").strip()
+        if not token:
+            return jsonify({
+                "error": "approval_token is required by guardrails",
+                "action": action,
+            }), 403
+        approval_error = _consume_approved_token(action, record_ids, token)
+        if approval_error:
+            return approval_error
+
+    if guardrails.get("checkpoint_before_destructive", False):
+        try:
+            _create_maintenance_checkpoint(
+                name=f"auto-{action}-{datetime.utcnow().strftime('%Y%m%d-%H%M%S')}",
+                note="Auto-checkpoint from guardrail before destructive run",
+                records=_records_snapshot(use_cache=False),
+            )
+        except Exception:
+            # Guardrail checkpoints are best-effort to avoid blocking critical cleanup.
+            pass
+
+    return None
+
+
+def _run_named_maintenance_job(job_name: str, records: List[Dict]) -> Dict:
+    if job_name == "health_snapshot":
+        health = {
+            "record_count": len(records),
+            "status_counts": {
+                "pending-review": sum(1 for r in records if str(r.get("fields", {}).get("Status", "")).strip() == "pending-review"),
+                "approved": sum(1 for r in records if str(r.get("fields", {}).get("Status", "")).strip() == "approved"),
+                "rejected": sum(1 for r in records if str(r.get("fields", {}).get("Status", "")).strip() == "rejected"),
+                "archived": sum(1 for r in records if str(r.get("fields", {}).get("Status", "")).strip() == "archived"),
+            },
+        }
+        return {"job": job_name, "summary": health}
+
+    if job_name == "integrity_scorecard":
+        scorecard = _build_integrity_scorecard(records)
+        return {
+            "job": job_name,
+            "summary": {
+                "record_count": scorecard.get("record_count", 0),
+                "category_count": len(scorecard.get("categories", [])),
+                "lowest_score": (scorecard.get("categories", [{}])[0] or {}).get("integrity_score", 100.0)
+                if scorecard.get("categories") else 100.0,
+            },
+        }
+
+    if job_name == "aging_drift_scan":
+        drift = _collect_drift_candidates(records, limit=200)
+        return {
+            "job": job_name,
+            "summary": {
+                "candidate_count": drift.get("candidate_count", 0),
+                "reason_counts": drift.get("reason_counts", {}),
+            },
+        }
+
+    raise ValueError(f"Unknown job_name: {job_name}")
+
+
+def _as_bool(value) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int):
+        return value != 0
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+    return False
+
+
+def _records_snapshot(use_cache: bool = True) -> List[Dict]:
+    """Return a single record snapshot for a request scope."""
+    return get_all_records() if use_cache else get_client().get_all_records()
+
+
+def _parse_record_ids(data: Dict, require_confirm_token: bool = False) -> tuple[Optional[List[str]], Optional[tuple]]:
+    if require_confirm_token:
+        confirm_token = str(data.get("confirm_token", "")).strip().upper()
+        if confirm_token != "PURGE":
+            return None, (jsonify({"error": "confirm_token must be PURGE"}), 400)
+
+    raw_ids = data.get("record_ids", [])
+    if not isinstance(raw_ids, list):
+        return None, (jsonify({"error": "record_ids must be a list"}), 400)
+
+    record_ids = [str(rid).strip() for rid in raw_ids if str(rid).strip()]
+    record_ids = list(dict.fromkeys(record_ids))
+    if not record_ids:
+        return None, (jsonify({"error": "record_ids cannot be empty"}), 400)
+    return record_ids, None
+
+
+def _bulk_delete_records(client, record_ids: List[str]) -> int:
+    if hasattr(client, "bulk_delete_records"):
+        return int(client.bulk_delete_records(record_ids))
+    return int(client.delete_records(record_ids))
+
+
+def _bulk_patch_fields(client, patches: List[tuple[str, Dict]]) -> Dict:
+    """Apply field patches in bulk and return a normalized result payload."""
+    if not patches:
+        return {"updated": 0, "failed_ids": [], "missing_ids": []}
+
+    if hasattr(client, "bulk_patch_fields"):
+        result = client.bulk_patch_fields(patches)
+        if isinstance(result, dict):
+            return {
+                "updated": int(result.get("updated", 0)),
+                "failed_ids": [str(v) for v in result.get("failed_ids", [])],
+                "missing_ids": [str(v) for v in result.get("missing_ids", [])],
+            }
+
+    updated = 0
+    failed_ids: list[str] = []
+    for record_id, fields in patches:
+        if client.patch_fields(record_id, fields):
+            updated += 1
+        else:
+            failed_ids.append(record_id)
+    return {"updated": updated, "failed_ids": failed_ids, "missing_ids": []}
+
+
+def _sanitize_relative_path(relative_path: str) -> str:
+    rel = str(relative_path or "").strip()
+    if not rel:
+        return ""
+    rel_posix = PurePosixPath(rel)
+    if rel_posix.is_absolute() or ".." in rel_posix.parts:
+        return ""
+    return str(rel_posix)
+
+
+def _safe_local_target(image_root: Path, area: str, relative_path: str) -> Optional[Path]:
+    rel = _sanitize_relative_path(relative_path)
+    if not rel:
+        return None
+
+    root = (image_root / area).resolve()
+    target = (root / Path(*PurePosixPath(rel).parts)).resolve()
+    try:
+        if os.path.commonpath([str(root), str(target)]) != str(root):
+            return None
+    except ValueError:
+        return None
+    return target
+
+
+def _delete_local_target(image_root: Path, area: str, relative_path: str) -> str:
+    target = _safe_local_target(image_root, area, relative_path)
+    if target is None:
+        return "invalid"
+    if not target.exists():
+        return "missing"
+    try:
+        target.unlink()
+        return "deleted"
+    except OSError as exc:
+        return f"error: {exc}"
+
+
+def _delete_sharepoint_target(sp_client, area: str, relative_path: str) -> str:
+    rel = _sanitize_relative_path(relative_path)
+    if not rel:
+        return "invalid"
+
+    root = Config.SHAREPOINT_IMAGE_FOLDER.strip("/")
+    sp_path = f"{area}/{rel}" if not root else f"{root}/{area}/{rel}"
+    try:
+        return "deleted" if sp_client.delete_file(sp_path) else "missing"
+    except Exception as exc:
+        return f"error: {exc}"
+
+
+def _get_records_for_status(status: str, records: Optional[List[Dict]] = None) -> List[Dict]:
+    record_pool = records if records is not None else _records_snapshot(use_cache=False)
+    return [
+        r
+        for r in record_pool
+        if str(r.get("fields", {}).get("Status", "")).strip() == status
+    ]
+
+
+def _list_local_images(folder: Path) -> set[str]:
+    if not folder.exists():
+        return set()
+    formats = _normalized_formats()
+    results: set[str] = set()
+    for file_path in folder.rglob("*"):
+        if file_path.is_file() and file_path.suffix.lower() in formats:
+            results.add(file_path.relative_to(folder).as_posix())
+    return results
+
+
+def _collect_orphan_snapshot(limit: int = 200, records: Optional[List[Dict]] = None) -> Dict:
+    record_pool = records if records is not None else _records_snapshot(use_cache=True)
+    limit = max(10, min(limit, 1000))
+
+    if Config.TEST_MODE:
+        base = Path(Config.IMAGE_FOLDER)
+        webp_paths = _list_local_images(base / "WebP")
+        high_res_paths = _list_local_images(base / "High-Res")
+        storage_mode = "local"
+    else:
+        root = Config.SHAREPOINT_IMAGE_FOLDER
+        sp_client = get_sp_client()
+        webp_paths = {
+            str(PurePosixPath(rel))
+            for _, rel in sp_client.list_all_images(f"{root}/WebP")
+        }
+        high_res_paths = {
+            str(PurePosixPath(rel))
+            for _, rel in sp_client.list_all_images(f"{root}/High-Res")
+        }
+        storage_mode = "sharepoint"
+
+    referenced_webp: set[str] = set()
+    referenced_high_res: set[str] = set()
+    missing_file_records: list[Dict] = []
+    missing_file_record_ids: list[str] = []
+
+    for rec in record_pool:
+        fields = rec.get("fields", {})
+        loc = _sanitize_relative_path(fields.get("Location", ""))
+        high_res_loc = _sanitize_relative_path(fields.get("High-Res Location", ""))
+
+        if loc:
+            referenced_webp.add(loc)
+        if high_res_loc:
+            referenced_high_res.add(high_res_loc)
+
+        missing_webp = bool(loc) and loc not in webp_paths
+        missing_high_res = bool(high_res_loc) and high_res_loc not in high_res_paths
+        missing_both_refs = not loc and not high_res_loc
+        if missing_webp or missing_high_res or missing_both_refs:
+            rec_id = str(rec.get("id", "")).strip()
+            if rec_id:
+                missing_file_record_ids.append(rec_id)
+            missing_file_records.append({
+                "id": rec_id,
+                "filename": fields.get("Filename", ""),
+                "status": fields.get("Status", ""),
+                "source": fields.get("Source", ""),
+                "location": loc,
+                "high_res_location": high_res_loc,
+                "missing_webp": missing_webp or missing_both_refs,
+                "missing_high_res": missing_high_res or missing_both_refs,
+            })
+
+    orphaned_webp_files = sorted(p for p in webp_paths if p not in referenced_webp)
+    orphaned_high_res_files = sorted(p for p in high_res_paths if p not in referenced_high_res)
+    missing_file_records_sorted = sorted(
+        missing_file_records,
+        key=lambda r: ((r.get("filename") or "").lower(), r.get("id") or ""),
+    )
+    missing_file_record_ids = [r.get("id", "") for r in missing_file_records_sorted if r.get("id", "")]
+
+    return {
+        "storage_mode": storage_mode,
+        "record_count": len(record_pool),
+        "webp_file_count": len(webp_paths),
+        "high_res_file_count": len(high_res_paths),
+        "missing_file_records_count": len(missing_file_records_sorted),
+        "orphaned_webp_files_count": len(orphaned_webp_files),
+        "orphaned_high_res_files_count": len(orphaned_high_res_files),
+        "missing_file_records": missing_file_records_sorted[:limit],
+        "missing_file_record_ids": missing_file_record_ids,
+        "orphaned_webp_files": orphaned_webp_files[:limit],
+        "orphaned_high_res_files": orphaned_high_res_files[:limit],
+        "display_limit": limit,
+        "truncated": {
+            "missing_file_records": len(missing_file_records_sorted) > limit,
+            "orphaned_webp_files": len(orphaned_webp_files) > limit,
+            "orphaned_high_res_files": len(orphaned_high_res_files) > limit,
+        },
+    }
+
+
+def _normalize_compare_text(value: str) -> str:
+    text = str(value or "").strip().lower()
+    text = re.sub(r"[^a-z0-9]+", " ", text)
+    return " ".join(text.split())
+
+
+def _record_for_duplicate_scan(rec: Dict) -> Dict:
+    fields = rec.get("fields", {})
+    return {
+        "id": str(rec.get("id", "")).strip(),
+        "filename": str(fields.get("Filename", "")).strip(),
+        "slug": str(fields.get("Slug", "")).strip(),
+        "status": str(fields.get("Status", "")).strip(),
+        "alt_text": str(fields.get("Alt Text", "")).strip(),
+        "tags": str(fields.get("Tags", "")).strip(),
+        "location": str(fields.get("Location", "")).strip(),
+        "high_res_location": str(fields.get("High-Res Location", "")).strip(),
+        "source": str(fields.get("Source", "")).strip(),
+    }
+
+
+def _build_exact_duplicate_groups(scanned_records: List[Dict], field_name: str, group_type: str) -> List[Dict]:
+    buckets: Dict[str, Dict] = {}
+    for rec in scanned_records:
+        value = str(rec.get(field_name, "")).strip()
+        if not value:
+            continue
+        key = value.lower()
+        if key not in buckets:
+            buckets[key] = {"display": value, "records": []}
+        buckets[key]["records"].append(rec)
+
+    groups = []
+    for bucket in buckets.values():
+        if len(bucket["records"]) < 2:
+            continue
+        groups.append({
+            "group_type": group_type,
+            "key": bucket["display"],
+            "records": sorted(
+                bucket["records"],
+                key=lambda r: ((r.get("filename") or "").lower(), r.get("id") or ""),
+            ),
+        })
+
+    groups.sort(key=lambda g: (str(g.get("key", "")).lower(), len(g.get("records", [])) * -1))
+    return groups
+
+
+def _build_near_alt_duplicate_groups(scanned_records: List[Dict], threshold: float, window_size: int = 60) -> List[Dict]:
+    entries = []
+    for rec in scanned_records:
+        alt_norm = _normalize_compare_text(rec.get("alt_text", ""))
+        if alt_norm:
+            entries.append((rec.get("id", ""), alt_norm))
+
+    entries = [(rid, alt) for rid, alt in entries if rid]
+    if len(entries) < 2:
+        return []
+
+    # Compare only within a bounded lexical window to avoid O(n^2) growth
+    # on larger libraries while still catching highly similar neighboring strings.
+    entries.sort(key=lambda item: item[1])
+    window_size = max(10, min(int(window_size), 200))
+
+    parent = {rid: rid for rid, _ in entries}
+
+    def find(node: str) -> str:
+        while parent[node] != node:
+            parent[node] = parent[parent[node]]
+            node = parent[node]
+        return node
+
+    def union(a: str, b: str) -> None:
+        ra = find(a)
+        rb = find(b)
+        if ra != rb:
+            parent[rb] = ra
+
+    n = len(entries)
+    for i in range(n):
+        ida, alta = entries[i]
+        upper = min(n, i + 1 + window_size)
+        for j in range(i + 1, upper):
+            idb, altb = entries[j]
+            if alta == altb:
+                continue
+            if abs(len(alta) - len(altb)) > 24:
+                continue
+            if alta[0] != altb[0]:
+                continue
+            if SequenceMatcher(None, alta, altb).ratio() >= threshold:
+                union(ida, idb)
+
+    scanned_by_id = {rec.get("id", ""): rec for rec in scanned_records if rec.get("id", "")}
+    clusters: Dict[str, List[str]] = {}
+    for rid, _ in entries:
+        root = find(rid)
+        clusters.setdefault(root, []).append(rid)
+
+    groups = []
+    for cluster_ids in clusters.values():
+        unique_ids = sorted(set(cluster_ids))
+        if len(unique_ids) < 2:
+            continue
+        members = [scanned_by_id[rid] for rid in unique_ids if rid in scanned_by_id]
+        if len(members) < 2:
+            continue
+        members.sort(key=lambda r: ((r.get("filename") or "").lower(), r.get("id") or ""))
+        groups.append({
+            "group_type": "alt_near",
+            "key": f"similarity >= {threshold:.2f}",
+            "records": members,
+        })
+
+    groups.sort(key=lambda g: ((g.get("records", [{}])[0].get("filename") or "").lower(), len(g.get("records", [])) * -1))
+    return groups
+
+
+def _collect_duplicate_snapshot(
+    limit: int = 200,
+    include_near_alt: bool = True,
+    near_threshold: float = 0.92,
+    records: Optional[List[Dict]] = None,
+) -> Dict:
+    limit = max(10, min(limit, 1000))
+    near_threshold = max(0.80, min(near_threshold, 0.99))
+    record_pool = records if records is not None else _records_snapshot(use_cache=True)
+    scanned_records = [_record_for_duplicate_scan(r) for r in record_pool]
+
+    filename_groups = _build_exact_duplicate_groups(scanned_records, "filename", "filename")
+    slug_groups = _build_exact_duplicate_groups(scanned_records, "slug", "slug")
+
+    alt_exact_candidates = []
+    for rec in scanned_records:
+        alt_norm = _normalize_compare_text(rec.get("alt_text", ""))
+        if alt_norm:
+            clone = dict(rec)
+            clone["_alt_norm"] = alt_norm
+            alt_exact_candidates.append(clone)
+    alt_exact_groups = _build_exact_duplicate_groups(alt_exact_candidates, "_alt_norm", "alt_exact")
+    for group in alt_exact_groups:
+        for rec in group.get("records", []):
+            rec.pop("_alt_norm", None)
+
+    near_alt_groups = _build_near_alt_duplicate_groups(scanned_records, near_threshold) if include_near_alt else []
+
+    all_groups = filename_groups + slug_groups + alt_exact_groups + near_alt_groups
+    for idx, group in enumerate(all_groups, 1):
+        group["group_id"] = f"dup-{idx}"
+        group["count"] = len(group.get("records", []))
+
+    return {
+        "record_count": len(scanned_records),
+        "duplicate_group_count": len(all_groups),
+        "filename_group_count": len(filename_groups),
+        "slug_group_count": len(slug_groups),
+        "alt_exact_group_count": len(alt_exact_groups),
+        "alt_near_group_count": len(near_alt_groups),
+        "include_near_alt": include_near_alt,
+        "near_threshold": near_threshold,
+        "groups": all_groups[:limit],
+        "display_limit": limit,
+        "truncated": len(all_groups) > limit,
+    }
+
+
+@app.route("/api/maintenance/purge-preview")
+@login_required
+def api_maintenance_purge_preview():
+    status = request.args.get("status", "").strip()
+    delete_files = _as_bool(request.args.get("delete_files", "false"))
+
+    if status not in _MAINTENANCE_PURGE_STATUSES:
+        return jsonify({
+            "error": (
+                "status must be one of "
+                f"{sorted(_MAINTENANCE_PURGE_STATUSES)}"
+            )
+        }), 400
+
+    records = _records_snapshot(use_cache=True)
+    matches = _get_records_for_status(status, records=records)
+    sample = []
+    file_refs = 0
+
+    for rec in matches:
+        fields = rec.get("fields", {})
+        if str(fields.get("Location", "")).strip():
+            file_refs += 1
+        if str(fields.get("High-Res Location", "")).strip():
+            file_refs += 1
+
+    for rec in matches[:20]:
+        fields = rec.get("fields", {})
+        sample.append({
+            "id": rec.get("id", ""),
+            "filename": fields.get("Filename", ""),
+            "location": fields.get("Location", ""),
+            "high_res_location": fields.get("High-Res Location", ""),
+            "source": fields.get("Source", ""),
+        })
+
+    return jsonify({
+        "status": status,
+        "count": len(matches),
+        "delete_files": delete_files,
+        "estimated_file_refs": file_refs,
+        "sample": sample,
+    })
+
+
+@app.route("/api/maintenance/purge-status", methods=["POST"])
+@login_required
+def api_maintenance_purge_status():
+    data = request.get_json(force=True) or {}
+    status = str(data.get("status", "")).strip()
+    delete_files = _as_bool(data.get("delete_files", False))
+    confirm_token = str(data.get("confirm_token", "")).strip().upper()
+    approval_token = str(data.get("approval_token", "")).strip()
+    expected_count_raw = data.get("expected_count")
+
+    if status not in _MAINTENANCE_PURGE_STATUSES:
+        return jsonify({
+            "error": (
+                "status must be one of "
+                f"{sorted(_MAINTENANCE_PURGE_STATUSES)}"
+            )
+        }), 400
+    if confirm_token != "PURGE":
+        return jsonify({"error": "confirm_token must be PURGE"}), 400
+
+    expected_count: Optional[int] = None
+    if expected_count_raw is not None:
+        try:
+            expected_count = int(expected_count_raw)
+        except (TypeError, ValueError):
+            return jsonify({"error": "expected_count must be an integer"}), 400
+
+    records = _records_snapshot(use_cache=False)
+    matches = _get_records_for_status(status, records=records)
+    current_count = len(matches)
+    if expected_count is not None and expected_count != current_count:
+        return jsonify({
+            "error": "Record count changed since preview. Refresh preview and retry.",
+            "current_count": current_count,
+            "expected_count": expected_count,
+        }), 409
+
+    files_deleted = 0
+    files_missing = 0
+    invalid_file_paths = 0
+    file_delete_errors = 0
+    file_delete_error_details: list[str] = []
+
+    if delete_files and matches:
+        if Config.TEST_MODE:
+            image_root = Path(Config.IMAGE_FOLDER).resolve()
+            for rec in matches:
+                fields = rec.get("fields", {})
+                for area, rel in [
+                    ("WebP", fields.get("Location", "")),
+                    ("High-Res", fields.get("High-Res Location", "")),
+                ]:
+                    rel = str(rel).strip()
+                    if not rel:
+                        continue
+                    outcome = _delete_local_target(image_root, area, rel)
+                    if outcome == "deleted":
+                        files_deleted += 1
+                    elif outcome == "missing":
+                        files_missing += 1
+                    elif outcome == "invalid":
+                        invalid_file_paths += 1
+                    else:
+                        file_delete_errors += 1
+                        if len(file_delete_error_details) < 20:
+                            file_delete_error_details.append(
+                                f"{area}/{rel} -> {outcome}"
+                            )
+        else:
+            sp_client = get_sp_client()
+            for rec in matches:
+                fields = rec.get("fields", {})
+                for area, rel in [
+                    ("WebP", fields.get("Location", "")),
+                    ("High-Res", fields.get("High-Res Location", "")),
+                ]:
+                    rel = str(rel).strip()
+                    if not rel:
+                        continue
+                    outcome = _delete_sharepoint_target(sp_client, area, rel)
+                    if outcome == "deleted":
+                        files_deleted += 1
+                    elif outcome == "missing":
+                        files_missing += 1
+                    elif outcome == "invalid":
+                        invalid_file_paths += 1
+                    else:
+                        file_delete_errors += 1
+                        if len(file_delete_error_details) < 20:
+                            file_delete_error_details.append(
+                                f"{area}/{rel} -> {outcome}"
+                            )
+
+    record_ids = [str(r.get("id", "")).strip() for r in matches if str(r.get("id", "")).strip()]
+
+    guardrail_error = _validate_destructive_guardrails(
+        action="purge-status",
+        record_ids=record_ids,
+        expected_count=expected_count,
+        approval_token=approval_token,
+    )
+    if guardrail_error:
+        return guardrail_error
+
+    deleted_records = _bulk_delete_records(get_client(), record_ids)
+
+    global _records_cache
+    _records_cache = None
+
+    result = {
+        "status": status,
+        "matched_records": current_count,
+        "deleted_records": deleted_records,
+        "record_delete_failures": max(0, current_count - deleted_records),
+        "delete_files": delete_files,
+        "files_deleted": files_deleted,
+        "files_missing": files_missing,
+        "invalid_file_paths": invalid_file_paths,
+        "file_delete_errors": file_delete_errors,
+        "file_delete_error_details": file_delete_error_details,
+    }
+
+    _maintenance_append_audit(
+        action="purge-status",
+        outcome="ok",
+        details={
+            "status": status,
+            "matched_records": current_count,
+            "deleted_records": deleted_records,
+            "delete_files": delete_files,
+        },
+    )
+
+    return jsonify(result)
+
+
+@app.route("/api/maintenance/orphans")
+@login_required
+def api_maintenance_orphans():
+    limit_raw = request.args.get("limit", "200").strip()
+    try:
+        limit = int(limit_raw)
+    except ValueError:
+        return jsonify({"error": "limit must be an integer"}), 400
+
+    try:
+        records = _records_snapshot(use_cache=True)
+        return jsonify(_collect_orphan_snapshot(limit=limit, records=records))
+    except Exception as exc:
+        return jsonify({"error": f"Failed to scan for orphans: {exc}"}), 500
+
+
+@app.route("/api/maintenance/orphans/delete-records", methods=["POST"])
+@login_required
+def api_maintenance_orphans_delete_records():
+    data = request.get_json(force=True) or {}
+    record_ids, error_response = _parse_record_ids(data, require_confirm_token=True)
+    if error_response:
+        return error_response
+
+    expected_count_raw = data.get("expected_count")
+    approval_token = str(data.get("approval_token", "")).strip()
+    expected_count: Optional[int] = None
+    if expected_count_raw is not None:
+        try:
+            expected_count = int(expected_count_raw)
+        except (TypeError, ValueError):
+            return jsonify({"error": "expected_count must be an integer"}), 400
+
+    guardrail_error = _validate_destructive_guardrails(
+        action="orphans-delete-records",
+        record_ids=record_ids,
+        expected_count=expected_count,
+        approval_token=approval_token,
+    )
+    if guardrail_error:
+        return guardrail_error
+
+    deleted = _bulk_delete_records(get_client(), record_ids)
+
+    global _records_cache
+    _records_cache = None
+
+    result = {
+        "requested": len(record_ids),
+        "deleted": deleted,
+        "failed": max(0, len(record_ids) - deleted),
+    }
+
+    _maintenance_append_audit(
+        action="orphans-delete-records",
+        outcome="ok",
+        details=result,
+    )
+
+    return jsonify(result)
+
+
+@app.route("/api/maintenance/orphans/flag-missing", methods=["POST"])
+@login_required
+def api_maintenance_orphans_flag_missing():
+    data = request.get_json(force=True) or {}
+    record_ids, error_response = _parse_record_ids(data, require_confirm_token=False)
+    if error_response:
+        return error_response
+
+    marker = str(data.get("marker", "?missing-file")).strip() or "?missing-file"
+    if not marker.startswith("?"):
+        marker = f"?{marker}"
+    set_pending_review = _as_bool(data.get("set_pending_review", True))
+
+    client = get_client()
+    records = _records_snapshot(use_cache=False)
+    by_id = {str(r.get("id", "")).strip(): r for r in records if str(r.get("id", "")).strip()}
+
+    patches: list[tuple[str, Dict]] = []
+    unchanged = 0
+    missing_ids: list[str] = []
+
+    for record_id in record_ids:
+        rec = by_id.get(record_id)
+        if rec is None:
+            missing_ids.append(record_id)
+            continue
+
+        fields = rec.get("fields", {})
+        current_tags = str(fields.get("Tags", "") or "").strip()
+        tag_parts = [t.strip() for t in current_tags.split(",") if t.strip()]
+        patch: Dict = {}
+
+        if marker not in tag_parts:
+            tag_parts.append(marker)
+        new_tags = ", ".join(tag_parts)
+        if new_tags != current_tags:
+            patch["Tags"] = new_tags
+
+        if set_pending_review and str(fields.get("Status", "")).strip() != "pending-review":
+            patch["Status"] = "pending-review"
+
+        if not patch:
+            unchanged += 1
+            continue
+
+        patches.append((record_id, patch))
+
+    patch_result = _bulk_patch_fields(client, patches)
+    updated = patch_result["updated"]
+    failed_ids = patch_result["failed_ids"]
+
+    if updated > 0:
+        global _records_cache
+        _records_cache = None
+
+    return jsonify({
+        "requested": len(record_ids),
+        "updated": updated,
+        "unchanged": unchanged,
+        "missing": len(missing_ids),
+        "failed": len(failed_ids),
+        "missing_ids": missing_ids,
+        "failed_ids": failed_ids,
+        "marker": marker,
+        "set_pending_review": set_pending_review,
+    })
+
+
+@app.route("/api/maintenance/duplicates")
+@login_required
+def api_maintenance_duplicates():
+    limit_raw = request.args.get("limit", "200").strip()
+    near_threshold_raw = request.args.get("near_threshold", "0.92").strip()
+    include_near_alt = _as_bool(request.args.get("include_near_alt", "true"))
+
+    try:
+        limit = int(limit_raw)
+    except ValueError:
+        return jsonify({"error": "limit must be an integer"}), 400
+
+    try:
+        near_threshold = float(near_threshold_raw)
+    except ValueError:
+        return jsonify({"error": "near_threshold must be a float"}), 400
+
+    try:
+        records = _records_snapshot(use_cache=True)
+        return jsonify(
+            _collect_duplicate_snapshot(
+                limit=limit,
+                include_near_alt=include_near_alt,
+                near_threshold=near_threshold,
+                records=records,
+            )
+        )
+    except Exception as exc:
+        return jsonify({"error": f"Failed to scan duplicates: {exc}"}), 500
+
+
+@app.route("/api/maintenance/duplicates/resolve", methods=["POST"])
+@login_required
+def api_maintenance_duplicates_resolve():
+    data = request.get_json(force=True) or {}
+    action = str(data.get("action", "")).strip().lower()
+    confirm_token = str(data.get("confirm_token", "")).strip().upper()
+    approval_token = str(data.get("approval_token", "")).strip()
+    keep_id = str(data.get("keep_id", "")).strip()
+    expected_count_raw = data.get("expected_count")
+
+    if action not in {"delete", "merge"}:
+        return jsonify({"error": "action must be one of ['delete', 'merge']"}), 400
+    if confirm_token != "PURGE":
+        return jsonify({"error": "confirm_token must be PURGE"}), 400
+
+    raw_ids = data.get("record_ids", [])
+    if not isinstance(raw_ids, list):
+        return jsonify({"error": "record_ids must be a list"}), 400
+    record_ids = [str(rid).strip() for rid in raw_ids if str(rid).strip()]
+    record_ids = list(dict.fromkeys(record_ids))
+    if len(record_ids) < 2:
+        return jsonify({"error": "record_ids must contain at least 2 items"}), 400
+
+    if not keep_id:
+        keep_id = record_ids[0]
+    if keep_id not in record_ids:
+        return jsonify({"error": "keep_id must be included in record_ids"}), 400
+
+    expected_count: Optional[int] = None
+    if expected_count_raw is not None:
+        try:
+            expected_count = int(expected_count_raw)
+        except (TypeError, ValueError):
+            return jsonify({"error": "expected_count must be an integer"}), 400
+
+    client = get_client()
+    records = _records_snapshot(use_cache=False)
+    by_id = {str(r.get("id", "")).strip(): r for r in records if str(r.get("id", "")).strip()}
+
+    missing_ids = [rid for rid in record_ids if rid not in by_id]
+    if missing_ids:
+        return jsonify({
+            "error": "Some records no longer exist. Refresh duplicates and retry.",
+            "missing_ids": missing_ids,
+        }), 409
+
+    resolved_records = [by_id[rid] for rid in record_ids]
+    if expected_count is not None and expected_count != len(resolved_records):
+        return jsonify({
+            "error": "Record count changed since duplicate scan. Refresh and retry.",
+            "expected_count": expected_count,
+            "current_count": len(resolved_records),
+        }), 409
+
+    delete_ids = [rid for rid in record_ids if rid != keep_id]
+    if not delete_ids:
+        return jsonify({"error": "Nothing to resolve. Need at least one duplicate to remove."}), 400
+
+    guardrail_error = _validate_destructive_guardrails(
+        action=f"duplicates-resolve:{action}",
+        record_ids=record_ids,
+        expected_count=expected_count,
+        approval_token=approval_token,
+    )
+    if guardrail_error:
+        return guardrail_error
+
+    merged_patch: Dict = {}
+    if action == "merge":
+        keep_fields = by_id[keep_id].get("fields", {})
+        all_fields = [r.get("fields", {}) for r in resolved_records]
+
+        # Merge tags while preserving first-seen order.
+        merged_tags = []
+        merged_tag_keys = set()
+        for fields in all_fields:
+            for tag in str(fields.get("Tags", "") or "").split(","):
+                cleaned = tag.strip()
+                if not cleaned:
+                    continue
+                key = cleaned.lower()
+                if key in merged_tag_keys:
+                    continue
+                merged_tag_keys.add(key)
+                merged_tags.append(cleaned)
+        new_tags = ", ".join(merged_tags)
+        if new_tags and new_tags != str(keep_fields.get("Tags", "") or "").strip():
+            merged_patch["Tags"] = new_tags
+
+        # Keep the most descriptive alt text from the duplicate set.
+        alt_candidates = [str(fields.get("Alt Text", "") or "").strip() for fields in all_fields]
+        alt_candidates = [a for a in alt_candidates if a]
+        best_alt = max(alt_candidates, key=len) if alt_candidates else ""
+        if best_alt and best_alt != str(keep_fields.get("Alt Text", "") or "").strip():
+            merged_patch["Alt Text"] = best_alt
+
+        # Fill missing fields on the keeper from other records.
+        for field_name in ["Slug", "Location", "High-Res Location", "Source"]:
+            keep_val = str(keep_fields.get(field_name, "") or "").strip()
+            if keep_val:
+                continue
+            for fields in all_fields:
+                candidate = str(fields.get(field_name, "") or "").strip()
+                if candidate:
+                    merged_patch[field_name] = candidate
+                    break
+
+        if merged_patch and not client.patch_fields(keep_id, merged_patch):
+            return jsonify({"error": f"Failed to update keeper record {keep_id}"}), 500
+
+    deleted = _bulk_delete_records(client, delete_ids)
+
+    global _records_cache
+    _records_cache = None
+
+    result = {
+        "action": action,
+        "keep_id": keep_id,
+        "requested_delete": len(delete_ids),
+        "deleted": deleted,
+        "failed": max(0, len(delete_ids) - deleted),
+        "merged_patch": merged_patch,
+    }
+
+    _maintenance_append_audit(
+        action=f"duplicates-resolve:{action}",
+        outcome="ok",
+        details={
+            "group_size": len(record_ids),
+            "requested_delete": len(delete_ids),
+            "deleted": deleted,
+            "keep_id": keep_id,
+        },
+    )
+
+    return jsonify(result)
+
+
+def _normalize_filter_key(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "", str(value or "").strip().lower())
+
+
+def _record_matches_retag_filters(rec: Dict, category_filter: str, tag_filters: List[str], status_filter: str) -> bool:
+    fields = rec.get("fields", {})
+
+    if status_filter:
+        rec_status = str(fields.get("Status", "")).strip().lower()
+        if rec_status != status_filter.lower():
+            return False
+
+    location = _sanitize_relative_path(fields.get("Location", ""))
+    parts = list(PurePosixPath(location).parts) if location else []
+    if category_filter:
+        desired = _normalize_filter_key(category_filter)
+        part_keys = {_normalize_filter_key(p) for p in parts if p}
+        if desired and desired not in part_keys:
+            return False
+
+    if tag_filters:
+        rec_tags = {
+            t.strip().lower()
+            for t in str(fields.get("Tags", "") or "").split(",")
+            if t.strip()
+        }
+        if not (rec_tags & set(tag_filters)):
+            return False
+
+    return True
+
+
+def _get_retag_target_records(
+    category_filter: str,
+    tag_filter_raw: str,
+    status_filter: str,
+    max_records: int,
+    records: Optional[List[Dict]] = None,
+) -> List[Dict]:
+    tag_filters = [
+        t.strip().lower()
+        for t in str(tag_filter_raw or "").split(",")
+        if t.strip()
+    ]
+
+    record_pool = records if records is not None else _records_snapshot(use_cache=True)
+
+    matches = [
+        rec
+        for rec in record_pool
+        if _record_matches_retag_filters(rec, category_filter, tag_filters, status_filter)
+    ]
+    matches.sort(
+        key=lambda r: (
+            str(r.get("fields", {}).get("Filename", "") or "").lower(),
+            str(r.get("id", "") or ""),
+        )
+    )
+    return matches[:max_records]
+
+
+def _parse_iso_date(raw: str) -> Optional[date]:
+    text = str(raw or "").strip()
+    if not text:
+        return None
+    try:
+        return datetime.fromisoformat(text).date()
+    except ValueError:
+        pass
+    try:
+        return datetime.fromisoformat(text.replace("Z", "+00:00")).date()
+    except ValueError:
+        return None
+
+
+def _record_date_value(rec: Dict) -> Optional[date]:
+    fields = rec.get("fields", {})
+    for key in [
+        "Date",
+        "Created",
+        "Created At",
+        "Updated",
+        "Updated At",
+        "Modified",
+        "Modified At",
+    ]:
+        parsed = _parse_iso_date(fields.get(key, ""))
+        if parsed is not None:
+            return parsed
+    return None
+
+
+def _status_reset_targets(
+    category_filter: str,
+    tag_filter_raw: str,
+    current_status_filter: str,
+    start_date_value: Optional[date],
+    end_date_value: Optional[date],
+    max_records: int,
+    records: Optional[List[Dict]] = None,
+) -> Dict:
+    tag_filters = [
+        t.strip().lower()
+        for t in str(tag_filter_raw or "").split(",")
+        if t.strip()
+    ]
+
+    matched: list[Dict] = []
+    date_filtered_out = 0
+    missing_date_for_filter = 0
+    already_pending = 0
+
+    record_pool = list(records) if records is not None else _records_snapshot(use_cache=True)
+    record_pool.sort(
+        key=lambda r: (
+            str(r.get("fields", {}).get("Filename", "") or "").lower(),
+            str(r.get("id", "") or ""),
+        )
+    )
+
+    for rec in record_pool:
+        if not _record_matches_retag_filters(rec, category_filter, tag_filters, current_status_filter):
+            continue
+
+        if start_date_value or end_date_value:
+            rec_date = _record_date_value(rec)
+            if rec_date is None:
+                missing_date_for_filter += 1
+                continue
+            if start_date_value and rec_date < start_date_value:
+                date_filtered_out += 1
+                continue
+            if end_date_value and rec_date > end_date_value:
+                date_filtered_out += 1
+                continue
+
+        fields = rec.get("fields", {})
+        if str(fields.get("Status", "") or "").strip() == "pending-review":
+            already_pending += 1
+
+        matched.append(rec)
+        if len(matched) >= max_records:
+            break
+
+    return {
+        "records": matched,
+        "already_pending": already_pending,
+        "date_filtered_out": date_filtered_out,
+        "missing_date_for_filter": missing_date_for_filter,
+    }
+
+
+def _load_record_image_bytes(rec: Dict, storage_mode: str, sp_client) -> tuple[bytes, str, str]:
+    """Load image bytes for a record. Returns (bytes, filename, source_label)."""
+    fields = rec.get("fields", {})
+    filename_fallback = str(fields.get("Filename", "") or "image.jpg").strip() or "image.jpg"
+    location = _sanitize_relative_path(fields.get("Location", ""))
+    high_res_location = _sanitize_relative_path(fields.get("High-Res Location", ""))
+
+    if storage_mode == "sharepoint" and sp_client is not None:
+        root = Config.SHAREPOINT_IMAGE_FOLDER.strip("/")
+        candidates: list[tuple[str, str, str]] = []
+
+        if high_res_location:
+            high_path = f"High-Res/{high_res_location}" if not root else f"{root}/High-Res/{high_res_location}"
+            candidates.append((high_path, PurePosixPath(high_res_location).name or filename_fallback, "high-res"))
+        if location:
+            webp_path = f"WebP/{location}" if not root else f"{root}/WebP/{location}"
+            candidates.append((webp_path, PurePosixPath(location).name or filename_fallback, "webp"))
+            legacy_path = f"{location}" if not root else f"{root}/{location}"
+            candidates.append((legacy_path, PurePosixPath(location).name or filename_fallback, "legacy"))
+
+        errors = []
+        for sp_path, filename, source_label in candidates:
+            try:
+                return sp_client.get_file_bytes(sp_path), filename, source_label
+            except Exception as exc:
+                errors.append(f"{source_label}:{exc}")
+
+        raise FileNotFoundError(
+            f"Could not load record image in SharePoint for {rec.get('id', '')}. "
+            f"Tried {len(candidates)} paths. Last errors: {'; '.join(errors[:3])}"
+        )
+
+    base = Path(Config.IMAGE_FOLDER).resolve()
+    candidates_local: list[tuple[Optional[Path], str, str]] = []
+
+    if high_res_location:
+        candidates_local.append((
+            _safe_local_target(base, "High-Res", high_res_location),
+            PurePosixPath(high_res_location).name or filename_fallback,
+            "high-res",
+        ))
+    if location:
+        candidates_local.append((
+            _safe_local_target(base, "WebP", location),
+            PurePosixPath(location).name or filename_fallback,
+            "webp",
+        ))
+        candidates_local.append((
+            _safe_local_target(base, "", location),
+            PurePosixPath(location).name or filename_fallback,
+            "legacy",
+        ))
+
+    for path, filename, source_label in candidates_local:
+        if path is not None and path.exists() and path.is_file():
+            return path.read_bytes(), filename, source_label
+
+    raise FileNotFoundError(
+        f"Could not load local record image for {rec.get('id', '')}. "
+        f"Checked {len(candidates_local)} paths"
+    )
+
+
+def _check_location_health(location: str, storage_mode: str, sp_client) -> tuple[str, str]:
+    """Check whether a record location points to a loadable image.
+
+    Returns (status, detail) where status is one of:
+    - ok
+    - missing
+    - corrupt
+    - invalid
+    - error
+    """
+    rel = _sanitize_relative_path(location)
+    if not rel:
+        return "invalid", "Location is empty or invalid"
+
+    if storage_mode == "sharepoint" and sp_client is not None:
+        root = Config.SHAREPOINT_IMAGE_FOLDER.strip("/")
+        candidates = [
+            f"WebP/{rel}" if not root else f"{root}/WebP/{rel}",
+            f"{rel}" if not root else f"{root}/{rel}",
+        ]
+
+        for sp_path in candidates:
+            try:
+                blob = sp_client.get_file_bytes(sp_path)
+            except requests.exceptions.HTTPError as exc:
+                response = getattr(exc, "response", None)
+                if response is not None and response.status_code == 404:
+                    continue
+                return "error", f"SharePoint read failed: {exc}"
+            except Exception as exc:
+                return "error", f"SharePoint read failed: {exc}"
+
+            try:
+                with PILImage.open(BytesIO(blob)) as img:
+                    img.verify()
+                return "ok", ""
+            except Exception as exc:
+                return "corrupt", f"Image decode failed: {exc}"
+
+        return "missing", "No matching WebP/legacy file found in SharePoint"
+
+    base = Path(Config.IMAGE_FOLDER).resolve()
+    candidates_local = [
+        _safe_local_target(base, "WebP", rel),
+        _safe_local_target(base, "", rel),
+    ]
+
+    found_path = None
+    for candidate in candidates_local:
+        if candidate is not None and candidate.exists() and candidate.is_file():
+            found_path = candidate
+            break
+
+    if found_path is None:
+        return "missing", "No matching WebP/legacy file found locally"
+
+    try:
+        with PILImage.open(found_path) as img:
+            img.verify()
+        return "ok", ""
+    except Exception as exc:
+        return "corrupt", f"Image decode failed: {exc}"
+
+
+def _collect_broken_thumbnail_snapshot(limit: int = 200, status_filter: str = "", records: Optional[List[Dict]] = None) -> Dict:
+    limit = max(10, min(limit, 1000))
+    status_filter = str(status_filter or "").strip().lower()
+
+    all_records = records if records is not None else _records_snapshot(use_cache=True)
+    records = [
+        rec
+        for rec in all_records
+        if not status_filter
+        or str(rec.get("fields", {}).get("Status", "") or "").strip().lower() == status_filter
+    ]
+
+    if Config.TEST_MODE:
+        storage_mode = "local"
+        sp_client = None
+    else:
+        storage_mode = "sharepoint"
+        sp_client = get_sp_client()
+
+    broken_records = []
+    healthy_count = 0
+
+    for rec in records:
+        fields = rec.get("fields", {})
+        rec_id = str(rec.get("id", "")).strip()
+        filename = str(fields.get("Filename", "") or "").strip()
+        location = str(fields.get("Location", "") or "").strip()
+
+        if not location:
+            broken_records.append({
+                "id": rec_id,
+                "filename": filename,
+                "status": str(fields.get("Status", "") or "").strip(),
+                "source": str(fields.get("Source", "") or "").strip(),
+                "location": location,
+                "reason": "missing-location",
+                "detail": "Record has no Location value",
+            })
+            continue
+
+        health, detail = _check_location_health(location, storage_mode=storage_mode, sp_client=sp_client)
+        if health == "ok":
+            healthy_count += 1
+            continue
+
+        reason_map = {
+            "missing": "missing-file",
+            "corrupt": "corrupt-file",
+            "invalid": "invalid-location",
+            "error": "error-loading",
+        }
+        broken_records.append({
+            "id": rec_id,
+            "filename": filename,
+            "status": str(fields.get("Status", "") or "").strip(),
+            "source": str(fields.get("Source", "") or "").strip(),
+            "location": location,
+            "reason": reason_map.get(health, "error-loading"),
+            "detail": detail,
+        })
+
+    broken_records.sort(
+        key=lambda r: (
+            str(r.get("filename", "") or "").lower(),
+            str(r.get("id", "") or ""),
+        )
+    )
+    broken_ids = [r.get("id", "") for r in broken_records if r.get("id", "")]
+
+    return {
+        "storage_mode": storage_mode,
+        "status_filter": status_filter,
+        "scanned_count": len(records),
+        "healthy_count": healthy_count,
+        "broken_count": len(broken_records),
+        "broken_records": broken_records[:limit],
+        "broken_record_ids": broken_ids,
+        "display_limit": limit,
+        "truncated": len(broken_records) > limit,
+    }
+
+
+@app.route("/api/maintenance/retag-preview")
+@login_required
+def api_maintenance_retag_preview():
+    category_filter = request.args.get("category", "").strip()
+    tag_filter = request.args.get("tag", "").strip()
+    status_filter = request.args.get("status", "").strip()
+    max_records_raw = request.args.get("max_records", "100").strip()
+
+    try:
+        max_records = max(1, min(int(max_records_raw), 1000))
+    except ValueError:
+        return jsonify({"error": "max_records must be an integer"}), 400
+
+    records = _records_snapshot(use_cache=True)
+    matches = _get_retag_target_records(
+        category_filter=category_filter,
+        tag_filter_raw=tag_filter,
+        status_filter=status_filter,
+        max_records=max_records,
+        records=records,
+    )
+
+    sample = []
+    for rec in matches[:25]:
+        fields = rec.get("fields", {})
+        sample.append({
+            "id": rec.get("id", ""),
+            "filename": fields.get("Filename", ""),
+            "status": fields.get("Status", ""),
+            "tags": fields.get("Tags", ""),
+            "location": fields.get("Location", ""),
+            "high_res_location": fields.get("High-Res Location", ""),
+        })
+
+    return jsonify({
+        "filters": {
+            "category": category_filter,
+            "tag": tag_filter,
+            "status": status_filter,
+        },
+        "max_records": max_records,
+        "matched_count": len(matches),
+        "sample": sample,
+    })
+
+
+@app.route("/api/maintenance/retag-run")
+@login_required
+def api_maintenance_retag_run():
+    category_filter = request.args.get("category", "").strip()
+    tag_filter = request.args.get("tag", "").strip()
+    status_filter = request.args.get("status", "").strip()
+    max_records_raw = request.args.get("max_records", "100").strip()
+    regenerate_alt = _as_bool(request.args.get("regenerate_alt", "true"))
+    regenerate_tags = _as_bool(request.args.get("regenerate_tags", "true"))
+
+    if not regenerate_alt and not regenerate_tags:
+        return jsonify({"error": "At least one of regenerate_alt or regenerate_tags must be true"}), 400
+
+    try:
+        max_records = max(1, min(int(max_records_raw), 1000))
+    except ValueError:
+        return jsonify({"error": "max_records must be an integer"}), 400
+
+    def generate():
+        yield "data: [START]\n\n"
+        q: queue.Queue = queue.Queue()
+
+        def worker():
+            try:
+                from src.ai_generator import AltTextGenerator
+
+                gen = AltTextGenerator()
+                if Config.TEST_MODE:
+                    list_client = LocalClient()
+                    sp_client = None
+                    storage_mode = "local"
+                else:
+                    from src.sharepoint_list_client import SharePointListClient
+                    from src.sharepoint_client import SharePointClient
+                    list_client = SharePointListClient()
+                    sp_client = SharePointClient()
+                    storage_mode = "sharepoint"
+
+                records = _records_snapshot(use_cache=False)
+                targets = _get_retag_target_records(
+                    category_filter=category_filter,
+                    tag_filter_raw=tag_filter,
+                    status_filter=status_filter,
+                    max_records=max_records,
+                    records=records,
+                )
+                total = len(targets)
+                q.put(("progress", f"Matched {total} record(s) for bulk re-tag"))
+
+                processed = 0
+                failed = 0
+                alt_updated = 0
+                tags_updated = 0
+                status_reset = 0
+                failures: list[str] = []
+
+                for idx, rec in enumerate(targets, 1):
+                    rec_id = str(rec.get("id", "")).strip()
+                    fields = rec.get("fields", {})
+                    filename = str(fields.get("Filename", "") or "").strip() or "image.jpg"
+                    q.put(("progress", f"[{idx}/{total}] Reprocessing {filename}"))
+
+                    try:
+                        file_bytes, source_filename, source_label = _load_record_image_bytes(
+                            rec,
+                            storage_mode=storage_mode,
+                            sp_client=sp_client,
+                        )
+                        q.put(("progress", f"    Loaded {source_label} bytes"))
+
+                        current_alt = str(fields.get("Alt Text", "") or "").strip()
+                        current_tags = str(fields.get("Tags", "") or "").strip()
+
+                        new_alt = current_alt
+                        new_tags = current_tags
+
+                        if regenerate_alt:
+                            candidate_alt = gen.generate_alt_text(file_bytes, filename=source_filename)
+                            if not candidate_alt:
+                                raise ValueError("Alt text generation returned empty")
+                            new_alt = candidate_alt.strip()
+
+                        if regenerate_tags:
+                            candidate_tags = gen.generate_tags(file_bytes, filename=source_filename)
+                            if not candidate_tags:
+                                raise ValueError("Tag generation returned empty")
+                            new_tags = candidate_tags.strip()
+
+                        patch: Dict = {}
+                        if regenerate_alt and new_alt != current_alt:
+                            patch["Alt Text"] = new_alt
+                            alt_updated += 1
+                        if regenerate_tags and new_tags != current_tags:
+                            patch["Tags"] = new_tags
+                            tags_updated += 1
+                        if str(fields.get("Status", "") or "").strip() != "pending-review":
+                            patch["Status"] = "pending-review"
+                            status_reset += 1
+
+                        if patch and not list_client.patch_fields(rec_id, patch):
+                            raise ValueError(f"Failed to patch record {rec_id}")
+
+                        processed += 1
+                    except Exception as exc:
+                        failed += 1
+                        detail = f"{filename} ({rec_id}): {exc}"
+                        failures.append(detail)
+                        q.put(("progress", f"[ERROR] {detail}"))
+
+                q.put(("done", {
+                    "matched": total,
+                    "processed": processed,
+                    "failed": failed,
+                    "alt_updated": alt_updated,
+                    "tags_updated": tags_updated,
+                    "status_reset": status_reset,
+                    "failures": failures[:20],
+                    "filters": {
+                        "category": category_filter,
+                        "tag": tag_filter,
+                        "status": status_filter,
+                        "max_records": max_records,
+                    },
+                    "options": {
+                        "regenerate_alt": regenerate_alt,
+                        "regenerate_tags": regenerate_tags,
+                    },
+                }))
+            except Exception as exc:
+                q.put(("error", str(exc)))
+
+        t = threading.Thread(target=worker, daemon=True)
+        t.start()
+
+        while True:
+            try:
+                kind, value = q.get(timeout=1800)
+            except queue.Empty:
+                yield "data: [ERROR] Bulk re-tag timed out after 30 minutes\n\n"
+                break
+
+            if kind == "progress":
+                yield f"data: {value}\n\n"
+            elif kind == "done":
+                global _records_cache
+                _records_cache = None
+                yield f"data: [RESULT] {json.dumps(value)}\n\n"
+                yield "data: [DONE]\n\n"
+                break
+            elif kind == "error":
+                yield f"data: [ERROR] {value}\n\n"
+                break
+
+        t.join(timeout=5)
+
+    return Response(
+        stream_with_context(generate()),
+        mimetype="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@app.route("/api/maintenance/status-reset-preview")
+@login_required
+def api_maintenance_status_reset_preview():
+    category_filter = request.args.get("category", "").strip()
+    tag_filter = request.args.get("tag", "").strip()
+    current_status_filter = request.args.get("status", "").strip()
+    start_date_raw = request.args.get("start_date", "").strip()
+    end_date_raw = request.args.get("end_date", "").strip()
+    max_records_raw = request.args.get("max_records", "100").strip()
+
+    try:
+        max_records = max(1, min(int(max_records_raw), 1000))
+    except ValueError:
+        return jsonify({"error": "max_records must be an integer"}), 400
+
+    start_date_value = _parse_iso_date(start_date_raw) if start_date_raw else None
+    end_date_value = _parse_iso_date(end_date_raw) if end_date_raw else None
+    if start_date_raw and start_date_value is None:
+        return jsonify({"error": "start_date must be a valid ISO date (YYYY-MM-DD)"}), 400
+    if end_date_raw and end_date_value is None:
+        return jsonify({"error": "end_date must be a valid ISO date (YYYY-MM-DD)"}), 400
+    if start_date_value and end_date_value and start_date_value > end_date_value:
+        return jsonify({"error": "start_date cannot be after end_date"}), 400
+
+    records = _records_snapshot(use_cache=True)
+    target_info = _status_reset_targets(
+        category_filter=category_filter,
+        tag_filter_raw=tag_filter,
+        current_status_filter=current_status_filter,
+        start_date_value=start_date_value,
+        end_date_value=end_date_value,
+        max_records=max_records,
+        records=records,
+    )
+    matches = target_info["records"]
+
+    sample = []
+    for rec in matches[:25]:
+        fields = rec.get("fields", {})
+        sample.append({
+            "id": rec.get("id", ""),
+            "filename": fields.get("Filename", ""),
+            "status": fields.get("Status", ""),
+            "tags": fields.get("Tags", ""),
+            "location": fields.get("Location", ""),
+        })
+
+    return jsonify({
+        "filters": {
+            "category": category_filter,
+            "tag": tag_filter,
+            "status": current_status_filter,
+            "start_date": start_date_raw,
+            "end_date": end_date_raw,
+        },
+        "max_records": max_records,
+        "matched_count": len(matches),
+        "already_pending_count": target_info["already_pending"],
+        "eligible_to_reset_count": len(matches) - target_info["already_pending"],
+        "date_filtered_out_count": target_info["date_filtered_out"],
+        "missing_date_for_filter_count": target_info["missing_date_for_filter"],
+        "sample": sample,
+    })
+
+
+@app.route("/api/maintenance/status-reset", methods=["POST"])
+@login_required
+def api_maintenance_status_reset():
+    data = request.get_json(force=True) or {}
+
+    category_filter = str(data.get("category", "")).strip()
+    tag_filter = str(data.get("tag", "")).strip()
+    current_status_filter = str(data.get("status", "")).strip()
+    start_date_raw = str(data.get("start_date", "")).strip()
+    end_date_raw = str(data.get("end_date", "")).strip()
+    confirm_token = str(data.get("confirm_token", "")).strip().upper()
+    expected_count_raw = data.get("expected_count")
+    max_records_raw = str(data.get("max_records", "100")).strip()
+
+    if confirm_token != "PURGE":
+        return jsonify({"error": "confirm_token must be PURGE"}), 400
+
+    try:
+        max_records = max(1, min(int(max_records_raw), 1000))
+    except ValueError:
+        return jsonify({"error": "max_records must be an integer"}), 400
+
+    expected_count: Optional[int] = None
+    if expected_count_raw is not None:
+        try:
+            expected_count = int(expected_count_raw)
+        except (TypeError, ValueError):
+            return jsonify({"error": "expected_count must be an integer"}), 400
+
+    start_date_value = _parse_iso_date(start_date_raw) if start_date_raw else None
+    end_date_value = _parse_iso_date(end_date_raw) if end_date_raw else None
+    if start_date_raw and start_date_value is None:
+        return jsonify({"error": "start_date must be a valid ISO date (YYYY-MM-DD)"}), 400
+    if end_date_raw and end_date_value is None:
+        return jsonify({"error": "end_date must be a valid ISO date (YYYY-MM-DD)"}), 400
+    if start_date_value and end_date_value and start_date_value > end_date_value:
+        return jsonify({"error": "start_date cannot be after end_date"}), 400
+
+    records = _records_snapshot(use_cache=False)
+    target_info = _status_reset_targets(
+        category_filter=category_filter,
+        tag_filter_raw=tag_filter,
+        current_status_filter=current_status_filter,
+        start_date_value=start_date_value,
+        end_date_value=end_date_value,
+        max_records=max_records,
+        records=records,
+    )
+    matches = target_info["records"]
+
+    if expected_count is not None and expected_count != len(matches):
+        return jsonify({
+            "error": "Record count changed since preview. Refresh preview and retry.",
+            "expected_count": expected_count,
+            "current_count": len(matches),
+        }), 409
+
+    client = get_client()
+    patches: list[tuple[str, Dict]] = []
+    unchanged = 0
+    failed_ids: list[str] = []
+    invalid_id_failures = 0
+
+    for rec in matches:
+        record_id = str(rec.get("id", "")).strip()
+        if not record_id:
+            invalid_id_failures += 1
+            continue
+        fields = rec.get("fields", {})
+        current_status = str(fields.get("Status", "") or "").strip()
+        if current_status == "pending-review":
+            unchanged += 1
+            continue
+        patches.append((record_id, {"Status": "pending-review"}))
+
+    patch_result = _bulk_patch_fields(client, patches)
+    updated = patch_result["updated"]
+    failed_ids.extend(patch_result["failed_ids"])
+    failed = invalid_id_failures + len([fid for fid in failed_ids if fid])
+
+    global _records_cache
+    _records_cache = None
+
+    return jsonify({
+        "matched_count": len(matches),
+        "updated_count": updated,
+        "unchanged_count": unchanged,
+        "failed_count": failed,
+        "failed_ids": failed_ids[:20],
+        "filters": {
+            "category": category_filter,
+            "tag": tag_filter,
+            "status": current_status_filter,
+            "start_date": start_date_raw,
+            "end_date": end_date_raw,
+            "max_records": max_records,
+        },
+    })
+
+
+@app.route("/api/maintenance/export-csv")
+@login_required
+def api_maintenance_export_csv():
+    category_filter = request.args.get("category", "").strip()
+    status_filter = request.args.get("status", "").strip()
+
+    desired_category = _normalize_filter_key(category_filter)
+    desired_status = status_filter.lower()
+
+    rows = []
+    records = _records_snapshot(use_cache=True)
+    for rec in records:
+        fields = rec.get("fields", {})
+        location = _sanitize_relative_path(fields.get("Location", ""))
+        parts = list(PurePosixPath(location).parts) if location else []
+        category = parts[0] if parts else ""
+
+        rec_status = str(fields.get("Status", "") or "").strip()
+        if desired_status and rec_status.lower() != desired_status:
+            continue
+        if desired_category:
+            category_key = _normalize_filter_key(category)
+            if category_key != desired_category:
+                continue
+
+        rows.append({
+            "id": str(rec.get("id", "") or "").strip(),
+            "filename": str(fields.get("Filename", "") or "").strip(),
+            "category": category,
+            "alt_text": str(fields.get("Alt Text", "") or "").strip(),
+            "tags": str(fields.get("Tags", "") or "").strip(),
+            "status": rec_status,
+            "location": location,
+        })
+
+    rows.sort(key=lambda r: ((r.get("filename") or "").lower(), r.get("id") or ""))
+
+    output = StringIO()
+    writer = csv.DictWriter(
+        output,
+        fieldnames=["id", "filename", "category", "alt_text", "tags", "status", "location"],
+    )
+    writer.writeheader()
+    writer.writerows(rows)
+
+    filename_parts = ["image-library"]
+    if category_filter:
+        filename_parts.append(f"cat-{_normalize_filter_key(category_filter) or 'filtered'}")
+    if status_filter:
+        filename_parts.append(f"status-{_normalize_filter_key(status_filter) or 'filtered'}")
+    filename = "-".join(filename_parts) + ".csv"
+
+    return Response(
+        output.getvalue(),
+        mimetype="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@app.route("/api/maintenance/broken-thumbnails")
+@login_required
+def api_maintenance_broken_thumbnails():
+    limit_raw = request.args.get("limit", "200").strip()
+    status_filter = request.args.get("status", "").strip()
+
+    try:
+        limit = int(limit_raw)
+    except ValueError:
+        return jsonify({"error": "limit must be an integer"}), 400
+
+    try:
+        records = _records_snapshot(use_cache=True)
+        return jsonify(_collect_broken_thumbnail_snapshot(limit=limit, status_filter=status_filter, records=records))
+    except Exception as exc:
+        return jsonify({"error": f"Failed to scan broken thumbnails: {exc}"}), 500
+
+
+@app.route("/api/maintenance/broken-thumbnails/delete-records", methods=["POST"])
+@login_required
+def api_maintenance_broken_thumbnails_delete_records():
+    data = request.get_json(force=True) or {}
+    record_ids, error_response = _parse_record_ids(data, require_confirm_token=True)
+    if error_response:
+        return error_response
+
+    expected_count_raw = data.get("expected_count")
+    approval_token = str(data.get("approval_token", "")).strip()
+    expected_count: Optional[int] = None
+    if expected_count_raw is not None:
+        try:
+            expected_count = int(expected_count_raw)
+        except (TypeError, ValueError):
+            return jsonify({"error": "expected_count must be an integer"}), 400
+
+    guardrail_error = _validate_destructive_guardrails(
+        action="broken-thumbnails-delete-records",
+        record_ids=record_ids,
+        expected_count=expected_count,
+        approval_token=approval_token,
+    )
+    if guardrail_error:
+        return guardrail_error
+
+    deleted = _bulk_delete_records(get_client(), record_ids)
+
+    global _records_cache
+    _records_cache = None
+
+    result = {
+        "requested": len(record_ids),
+        "deleted": deleted,
+        "failed": max(0, len(record_ids) - deleted),
+    }
+
+    _maintenance_append_audit(
+        action="broken-thumbnails-delete-records",
+        outcome="ok",
+        details=result,
+    )
+
+    return jsonify(result)
+
+
+@app.route("/api/maintenance/broken-thumbnails/relink", methods=["POST"])
+@login_required
+def api_maintenance_broken_thumbnails_relink():
+    data = request.get_json(force=True) or {}
+    record_id = str(data.get("record_id", "")).strip()
+    new_location_raw = str(data.get("new_location", "")).strip()
+    check_exists = _as_bool(data.get("check_exists", True))
+    set_pending_review = _as_bool(data.get("set_pending_review", True))
+
+    if not record_id:
+        return jsonify({"error": "record_id is required"}), 400
+
+    new_location = _sanitize_relative_path(new_location_raw)
+    if not new_location:
+        return jsonify({"error": "new_location is empty or invalid"}), 400
+
+    client = get_client()
+    records = _records_snapshot(use_cache=False)
+    target = next((r for r in records if str(r.get("id", "")).strip() == record_id), None)
+    if target is None:
+        return jsonify({"error": "record not found"}), 404
+
+    if Config.TEST_MODE:
+        storage_mode = "local"
+        sp_client = None
+    else:
+        storage_mode = "sharepoint"
+        sp_client = get_sp_client()
+
+    if check_exists:
+        health, detail = _check_location_health(new_location, storage_mode=storage_mode, sp_client=sp_client)
+        if health != "ok":
+            return jsonify({
+                "error": "new_location is not loadable",
+                "health": health,
+                "detail": detail,
+            }), 400
+
+    fields = target.get("fields", {})
+    patch: Dict = {"Location": new_location}
+    if set_pending_review and str(fields.get("Status", "") or "").strip() != "pending-review":
+        patch["Status"] = "pending-review"
+
+    if not client.patch_fields(record_id, patch):
+        return jsonify({"error": "Failed to update record"}), 500
+
+    global _records_cache
+    _records_cache = None
+
+    return jsonify({
+        "ok": True,
+        "record_id": record_id,
+        "new_location": new_location,
+        "set_pending_review": set_pending_review,
+    })
+
+
+@app.route("/api/maintenance/sync-highres")
+@login_required
+def api_maintenance_sync_highres():
+    """SSE stream — catalog unprocessed High-Res files and report orphaned WebP assets."""
+    requested_source = request.args.get("source", "").strip()
+    dry_run = request.args.get("dry_run", "").strip().lower() in {"1", "true", "yes"}
+
+    def generate():
+        yield "data: [START]\n\n"
+        q: queue.Queue = queue.Queue()
+
+        def worker():
+            try:
+                from src.ai_generator import AltTextGenerator
+                from src.image_processor import normalize_source, process_image
+
+                gen = AltTextGenerator()
+                target_source = normalize_source(requested_source) if requested_source else None
+
+                if Config.TEST_MODE:
+                    list_client = LocalClient()
+                    sp_client = None
+                    storage_mode = "local"
+                else:
+                    from src.sharepoint_list_client import SharePointListClient
+                    from src.sharepoint_client import SharePointClient
+                    list_client = SharePointListClient()
+                    sp_client = SharePointClient()
+                    storage_mode = "sharepoint"
+
+                records = list_client.get_all_records()
+                existing_hr_locations = {
+                    str(r.get("fields", {}).get("High-Res Location", "")).strip()
+                    for r in records
+                    if str(r.get("fields", {}).get("High-Res Location", "")).strip()
+                }
+                existing_hr_basenames = {PurePosixPath(p).name for p in existing_hr_locations if p}
+                existing_webp_locations = {
+                    str(r.get("fields", {}).get("Location", "")).strip()
+                    for r in records
+                    if str(r.get("fields", {}).get("Location", "")).strip()
+                }
+
+                candidates: list[dict] = []
+                orphaned_webp: list[str] = []
+
+                if storage_mode == "sharepoint" and sp_client is not None:
+                    root = Config.SHAREPOINT_IMAGE_FOLDER
+                    hr_items = sp_client.list_all_images(f"{root}/High-Res")
+                    webp_items = sp_client.list_all_images(f"{root}/WebP")
+
+                    for sp_path, rel in hr_items:
+                        rel_posix = str(PurePosixPath(rel))
+                        parts = PurePosixPath(rel_posix).parts
+                        src = normalize_source(parts[0] if parts else "Internal")
+                        if target_source and src != target_source:
+                            continue
+                        base = PurePosixPath(rel_posix).name
+                        if rel_posix in existing_hr_locations or base in existing_hr_basenames:
+                            continue
+                        candidates.append({
+                            "rel": rel_posix,
+                            "source": src,
+                            "filename": base,
+                            "sp_path": sp_path,
+                        })
+
+                    for _sp_path, rel in webp_items:
+                        rel_posix = str(PurePosixPath(rel))
+                        if rel_posix not in existing_webp_locations:
+                            orphaned_webp.append(rel_posix)
+
+                    def load_bytes(item: dict) -> bytes:
+                        return sp_client.get_file_bytes(item["sp_path"])
+
+                else:
+                    base = Path(Config.IMAGE_FOLDER)
+                    hr_root = base / "High-Res"
+                    webp_root = base / "WebP"
+                    formats = _normalized_formats()
+
+                    if hr_root.exists():
+                        for file_path in hr_root.rglob("*"):
+                            if not file_path.is_file() or file_path.suffix.lower() not in formats:
+                                continue
+                            rel_posix = file_path.relative_to(hr_root).as_posix()
+                            parts = PurePosixPath(rel_posix).parts
+                            src = normalize_source(parts[0] if parts else "Internal")
+                            if target_source and src != target_source:
+                                continue
+                            if rel_posix in existing_hr_locations or file_path.name in existing_hr_basenames:
+                                continue
+                            candidates.append({
+                                "rel": rel_posix,
+                                "source": src,
+                                "filename": file_path.name,
+                                "path": str(file_path),
+                            })
+
+                    if webp_root.exists():
+                        for file_path in webp_root.rglob("*.webp"):
+                            rel_posix = file_path.relative_to(webp_root).as_posix()
+                            if rel_posix not in existing_webp_locations:
+                                orphaned_webp.append(rel_posix)
+
+                    def load_bytes(item: dict) -> bytes:
+                        return Path(item["path"]).read_bytes()
+
+                q.put(("progress", f"Found {len(candidates)} unprocessed High-Res file(s)"))
+
+                if dry_run:
+                    summary = {
+                        "processed": 0,
+                        "failed": 0,
+                        "unprocessed_high_res_found": len(candidates),
+                        "orphaned_webp_count": len(orphaned_webp),
+                        "orphaned_webp": sorted(orphaned_webp),
+                        "source_filter": target_source or "all",
+                        "dry_run": True,
+                    }
+                    q.put(("done", summary))
+                    return
+
+                processed = 0
+                failed = 0
+                total = len(candidates)
+                for idx, item in enumerate(candidates, 1):
+                    q.put(("progress", f"[{idx}/{total}] Cataloging {item['rel']}"))
+                    try:
+                        file_bytes = load_bytes(item)
+                        process_image(
+                            file_bytes=file_bytes,
+                            original_filename=item["filename"],
+                            generator=gen,
+                            list_client=list_client,
+                            sp_client=sp_client,
+                            image_folder=Config.IMAGE_FOLDER,
+                            storage_mode=storage_mode,
+                            on_progress=lambda msg: q.put(("progress", f"    {msg}")),
+                            source=item["source"],
+                            write_high_res=False,
+                            high_res_location_override=item["rel"],
+                        )
+                        processed += 1
+                    except Exception as exc:
+                        failed += 1
+                        q.put(("progress", f"[ERROR] {item['rel']}: {exc}"))
+
+                summary = {
+                    "processed": processed,
+                    "failed": failed,
+                    "unprocessed_high_res_found": total,
+                    "orphaned_webp_count": len(orphaned_webp),
+                    "orphaned_webp": sorted(orphaned_webp),
+                    "source_filter": target_source or "all",
+                    "dry_run": False,
+                }
+                q.put(("done", summary))
+
+            except Exception as exc:
+                q.put(("error", str(exc)))
+
+        t = threading.Thread(target=worker, daemon=True)
+        t.start()
+
+        while True:
+            try:
+                kind, value = q.get(timeout=600)
+            except queue.Empty:
+                yield "data: [ERROR] Maintenance sync timed out after 10 minutes\n\n"
+                break
+
+            if kind == "progress":
+                yield f"data: {value}\n\n"
+            elif kind == "done":
+                global _records_cache
+                _records_cache = None
+                yield f"data: [RESULT] {json.dumps(value)}\n\n"
+                yield "data: [DONE]\n\n"
+                break
+            elif kind == "error":
+                yield f"data: [ERROR] {value}\n\n"
+                break
+
+        t.join(timeout=5)
+
+    return Response(
+        stream_with_context(generate()),
+        mimetype="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@app.route("/api/maintenance/health-snapshot")
+@login_required
+def api_maintenance_health_snapshot():
+    records = _records_snapshot(use_cache=True)
+    status_counts = {
+        "pending-review": 0,
+        "approved": 0,
+        "rejected": 0,
+        "archived": 0,
+        "other": 0,
+    }
+
+    for rec in records:
+        status = str(rec.get("fields", {}).get("Status", "") or "").strip()
+        if status in status_counts:
+            status_counts[status] += 1
+        else:
+            status_counts["other"] += 1
+
+    integrity = _build_integrity_scorecard(records)
+    drift = _collect_drift_candidates(records, limit=50)
+    orphans = _collect_orphan_snapshot(limit=25, records=records)
+    broken = _collect_broken_thumbnail_snapshot(limit=25, records=records)
+    duplicates = _collect_duplicate_snapshot(limit=25, include_near_alt=True, near_threshold=0.92, records=records)
+
+    return jsonify({
+        "generated_at": _now_utc_iso(),
+        "record_count": len(records),
+        "status_counts": status_counts,
+        "integrity": {
+            "category_count": len(integrity.get("categories", [])),
+            "lowest_category": (integrity.get("categories", [{}])[0] or {}).get("category", "")
+            if integrity.get("categories") else "",
+            "lowest_score": (integrity.get("categories", [{}])[0] or {}).get("integrity_score", 100.0)
+            if integrity.get("categories") else 100.0,
+            "unknown_status_count": integrity.get("unknown_status_count", 0),
+        },
+        "drift": {
+            "candidate_count": drift.get("candidate_count", 0),
+            "reason_counts": drift.get("reason_counts", {}),
+        },
+        "orphans": {
+            "missing_file_records_count": orphans.get("missing_file_records_count", 0),
+            "orphaned_webp_files_count": orphans.get("orphaned_webp_files_count", 0),
+            "orphaned_high_res_files_count": orphans.get("orphaned_high_res_files_count", 0),
+        },
+        "broken": {
+            "broken_count": broken.get("broken_count", 0),
+            "healthy_count": broken.get("healthy_count", 0),
+        },
+        "duplicates": {
+            "duplicate_group_count": duplicates.get("duplicate_group_count", 0),
+            "filename_group_count": duplicates.get("filename_group_count", 0),
+            "slug_group_count": duplicates.get("slug_group_count", 0),
+            "alt_exact_group_count": duplicates.get("alt_exact_group_count", 0),
+            "alt_near_group_count": duplicates.get("alt_near_group_count", 0),
+        },
+    })
+
+
+@app.route("/api/maintenance/integrity-scorecard")
+@login_required
+def api_maintenance_integrity_scorecard():
+    records = _records_snapshot(use_cache=True)
+    return jsonify(_build_integrity_scorecard(records))
+
+
+@app.route("/api/maintenance/aging-drift")
+@login_required
+def api_maintenance_aging_drift():
+    stale_pending_days_raw = request.args.get("stale_pending_days", "14").strip()
+    stale_approved_days_raw = request.args.get("stale_approved_days", "180").strip()
+    min_alt_chars_raw = request.args.get("min_alt_chars", "40").strip()
+    min_tag_count_raw = request.args.get("min_tag_count", "2").strip()
+    limit_raw = request.args.get("limit", "200").strip()
+
+    try:
+        stale_pending_days = max(1, min(int(stale_pending_days_raw), 3650))
+        stale_approved_days = max(1, min(int(stale_approved_days_raw), 3650))
+        min_alt_chars = max(1, min(int(min_alt_chars_raw), 300))
+        min_tag_count = max(0, min(int(min_tag_count_raw), 20))
+        limit = max(10, min(int(limit_raw), 2000))
+    except ValueError:
+        return jsonify({"error": "All thresholds and limit must be integers"}), 400
+
+    records = _records_snapshot(use_cache=True)
+    return jsonify(
+        _collect_drift_candidates(
+            records,
+            stale_pending_days=stale_pending_days,
+            stale_approved_days=stale_approved_days,
+            min_alt_chars=min_alt_chars,
+            min_tag_count=min_tag_count,
+            limit=limit,
+        )
+    )
+
+
+@app.route("/api/maintenance/quality-drift-queue")
+@login_required
+def api_maintenance_quality_drift_queue():
+    limit_raw = request.args.get("limit", "200").strip()
+    try:
+        limit = max(10, min(int(limit_raw), 2000))
+    except ValueError:
+        return jsonify({"error": "limit must be an integer"}), 400
+
+    records = _records_snapshot(use_cache=True)
+    drift = _collect_drift_candidates(records, limit=limit)
+    quality_reasons = {
+        "short-alt",
+        "sparse-tags",
+        "approved-stale",
+        "missing-source",
+        "missing-slug",
+    }
+
+    queue = [
+        item
+        for item in drift.get("candidates", [])
+        if set(item.get("reasons", [])) & quality_reasons
+    ]
+
+    return jsonify({
+        "generated_at": _now_utc_iso(),
+        "queue_reason_filter": sorted(quality_reasons),
+        "queue_count": len(queue),
+        "candidates": queue,
+    })
+
+
+@app.route("/api/maintenance/quality-drift-queue/mark", methods=["POST"])
+@login_required
+def api_maintenance_quality_drift_queue_mark():
+    data = request.get_json(force=True) or {}
+    record_ids, error_response = _parse_record_ids(data, require_confirm_token=False)
+    if error_response:
+        return error_response
+
+    marker = str(data.get("marker", "?retag-queue")).strip() or "?retag-queue"
+    if not marker.startswith("?"):
+        marker = f"?{marker}"
+    set_pending_review = _as_bool(data.get("set_pending_review", True))
+
+    records = _records_snapshot(use_cache=False)
+    by_id = {str(r.get("id", "")).strip(): r for r in records if str(r.get("id", "")).strip()}
+    patches: List[tuple[str, Dict]] = []
+    unchanged = 0
+    missing = 0
+
+    for record_id in record_ids:
+        rec = by_id.get(record_id)
+        if rec is None:
+            missing += 1
+            continue
+
+        fields = rec.get("fields", {})
+        current_tags = str(fields.get("Tags", "") or "").strip()
+        tag_parts = [t.strip() for t in current_tags.split(",") if t.strip()]
+        patch: Dict = {}
+
+        if marker not in tag_parts:
+            tag_parts.append(marker)
+        next_tags = ", ".join(tag_parts)
+        if next_tags != current_tags:
+            patch["Tags"] = next_tags
+
+        if set_pending_review and str(fields.get("Status", "") or "").strip() != "pending-review":
+            patch["Status"] = "pending-review"
+
+        if patch:
+            patches.append((record_id, patch))
+        else:
+            unchanged += 1
+
+    result = _bulk_patch_fields(get_client(), patches)
+    if result.get("updated", 0) > 0:
+        global _records_cache
+        _records_cache = None
+
+    payload = {
+        "requested": len(record_ids),
+        "updated": result.get("updated", 0),
+        "unchanged": unchanged,
+        "missing": missing + len(result.get("missing_ids", [])),
+        "failed": len(result.get("failed_ids", [])),
+        "marker": marker,
+        "set_pending_review": set_pending_review,
+    }
+
+    _maintenance_append_audit("quality-drift-queue-mark", "ok", payload)
+    return jsonify(payload)
+
+
+@app.route("/api/maintenance/category-normalization/preview")
+@login_required
+def api_maintenance_category_normalization_preview():
+    limit_raw = request.args.get("limit", "200").strip()
+    try:
+        limit = max(10, min(int(limit_raw), 2000))
+    except ValueError:
+        return jsonify({"error": "limit must be an integer"}), 400
+
+    records = _records_snapshot(use_cache=True)
+    return jsonify(_build_category_normalization_preview(records, limit=limit))
+
+
+@app.route("/api/maintenance/category-normalization/apply", methods=["POST"])
+@login_required
+def api_maintenance_category_normalization_apply():
+    data = request.get_json(force=True) or {}
+    confirm_token = str(data.get("confirm_token", "")).strip().upper()
+    if confirm_token != "APPLY":
+        return jsonify({"error": "confirm_token must be APPLY"}), 400
+
+    set_pending_review = _as_bool(data.get("set_pending_review", True))
+    expected_count_raw = data.get("expected_count")
+    max_apply_raw = str(data.get("max_apply", "500")).strip()
+    try:
+        max_apply = max(1, min(int(max_apply_raw), 5000))
+    except ValueError:
+        return jsonify({"error": "max_apply must be an integer"}), 400
+
+    expected_count: Optional[int] = None
+    if expected_count_raw is not None:
+        try:
+            expected_count = int(expected_count_raw)
+        except (TypeError, ValueError):
+            return jsonify({"error": "expected_count must be an integer"}), 400
+
+    records = _records_snapshot(use_cache=False)
+    preview = _build_category_normalization_preview(records, limit=5000)
+    preview_by_id = {str(c.get("id", "")).strip(): c for c in preview.get("candidates", []) if str(c.get("id", "")).strip()}
+
+    raw_record_ids = data.get("record_ids", [])
+    selected_ids = []
+    if isinstance(raw_record_ids, list) and raw_record_ids:
+        selected_ids = [str(rid).strip() for rid in raw_record_ids if str(rid).strip()]
+    else:
+        selected_ids = list(preview_by_id.keys())[:max_apply]
+
+    selected_ids = list(dict.fromkeys(selected_ids))
+    selected_ids = [rid for rid in selected_ids if rid in preview_by_id]
+
+    if not selected_ids:
+        return jsonify({"error": "No normalization candidates selected"}), 400
+
+    if expected_count is not None and expected_count != len(selected_ids):
+        return jsonify({
+            "error": "expected_count does not match selected candidate count",
+            "expected_count": expected_count,
+            "current_count": len(selected_ids),
+        }), 409
+
+    max_batch = int(_maintenance_guardrails().get("max_batch_size", 500) or 0)
+    if max_batch > 0 and len(selected_ids) > max_batch:
+        return jsonify({"error": f"Selected candidates exceed max_batch_size={max_batch}"}), 400
+
+    patches: List[tuple[str, Dict]] = []
+    for record_id in selected_ids:
+        candidate = preview_by_id[record_id]
+        patch = {"Location": candidate.get("proposed_location", "")}
+        if set_pending_review:
+            patch["Status"] = "pending-review"
+        patches.append((record_id, patch))
+
+    result = _bulk_patch_fields(get_client(), patches)
+    if result.get("updated", 0) > 0:
+        global _records_cache
+        _records_cache = None
+
+    payload = {
+        "requested": len(selected_ids),
+        "updated": result.get("updated", 0),
+        "failed": len(result.get("failed_ids", [])),
+        "missing": len(result.get("missing_ids", [])),
+        "set_pending_review": set_pending_review,
+    }
+
+    _maintenance_append_audit("category-normalization-apply", "ok", payload)
+    return jsonify(payload)
+
+
+@app.route("/api/maintenance/checkpoints")
+@login_required
+def api_maintenance_checkpoints():
+    with _MAINTENANCE_STATE_LOCK:
+        state = _maintenance_load_state()
+        checkpoints = state.get("checkpoints", [])
+
+    rows = []
+    for item in checkpoints:
+        path = Path(str(item.get("path", "")))
+        rows.append({
+            "checkpoint_id": item.get("checkpoint_id", ""),
+            "name": item.get("name", ""),
+            "note": item.get("note", ""),
+            "created_at": item.get("created_at", ""),
+            "created_by": item.get("created_by", ""),
+            "record_count": item.get("record_count", 0),
+            "exists": path.exists(),
+        })
+
+    rows.sort(key=lambda r: str(r.get("created_at", "")), reverse=True)
+    return jsonify({"checkpoints": rows})
+
+
+@app.route("/api/maintenance/checkpoints/create", methods=["POST"])
+@login_required
+def api_maintenance_checkpoints_create():
+    data = request.get_json(force=True) or {}
+    name = str(data.get("name", "")).strip() or f"manual-{datetime.utcnow().strftime('%Y%m%d-%H%M%S')}"
+    note = str(data.get("note", "")).strip()
+
+    checkpoint = _create_maintenance_checkpoint(name=name, note=note)
+    _maintenance_append_audit("checkpoint-create", "ok", checkpoint)
+    return jsonify(checkpoint)
+
+
+@app.route("/api/maintenance/checkpoints/restore", methods=["POST"])
+@login_required
+def api_maintenance_checkpoints_restore():
+    data = request.get_json(force=True) or {}
+    checkpoint_id = str(data.get("checkpoint_id", "")).strip()
+    confirm_token = str(data.get("confirm_token", "")).strip().upper()
+
+    if not checkpoint_id:
+        return jsonify({"error": "checkpoint_id is required"}), 400
+    if confirm_token != "PURGE":
+        return jsonify({"error": "confirm_token must be PURGE"}), 400
+    if not Config.TEST_MODE:
+        return jsonify({"error": "Checkpoint restore is only available in TEST_MODE"}), 400
+
+    with _MAINTENANCE_STATE_LOCK:
+        state = _maintenance_load_state()
+        checkpoints = state.get("checkpoints", [])
+
+    match = None
+    for item in checkpoints:
+        if str(item.get("checkpoint_id", "")) == checkpoint_id:
+            match = item
+            break
+    if match is None:
+        return jsonify({"error": "checkpoint not found"}), 404
+
+    path = Path(str(match.get("path", "")))
+    if not path.exists():
+        return jsonify({"error": "checkpoint file missing"}), 404
+
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        return jsonify({"error": f"Invalid checkpoint payload: {exc}"}), 500
+
+    checkpoint_records = payload.get("records", [])
+    if not isinstance(checkpoint_records, list):
+        return jsonify({"error": "checkpoint records payload is invalid"}), 500
+
+    local_client = LocalClient()
+    _atomic_json_write(Path(local_client.db_path), checkpoint_records)
+
+    global _records_cache
+    _records_cache = None
+
+    restore_result = {
+        "checkpoint_id": checkpoint_id,
+        "restored_records": len(checkpoint_records),
+    }
+    _maintenance_append_audit("checkpoint-restore", "ok", restore_result)
+    return jsonify(restore_result)
+
+
+@app.route("/api/maintenance/scheduled-jobs")
+@login_required
+def api_maintenance_scheduled_jobs():
+    with _MAINTENANCE_STATE_LOCK:
+        state = _maintenance_load_state()
+        jobs = state.get("jobs", {})
+
+    return jsonify({
+        "jobs": jobs,
+        "available_jobs": [
+            {"name": "health_snapshot", "label": "M10 Health Snapshot"},
+            {"name": "integrity_scorecard", "label": "M11 Integrity Scorecard"},
+            {"name": "aging_drift_scan", "label": "M12 Aging and Drift Scanner"},
+        ],
+    })
+
+
+@app.route("/api/maintenance/scheduled-jobs/config", methods=["POST"])
+@login_required
+def api_maintenance_scheduled_jobs_config():
+    data = request.get_json(force=True) or {}
+    enabled = _as_bool(data.get("enabled", False))
+    interval_raw = str(data.get("interval_minutes", "1440")).strip()
+    job_names = data.get("job_names", ["health_snapshot", "integrity_scorecard", "aging_drift_scan"])
+
+    try:
+        interval_minutes = max(5, min(int(interval_raw), 10080))
+    except ValueError:
+        return jsonify({"error": "interval_minutes must be an integer"}), 400
+
+    valid_job_names = {"health_snapshot", "integrity_scorecard", "aging_drift_scan"}
+    if not isinstance(job_names, list):
+        return jsonify({"error": "job_names must be a list"}), 400
+    selected = [str(name).strip() for name in job_names if str(name).strip() in valid_job_names]
+    if not selected:
+        return jsonify({"error": "At least one valid job_name is required"}), 400
+
+    with _MAINTENANCE_STATE_LOCK:
+        state = _maintenance_load_state()
+        jobs = state.get("jobs", {})
+        jobs["enabled"] = enabled
+        jobs["interval_minutes"] = interval_minutes
+        jobs["job_names"] = selected
+        state["jobs"] = jobs
+        _maintenance_save_state(state)
+
+    payload = {
+        "enabled": enabled,
+        "interval_minutes": interval_minutes,
+        "job_names": selected,
+    }
+    _maintenance_append_audit("scheduled-jobs-config", "ok", payload)
+    return jsonify(payload)
+
+
+@app.route("/api/maintenance/scheduled-jobs/run", methods=["POST"])
+@login_required
+def api_maintenance_scheduled_jobs_run():
+    data = request.get_json(force=True) or {}
+    requested_job = str(data.get("job_name", "all")).strip()
+
+    with _MAINTENANCE_STATE_LOCK:
+        state = _maintenance_load_state()
+        jobs_state = state.get("jobs", {})
+        configured_jobs = jobs_state.get("job_names", ["health_snapshot", "integrity_scorecard", "aging_drift_scan"])
+
+    valid_job_names = {"health_snapshot", "integrity_scorecard", "aging_drift_scan"}
+    configured_jobs = [name for name in configured_jobs if name in valid_job_names]
+    if not configured_jobs:
+        configured_jobs = ["health_snapshot", "integrity_scorecard", "aging_drift_scan"]
+
+    if requested_job and requested_job != "all":
+        if requested_job not in valid_job_names:
+            return jsonify({"error": "Invalid job_name"}), 400
+        target_jobs = [requested_job]
+    else:
+        target_jobs = configured_jobs
+
+    records = _records_snapshot(use_cache=True)
+    run_results = []
+    for job_name in target_jobs:
+        run_results.append(_run_named_maintenance_job(job_name, records))
+
+    with _MAINTENANCE_STATE_LOCK:
+        state = _maintenance_load_state()
+        jobs = state.get("jobs", {})
+        last_runs = jobs.get("last_runs", {})
+        now_iso = _now_utc_iso()
+        for result in run_results:
+            last_runs[result["job"]] = {
+                "ran_at": now_iso,
+                "ran_by": _maintenance_actor(),
+                "summary": result.get("summary", {}),
+            }
+        jobs["last_runs"] = last_runs
+        state["jobs"] = jobs
+        _maintenance_save_state(state)
+
+    payload = {"run_results": run_results}
+    _maintenance_append_audit("scheduled-jobs-run", "ok", payload)
+    return jsonify(payload)
+
+
+@app.route("/api/maintenance/audit")
+@login_required
+def api_maintenance_audit():
+    limit_raw = request.args.get("limit", "100").strip()
+    action_filter = request.args.get("action", "").strip().lower()
+
+    try:
+        limit = max(1, min(int(limit_raw), 500))
+    except ValueError:
+        return jsonify({"error": "limit must be an integer"}), 400
+
+    with _MAINTENANCE_STATE_LOCK:
+        state = _maintenance_load_state()
+        events = list(state.get("audit_trail", []))
+
+    events.sort(key=lambda e: str(e.get("timestamp", "")), reverse=True)
+    if action_filter:
+        events = [e for e in events if str(e.get("action", "")).strip().lower() == action_filter]
+
+    return jsonify({
+        "count": len(events),
+        "events": events[:limit],
+    })
+
+
+@app.route("/api/maintenance/guardrails")
+@login_required
+def api_maintenance_guardrails():
+    return jsonify(_maintenance_guardrails())
+
+
+@app.route("/api/maintenance/guardrails", methods=["POST"])
+@login_required
+def api_maintenance_guardrails_update():
+    data = request.get_json(force=True) or {}
+    max_batch_raw = str(data.get("max_batch_size", "500")).strip()
+    try:
+        max_batch_size = max(1, min(int(max_batch_raw), 10000))
+    except ValueError:
+        return jsonify({"error": "max_batch_size must be an integer"}), 400
+
+    guardrails = {
+        "max_batch_size": max_batch_size,
+        "require_preview_for_destructive": _as_bool(data.get("require_preview_for_destructive", True)),
+        "two_step_approval_required": _as_bool(data.get("two_step_approval_required", False)),
+        "checkpoint_before_destructive": _as_bool(data.get("checkpoint_before_destructive", False)),
+    }
+
+    with _MAINTENANCE_STATE_LOCK:
+        state = _maintenance_load_state()
+        state["guardrails"] = guardrails
+        _maintenance_save_state(state)
+
+    _maintenance_append_audit("guardrails-update", "ok", guardrails)
+    return jsonify(guardrails)
+
+
+@app.route("/api/maintenance/approvals")
+@login_required
+def api_maintenance_approvals_list():
+    status_filter = request.args.get("status", "").strip().lower()
+    limit_raw = request.args.get("limit", "100").strip()
+
+    try:
+        limit = max(1, min(int(limit_raw), 500))
+    except ValueError:
+        return jsonify({"error": "limit must be an integer"}), 400
+
+    with _MAINTENANCE_STATE_LOCK:
+        state = _maintenance_load_state()
+        approvals = list(state.get("approvals", []))
+
+    approvals.sort(key=lambda a: str(a.get("requested_at", "")), reverse=True)
+    if status_filter:
+        approvals = [a for a in approvals if str(a.get("status", "")).strip().lower() == status_filter]
+
+    return jsonify({
+        "count": len(approvals),
+        "approvals": approvals[:limit],
+    })
+
+
+@app.route("/api/maintenance/approvals/request", methods=["POST"])
+@login_required
+def api_maintenance_approvals_request():
+    data = request.get_json(force=True) or {}
+    action = str(data.get("action", "")).strip()
+    if not action:
+        return jsonify({"error": "action is required"}), 400
+
+    record_ids, error_response = _parse_record_ids(data, require_confirm_token=False)
+    if error_response:
+        return error_response
+
+    expected_count_raw = data.get("expected_count")
+    expected_count = None
+    if expected_count_raw is not None:
+        try:
+            expected_count = int(expected_count_raw)
+        except (TypeError, ValueError):
+            return jsonify({"error": "expected_count must be an integer"}), 400
+
+    if expected_count is not None and expected_count != len(record_ids):
+        return jsonify({
+            "error": "expected_count does not match record_ids length",
+            "expected_count": expected_count,
+            "record_count": len(record_ids),
+        }), 409
+
+    expires_hours_raw = str(data.get("expires_hours", "24")).strip()
+    try:
+        expires_hours = max(1, min(int(expires_hours_raw), 168))
+    except ValueError:
+        return jsonify({"error": "expires_hours must be an integer"}), 400
+
+    token = f"apr_{uuid.uuid4().hex[:12]}"
+    now_iso = _now_utc_iso()
+    expires_at_epoch = time.time() + (expires_hours * 3600)
+
+    approval = {
+        "token": token,
+        "action": action,
+        "record_count": len(record_ids),
+        "record_hash": _maintenance_record_hash(record_ids),
+        "requested_by": _maintenance_actor(),
+        "requested_at": now_iso,
+        "expires_at": datetime.utcfromtimestamp(expires_at_epoch).replace(microsecond=0).isoformat() + "Z",
+        "expires_at_epoch": expires_at_epoch,
+        "status": "pending",
+        "note": str(data.get("note", "")).strip(),
+        "approved_by": "",
+        "approved_at": "",
+    }
+
+    with _MAINTENANCE_STATE_LOCK:
+        state = _maintenance_load_state()
+        approvals = state.get("approvals", [])
+        approvals.append(approval)
+        state["approvals"] = approvals[-300:]
+        _maintenance_save_state(state)
+
+    _maintenance_append_audit("approval-request", "ok", {
+        "token": token,
+        "action": action,
+        "record_count": len(record_ids),
+    })
+    return jsonify(approval)
+
+
+@app.route("/api/maintenance/approvals/approve", methods=["POST"])
+@login_required
+def api_maintenance_approvals_approve():
+    data = request.get_json(force=True) or {}
+    token = str(data.get("token", "")).strip()
+    decision = str(data.get("decision", "approve")).strip().lower()
+
+    if not token:
+        return jsonify({"error": "token is required"}), 400
+    if decision not in {"approve", "reject"}:
+        return jsonify({"error": "decision must be approve or reject"}), 400
+
+    with _MAINTENANCE_STATE_LOCK:
+        state = _maintenance_load_state()
+        approvals = state.get("approvals", [])
+        target = None
+        for item in approvals:
+            if str(item.get("token", "")) == token:
+                target = item
+                break
+
+        if target is None:
+            return jsonify({"error": "approval token not found"}), 404
+        if str(target.get("status", "")) not in {"pending", "approved", "rejected"}:
+            return jsonify({"error": "approval token cannot be updated"}), 409
+
+        target["status"] = "approved" if decision == "approve" else "rejected"
+        target["approved_at"] = _now_utc_iso()
+        target["approved_by"] = _maintenance_actor()
+        target["decision_note"] = str(data.get("note", "")).strip()
+
+        state["approvals"] = approvals[-300:]
+        _maintenance_save_state(state)
+
+    _maintenance_append_audit("approval-decision", "ok", {
+        "token": token,
+        "decision": decision,
+    })
+    return jsonify(target)
+
+
 @app.route("/api/tag-library", methods=["GET"])
+@login_required
 def api_tag_library_get():
     from src.tag_library import TagLibrary
     return jsonify(TagLibrary.instance().get_all())
 
 
 @app.route("/api/tag-library/suggestions")
+@login_required
 def api_tag_library_suggestions():
     """Return all ?suggested tags found across existing records."""
     records = get_all_records()
@@ -730,6 +4011,7 @@ def api_tag_library_suggestions():
 
 
 @app.route("/api/tag-library/add", methods=["POST"])
+@login_required
 def api_tag_library_add():
     data = request.get_json(force=True)
     tag      = data.get("tag", "").strip()
@@ -742,6 +4024,7 @@ def api_tag_library_add():
 
 
 @app.route("/api/tag-library/remove", methods=["POST"])
+@login_required
 def api_tag_library_remove():
     data = request.get_json(force=True)
     tag = data.get("tag", "").strip()
@@ -753,6 +4036,7 @@ def api_tag_library_remove():
 
 
 @app.route("/api/tag-library/promote", methods=["POST"])
+@login_required
 def api_tag_library_promote():
     """Promote a ?suggested tag to an approved tag."""
     data     = request.get_json(force=True)
@@ -798,6 +4082,7 @@ def upload():
 
 
 @app.route("/api/upload/stage", methods=["POST"])
+@login_required
 def api_upload_stage():
     """Receive multipart file upload, save to temp, return staged IDs."""
     files = request.files.getlist("files")
@@ -820,6 +4105,7 @@ def api_upload_stage():
 
 
 @app.route("/api/upload/process")
+@login_required
 def api_upload_process():
     """SSE stream — run the full pipeline for one staged file."""
     file_id = request.args.get("id", "")
@@ -868,6 +4154,7 @@ def api_upload_process():
                     storage_mode=storage_mode,
                     on_progress=lambda msg: q.put(("progress", msg)),
                     category=category,
+                    source="Internal",
                 )
                 q.put(("done", result))
             except Exception as exc:

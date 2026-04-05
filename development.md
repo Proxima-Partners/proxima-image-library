@@ -50,15 +50,16 @@ ANTHROPIC_API_KEY=sk-ant-...
 IMAGE_FOLDER=/absolute/path/to/your/images
 TEST_MODE=true
 STORAGE_MODE=local
+DEV_AUTH_BYPASS=true
 FLASK_SECRET_KEY=any-random-string
-MSAL_CLIENT_ID=<azure-app-client-id>
-MSAL_CLIENT_SECRET=<azure-app-client-secret>
-MSAL_TENANT_ID=<azure-tenant-id>
-MSAL_REDIRECT_URI=http://localhost:5000/auth/callback
 ```
 
 `TEST_MODE=true` uses `test_data/local_table.json` instead of SharePoint List.
 `STORAGE_MODE=local` serves image files from `IMAGE_FOLDER` instead of SharePoint.
+`DEV_AUTH_BYPASS=true` skips MSAL login locally so pages and APIs work immediately.
+
+If you want to validate real Microsoft login locally, set `DEV_AUTH_BYPASS=false`
+and provide the MSAL variables shown in `.env.example`.
 
 **Full `.env` for live SharePoint mode:** see [PRODUCTION_DEPLOY.md](PRODUCTION_DEPLOY.md).
 
@@ -69,15 +70,13 @@ MSAL_REDIRECT_URI=http://localhost:5000/auth/callback
 **Development (local data — safe, no SharePoint writes):**
 
 ```bash
-source .venv/bin/activate
-flask --app src.app run --port 5000 --debug
+TEST_MODE=true STORAGE_MODE=local DEV_AUTH_BYPASS=true .venv/bin/python3 -m flask --app src.app run --port 5000 --debug
 ```
 
 **Live (writes to SharePoint):**
 
 ```bash
-source .venv/bin/activate
-flask --app src.app run --port 5000
+.venv/bin/python3 -m flask --app src.app run --port 5000
 ```
 
 Open [http://localhost:5000](http://localhost:5000) — first visit redirects to Microsoft login via MSAL.
@@ -148,10 +147,10 @@ This exits `.zshrc` immediately for non-interactive shells (which is what Deskto
 ## Running Tests
 
 ```bash
-pytest
+.venv/bin/python3 -m pytest
 # or
-pytest -v
-pytest tests/test_rename_assets.py
+.venv/bin/python3 -m pytest -v
+.venv/bin/python3 -m pytest tests/test_rename_assets.py
 ```
 
 Tests live in `tests/` and use `pytest`. No `.env` required — tests instantiate modules directly with `tmp_path` fixtures and do not call any external APIs.
@@ -281,12 +280,14 @@ Keep the model pinned to `claude-sonnet-4-6`. Do not change it without discussio
 | `ANTHROPIC_API_KEY` | Always | — | Claude API key |
 | `IMAGE_FOLDER` | Always | `./assets` | Absolute path to local image directory |
 | `TEST_MODE` | No | `false` | `true` uses LocalClient (local JSON) instead of SharePoint List |
+| `DEV_AUTH_BYPASS` | No | `true` in TEST_MODE, else `false` | Local auth bypass; only valid when `TEST_MODE=true` |
 | `STORAGE_MODE` | No | `local` | `local` serves files from IMAGE_FOLDER; `sharepoint` redirects to SharePoint CDN |
 | `FLASK_SECRET_KEY` | Always | — | Flask session signing key — use a random 32+ byte hex string |
-| `MSAL_CLIENT_ID` | Always | — | Azure app registration client ID |
-| `MSAL_CLIENT_SECRET` | Always | — | Azure app registration client secret |
-| `MSAL_TENANT_ID` | Always | — | Azure tenant ID |
-| `MSAL_REDIRECT_URI` | Always | `http://localhost:5000/auth/callback` | Must match Azure app redirect URI |
+| `MSAL_CLIENT_ID` | Live mode (or local real-auth testing) | — | Azure app registration client ID |
+| `MSAL_CLIENT_SECRET` | Live mode (or local real-auth testing) | — | Azure app registration client secret |
+| `MSAL_TENANT_ID` | Live mode (or local real-auth testing) | — | Azure tenant ID |
+| `MSAL_REDIRECT_URI` | Live mode (or local real-auth testing) | `http://localhost:5000/auth/callback` | Must match Azure app redirect URI |
+| `MAINTENANCE_ADMIN_USERS` | Recommended for live mode | — | Comma-separated allowlist for `/maintenance` and `/api/maintenance/*` |
 | `SHAREPOINT_TENANT_ID` | Live mode | — | SharePoint tenant ID |
 | `SHAREPOINT_CLIENT_ID` | Live mode | — | SharePoint app client ID |
 | `SHAREPOINT_CLIENT_SECRET` | Live mode | — | SharePoint app client secret |
@@ -312,9 +313,10 @@ Keep the model pinned to `claude-sonnet-4-6`. Do not change it without discussio
 | MCP tools not loading in Claude Desktop | Desktop utility process crashes on shell env extraction | Add `[[ $- != *i* ]] && return` to top of `~/.zshrc`; also set `TEST_MODE`/`STORAGE_MODE` explicitly in Desktop MCP config `env` block |
 | MCP server read-only filesystem error | `LocalClient` or `load_dotenv` using relative paths, resolving to a non-writable directory | MCP server must use absolute paths anchored to `__file__` — never relative paths |
 | Port 5000 in use | macOS AirPlay Receiver | System Settings → General → AirDrop & Handoff → disable AirPlay Receiver |
+| App exits immediately in live mode with config error | `DEV_AUTH_BYPASS=true` while `TEST_MODE=false` | Set `DEV_AUTH_BYPASS=false` for all non-test environments |
 | Stock search tab shows "not configured" | Missing env var | Add the relevant API key(s) to `.env` |
 | Thumbnail returns 500 | Image format unreadable by Pillow (e.g. CMYK JPEG) | Convert source image to sRGB before adding to `IMAGE_FOLDER` |
-| `build_plan` re-renames already-named files | Slug derived from full stem including prefix | Run rename once per batch — re-running is safe but will double-prefix |
+| `build_plan` skips already-normalized names | Source and target names already match | Expected behavior; only files needing normalization are planned |
 | `local_table.json` corrupt after concurrent writes | Concurrent PATCH requests (e.g. Approve All) all read-modify-write simultaneously | Fixed: `LocalClient._save()` uses atomic write (`.tmp` + rename) and `_LOCK` threading lock — serialises all reads/writes |
 | Review badge count stale after approving | `get_all_records()` 5-minute cache not invalidated on status change | Fixed: `api_image_status` sets `_records_cache = None` on every successful PATCH |
 
@@ -338,9 +340,7 @@ The Proxima Writing Claude Desktop project uses the MCP server tools. After any 
 
 See [EDIT_LIST.md](EDIT_LIST.md) for the full queue. Key upcoming items:
 
-- **M1–M7** — Maintenance utilities (orphan finder, duplicate detector, bulk re-tag, export, purge)
-- **M8** — High-Res source-based folder structure + WebP sync utility
-- **M9** — Remove all remaining Airtable references
+- **Maintenance note** — M1–M8 and M10–M20 are implemented; prioritize regression coverage under T1
 - **T1** — Comprehensive pre-production test protocol
 - **T2** — Security audit checklist
 - **T3** — Full code audit (unused code, redundancy, latency, conventions)

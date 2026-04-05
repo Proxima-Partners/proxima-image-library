@@ -1,7 +1,7 @@
-"""Main script for Asset Library - orchestrates image processing and Airtable sync."""
+"""Main script for Asset Library - orchestrates image processing and list sync."""
 
 import sys
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import List
 
 from src.config import Config
@@ -18,6 +18,7 @@ class AssetLibrary:
     def __init__(self):
         """Initialize the asset library with all components."""
         try:
+            Config.validate_runtime()
             Config.validate()
         except ValueError as e:
             print(f"Configuration error: {e}")
@@ -26,21 +27,21 @@ class AssetLibrary:
         self.generator = AltTextGenerator()
         if Config.TEST_MODE:
             print("⚠️  TEST MODE — using local JSON store (test_data/local_table.json)")
-            self.scanner = ImageScanner()
-            self.airtable = LocalClient()
+            self.scanner = ImageScanner(folder=str(Path(Config.IMAGE_FOLDER) / "High-Res"))
+            self.list_client = LocalClient()
             self.sp = None
         else:
             from src.sharepoint_client import SharePointScanner, SharePointClient
             from src.sharepoint_list_client import SharePointListClient
             self.scanner = SharePointScanner()
-            self.airtable = SharePointListClient()
+            self.list_client = SharePointListClient()
             self.sp = SharePointClient()
 
     def sync_new_images(self, dry_run: bool = False) -> int:
-        """Scan for new images and add them to Airtable with alt text.
+        """Scan for new images and add them to the metadata list with alt text.
 
         Args:
-            dry_run: If True, don't actually modify Airtable, just show what would happen
+            dry_run: If True, don't actually modify records, just show what would happen
 
         Returns:
             Number of images processed
@@ -49,8 +50,8 @@ class AssetLibrary:
         all_images = self.scanner.get_all_images()
         print(f"Found {len(all_images)} total images")
 
-        # Get existing records from Airtable
-        existing_records = self.airtable.get_records(limit=100)
+        # Get existing records from the metadata list
+        existing_records = self.list_client.get_records(limit=100)
         processed_filenames = {record["fields"].get("Filename") for record in existing_records}
 
         # Find new images
@@ -103,18 +104,21 @@ class AssetLibrary:
 
             # Build SharePoint-aware location paths
             category = map_to_category(relative_path, tags)
+            rel_posix = str(PurePosixPath(relative_path))
+            source = PurePosixPath(relative_path).parts[0] if PurePosixPath(relative_path).parts else "Internal"
             webp_location     = f"{category}/{slug}.webp"
-            high_res_location = f"{category}/{filename}"
+            high_res_location = rel_posix
 
             if not dry_run:
                 print("  📤 Writing to SharePoint List...")
-                record = self.airtable.create_record(
+                record = self.list_client.create_record(
                     filename=filename,
                     alt_text=alt_text,
                     tags=tags,
                     slug=slug,
                     location=webp_location,
                     high_res_location=high_res_location,
+                    source=source,
                     status="pending-review",
                 )
 
@@ -163,28 +167,28 @@ class AssetLibrary:
 
         print(f"New alt text: {alt_text}")
 
-        # Find and update the Airtable record
-        records = self.airtable.get_records(limit=100)
+        # Find and update the metadata record
+        records = self.list_client.get_records(limit=100)
         for record in records:
             if record["fields"].get("Filename") == filename:
-                success = self.airtable.update_record(record["id"], alt_text)
+                success = self.list_client.update_record(record["id"], alt_text)
                 if success:
-                    print("✅ Record updated in Airtable")
+                    print("✅ Record updated in metadata list")
                     return True
                 else:
-                    print("❌ Failed to update Airtable record")
+                    print("❌ Failed to update metadata record")
                     return False
 
-        print(f"Record not found in Airtable: {filename}")
+        print(f"Record not found in metadata list: {filename}")
         return False
 
     def list_images_status(self) -> None:
         """List all images and their processing status."""
         print("📋 Image Status Report\n")
 
-        scanner = ImageScanner()
+        scanner = ImageScanner(folder=str(Path(Config.IMAGE_FOLDER) / "High-Res"))
         all_images = scanner.get_all_images()
-        records = self.airtable.get_records(limit=100)
+        records = self.list_client.get_records(limit=100)
 
         processed_filenames = {record["fields"].get("Filename"): record for record in records}
 

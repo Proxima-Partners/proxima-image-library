@@ -148,6 +148,25 @@ class SharePointClient:
         resp.raise_for_status()
         return resp.json()
 
+    def delete_file(self, sharepoint_path: str) -> bool:
+        """Delete a file by its full path from the drive root.
+
+        Returns True when deleted and False when the file is missing.
+        Raises for other non-success responses.
+        """
+        path = str(sharepoint_path or "").strip().strip("/")
+        if not path:
+            return False
+
+        url = f"{self.GRAPH_BASE}/drives/{self.drive_id}/root:/{path}"
+        resp = requests.delete(url, headers=self._headers(), timeout=30)
+        if resp.status_code in (200, 204):
+            return True
+        if resp.status_code == 404:
+            return False
+        resp.raise_for_status()
+        return False
+
     def _upload_session(self, path: str, content_bytes: bytes) -> dict:
         """Upload large files using the Graph API resumable upload session."""
         url = f"{self.GRAPH_BASE}/drives/{self.drive_id}/root:/{path}:/createUploadSession"
@@ -182,11 +201,11 @@ class SharePointClient:
 
 
 class SharePointScanner(SharePointClient):
-    """Scans SharePoint for images — same interface as ImageScanner.
+    """Scans SharePoint for images - same interface as ImageScanner.
 
     Returns (sharepoint_path, relative_path) tuples where:
-      sharepoint_path — full path from drive root used for API calls
-      relative_path   — path relative to the image folder root (used in Airtable Location)
+        sharepoint_path - full path from drive root used for API calls
+        relative_path - path relative to the image folder root (used in the Location field)
     """
 
     def get_all_images(self) -> List[Tuple[str, str]]:

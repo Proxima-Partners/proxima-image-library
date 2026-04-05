@@ -5,7 +5,7 @@ Used by Feature 2 (upload) and any future feature that catalogs an image.
 
 import re
 from io import BytesIO
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Callable, Optional
 
 from PIL import Image as PILImage
@@ -17,6 +17,29 @@ WEBP_MAX_SIDE = 1600
 WEBP_QUALITY = 80
 
 CATEGORIES = ["Headshots", "Community", "Locations", "Situations", "Graphics", "Banners"]
+SOURCES = ["ShutterStock", "AdobeStock", "Unsplash", "Pexels", "Pixabay", "Internal"]
+
+_SOURCE_ALIASES = {
+    "shutterstock": "ShutterStock",
+    "adobestock": "AdobeStock",
+    "adobe-stock": "AdobeStock",
+    "adobe stock": "AdobeStock",
+    "unsplash": "Unsplash",
+    "pexels": "Pexels",
+    "pixabay": "Pixabay",
+    "internal": "Internal",
+}
+
+
+def normalize_source(source: Optional[str]) -> str:
+    """Normalize free-form source values to a supported canonical source."""
+    if not source:
+        return "Internal"
+    raw = source.strip()
+    if raw in SOURCES:
+        return raw
+    key = re.sub(r"[^a-z0-9]+", "", raw.lower())
+    return _SOURCE_ALIASES.get(key, "Internal")
 
 
 # ---------------------------------------------------------------------------
@@ -86,6 +109,9 @@ def process_image(
     on_progress: Optional[Callable[[str], None]] = None,
     category: Optional[str] = None,
     source_context: Optional[str] = None,
+    source: Optional[str] = None,
+    write_high_res: bool = True,
+    high_res_location_override: Optional[str] = None,
 ) -> dict:
     """Full pipeline for a single image.
 
@@ -119,6 +145,7 @@ def process_image(
         raise ValueError(f"Invalid category '{category}'. Must be one of: {CATEGORIES}")
 
     ext = Path(original_filename).suffix.lower() or ".jpg"
+    source_name = normalize_source(source)
 
     def _log(msg: str) -> None:
         if on_progress:
@@ -152,13 +179,16 @@ def process_image(
     webp_filename = f"{slug}.webp"
     highres_filename = f"{slug}-original{ext}"
     location = f"{category}/{webp_filename}"
-    high_res_location = f"{category}/{highres_filename}"
+    high_res_location = high_res_location_override or f"{source_name}/{highres_filename}"
 
     # ── Steps 5a–5b: Store files ───────────────────────────────────────────
     if storage_mode == "sharepoint" and sp_client is not None:
         root = Config.SHAREPOINT_IMAGE_FOLDER
-        _log("Uploading High-Res to SharePoint…")
-        sp_client.upload_file(f"{root}/High-Res/{category}", highres_filename, file_bytes)
+        hr_rel = PurePosixPath(high_res_location)
+        if write_high_res:
+            _log("Uploading High-Res to SharePoint…")
+            hr_folder = f"{root}/High-Res/{hr_rel.parent}" if str(hr_rel.parent) != "." else f"{root}/High-Res"
+            sp_client.upload_file(hr_folder, hr_rel.name, file_bytes)
         _log("Uploading WebP to SharePoint…")
         sp_client.upload_file(f"{root}/WebP/{category}", webp_filename, webp_bytes)
     else:
@@ -169,9 +199,10 @@ def process_image(
         webp_path.parent.mkdir(parents=True, exist_ok=True)
         webp_path.write_bytes(webp_bytes)
 
-        hr_path = base / "High-Res" / category / highres_filename
-        hr_path.parent.mkdir(parents=True, exist_ok=True)
-        hr_path.write_bytes(file_bytes)
+        if write_high_res:
+            hr_path = base / "High-Res" / Path(high_res_location)
+            hr_path.parent.mkdir(parents=True, exist_ok=True)
+            hr_path.write_bytes(file_bytes)
 
     # ── Step 6: Metadata record ────────────────────────────────────────────
     _log("Writing metadata record…")
@@ -183,6 +214,7 @@ def process_image(
         slug=slug,
         location=location,
         high_res_location=high_res_location,
+        source=source_name,
     )
 
     _log("Done.")
@@ -193,5 +225,6 @@ def process_image(
         "tags": tags,
         "location": location,
         "high_res_location": high_res_location,
+        "source": source_name,
         "status": "pending-review",
     }

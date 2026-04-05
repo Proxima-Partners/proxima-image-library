@@ -86,16 +86,13 @@ class TestBuildPlan:
         _, new = plan[0]
         assert new.name == "pfx-img.jpg"
 
-    def test_already_named_files_are_not_skipped(self, tmp_path):
-        """A file like 'pfx-img.jpg' still gets renamed because its slug
-        produces a different target: 'pfx-pfx-img.jpg'."""
+    def test_already_named_files_are_skipped(self, tmp_path):
+        """A file already matching the target naming convention is skipped."""
         name = "pfx-img.jpg"
         src = tmp_path / name
         src.touch()
         plan = build_plan([(str(src), name)], prefix="pfx", start_index=1)
-        assert len(plan) == 1
-        _, new = plan[0]
-        assert new.name == "pfx-pfx-img.jpg"
+        assert len(plan) == 0
 
     def test_empty_input(self):
         assert build_plan([], prefix="pfx", start_index=1) == []

@@ -10,45 +10,6 @@ Pending changes — rebuild only on approval.
 
 ## Future Development Queue
 
-### M1. Maintenance page — Orphan file finder
-
-- Compare image files on disk to records in the library (and vice versa)
-- Surface files with no record and records with no file
-- Both `LocalClient` and `SharePointListClient` implementations
-- UI: table of mismatches with option to delete orphaned records or flag missing files
-
-### M2. Maintenance page — Duplicate detector
-
-- Find records with identical filenames, slugs, or near-identical alt text
-- Useful after multiple scan runs
-- UI: grouped list of duplicates with option to delete/merge
-
-### M3. Maintenance page — Bulk re-tag
-
-- Select records by category, tag, or status filter
-- Re-run Claude vision on selected images to regenerate alt text and/or tags
-- Streams progress via SSE; results land in `pending-review` for human sign-off
-- Useful when tag vocabulary changes
-
-### M4. Maintenance page — Broken thumbnail checker
-
-- Scan all records and attempt to load each image file
-- Flag records where the file is missing, unreadable, or corrupt
-- UI: list of broken records with option to delete or re-link
-
-### M5. Maintenance page — Status reset
-
-- Bulk-set a filtered set of records back to `pending-review`
-- Filters: by category, tag, current status, or date range
-- Confirmation step before applying
-- Useful for re-reviewing after vocabulary or policy changes
-
-### M6. Maintenance page — Export to CSV
-
-- Download full library as CSV (id, filename, category, alt text, tags, status, location)
-- Optional filter by category or status before export
-- Useful for audits or bulk edits in Excel
-
 ### T1. Comprehensive pre-production testing protocol
 
 Develop and execute a full test protocol before any Azure production deployment.
@@ -90,7 +51,7 @@ Develop and execute a full test protocol before any Azure production deployment.
 - Pexels, Shutterstock, Unsplash, Pixabay each return results
 - Shutterstock quota gate triggers at limit
 - "Add to Library" SSE stream completes and record appears in library
-- Downloaded image lands in correct High-Res source folder (post-M8)
+- Downloaded image lands in correct High-Res source folder
 
 **MCP tools (Claude Desktop):**
 
@@ -104,11 +65,13 @@ Develop and execute a full test protocol before any Azure production deployment.
 - Promoted tags appear in search filter
 - Changes persist across server restart
 
-**Maintenance utilities (post-M1–M9):**
+**Maintenance utilities (post-M1–M20):**
 
 - Each utility completes without error in TEST_MODE
 - Orphan finder correctly identifies staged test orphans
 - CSV export produces valid file with all fields
+- M10-M19 endpoints pass smoke checks (health, integrity, drift, normalization, checkpointing, jobs, audit, guardrails, approvals)
+- Two-step approval gate blocks destructive actions without approved token when enabled
 
 **Performance:**
 
@@ -191,7 +154,7 @@ Systematic review of the entire codebase before Azure production deployment. Goa
 
 **Unused code & dead paths:**
 
-- Remove `src/airtable_client.py` and all remaining Airtable imports (see M9)
+- Confirm no legacy Airtable references remain in source/docs (spot-check after merges)
 - Audit all `@app.route` endpoints — identify any that are unreachable or no longer wired to a UI
 - Remove commented-out code blocks throughout `src/app.py`, `src/image_processor.py`, `src/mcp_server.py`
 - Check `src/__init__.py` for stale imports
@@ -202,7 +165,7 @@ Systematic review of the entire codebase before Azure production deployment. Goa
 
 - Review `LocalClient` and `SharePointListClient` for duplicate logic that should be in a shared base class or helper
 - Audit `src/app.py` for repeated patterns (e.g. `get_client()` calls, error response formatting) that should be factored into helpers
-- Check for duplicate route logic between `/run/scan-test` and `/run/scan-airtable`
+- Check for duplicate route logic between `/run/scan-test` and `/run/scan-live`
 - Review stock client classes for shared fetch/retry logic that could be consolidated
 
 **Latency & performance:**
@@ -276,54 +239,112 @@ Test the full writing workflow from Claude through to published content:
 - Full run from blank prompt → finished article → Webflow CMS item with image, no manual steps
 - Review queue receives any newly cataloged images from the session
 
-### M9. Remove all Airtable references
-
-- Delete `src/airtable_client.py` (replaced by `SharePointListClient` + `LocalClient`)
-- Audit and update 13 files that contain Airtable references:
-  `src/app.py`, `src/local_client.py`, `src/sharepoint_list_client.py`, `src/main.py`,
-  `src/sharepoint_client.py`, `src/config.py`, `src/__init__.py`,
-  `development.md`, `README.md`, `specification.md`, `.github/copilot-instructions.md`
-- Replace `AirtableClient` references in code with `SharePointListClient` or `LocalClient` as appropriate
-- Update all docs to remove mention of Airtable as a backend option
-- Verify no imports of `airtable_client` remain
-
-### M8. High-Res directory — source-based folders + WebP sync utility
-
-**Directory restructure:**
-
-- High-Res local folder uses source-based subfolders instead of category: `IMAGE_FOLDER/High-Res/{source}/{file}`
-- Sources: `ShutterStock`, `AdobeStock`, `Unsplash`, `Pexels`, `Pixabay`, `Internal`
-- WebP directory keeps existing category-based structure: `IMAGE_FOLDER/WebP/{category}/{file}`
-- Source is stored as a new `Source` field on the library record
-
-**Sync utility (maintenance page):**
-
-- Scan all High-Res source folders for image files
-- Identify files that have no matching library record (user-dropped files, direct copies)
-- For each unprocessed file: convert to WebP → run Claude metadata pipeline → create record with `status=pending-review`
-- Also detect WebP files with no corresponding High-Res original (orphaned WebP) and flag them
-- Streams progress via SSE; summary report at completion
-- Both `LocalClient` and `SharePointListClient` implementations
-
-**Download flow update:**
-
-- Stock downloads (Shutterstock, Pexels, etc.) save original to `High-Res/{source}/` in addition to WebP
-- `catalog-stock` SSE endpoint updated to write High-Res copy alongside WebP
-
-**Scan/reindex update:**
-
-- `ImageScanner` / `src/main.py` updated to walk `High-Res/{source}/` folders when building the new-files list
-
-### M7. Maintenance page — Record purge by status
-
-- Bulk-delete all `rejected` or `archived` records
-- Option to also delete the associated image files from disk/SharePoint
-- Confirmation modal showing record count before executing
-- Both `LocalClient` and `SharePointListClient` implementations
-
----
-
 ## Applied
+
+### 20. M10-M19 — Maintenance governance and quality operations — applied 2026-04-05
+
+- Added M10 health snapshot endpoint and UI action for one-click operational overview
+- Added M11 integrity scorecard endpoint and per-category completeness metrics
+- Added M12 aging/drift scan endpoint with staleness and metadata-quality signals
+- Added M13 quality drift queue and mark endpoint for retag candidate workflow
+- Added M14 category normalization preview/apply endpoints with optional pending-review reset
+- Added M15 checkpoint create/list/restore support with persisted checkpoint metadata
+- Added M16 scheduled maintenance jobs list/config/run support with run summaries
+- Added M17 audit-trail listing and durable audit append integration across maintenance actions
+- Added M18 guardrail get/update support (batch cap, preview requirement, optional checkpointing, optional two-step approval)
+- Added M19 approval request/approve/list flows and destructive endpoint enforcement via approval token consumption
+- Validated with endpoint smoke checks and guarded destructive-flow test (blocked without token, succeeds with approved token)
+
+### 19. M20 — Maintenance efficiency and redundancy refactor — applied 2026-04-05
+
+- Added shared maintenance backend helpers for record snapshot access, record-id parsing, bulk deletes, and bulk field patching
+- Refactored maintenance endpoints to use one record snapshot per operation and centralized bulk update/delete paths
+- Added `bulk_patch_fields` and `bulk_delete_records` in local and SharePoint clients (single-write local; bounded parallel SharePoint)
+- Optimized near-alt duplicate detection using bounded lexical-window comparisons to reduce worst-case scan time on larger datasets
+- Deduplicated maintenance page JavaScript with reusable scan handlers and shared `PURGE` confirmation helper
+- Validated with tests and timed benchmark at 600 records
+
+### 18. M6 — Maintenance page export to CSV — applied 2026-04-05
+
+- Added `GET /api/maintenance/export-csv` to export library metadata as CSV
+- Export columns: `id`, `filename`, `category`, `alt_text`, `tags`, `status`, `location`
+- Added optional export filters by category and status via query params
+- Added Export CSV section in Maintenance UI with filter controls and one-click download
+
+### 17. M5 — Maintenance page status reset — applied 2026-04-05
+
+- Added `GET /api/maintenance/status-reset-preview` for filter preview with category/tag/status/date-range and max-record limits
+- Added `POST /api/maintenance/status-reset` with `confirm_token=PURGE` and stale preview count protection
+- Status reset updates matching records to `pending-review` while reporting updated/unchanged/failed counts
+- Date-range filtering supports ISO date inputs and reports records skipped due to missing date fields
+- Added Status Reset section in Maintenance UI with preview summary, confirmation prompt, and execution results
+
+### 16. M4 — Maintenance page broken thumbnail checker — applied 2026-04-05
+
+- Added `GET /api/maintenance/broken-thumbnails` to validate thumbnail locations across all records
+- Checker flags missing location, missing file, unreadable/corrupt image, and load errors in both local and SharePoint modes
+- Added `POST /api/maintenance/broken-thumbnails/delete-records` with `confirm_token=PURGE` for bulk cleanup
+- Added `POST /api/maintenance/broken-thumbnails/relink` to set a new `Location` with optional existence verification and status reset
+- Added Broken Thumbnail Checker section in Maintenance UI with scan results, relink workflow, and delete action
+
+### 15. M3 — Maintenance page bulk re-tag — applied 2026-04-05
+
+- Added `GET /api/maintenance/retag-preview` with filters by category, tag, status, and max records
+- Added `GET /api/maintenance/retag-run` SSE endpoint for batch AI re-generation of alt text and/or tags
+- Bulk re-tag supports both local and SharePoint image loading with High-Res/WebP/legacy fallbacks
+- Successful processed records are reset to `pending-review` for sign-off
+- Added Bulk Re-Tag section in Maintenance UI with preview, run controls, live progress log, and summary output
+
+### 14. M2 — Maintenance page duplicate detector — applied 2026-04-05
+
+- Added `GET /api/maintenance/duplicates` to detect duplicate groups by filename, slug, exact alt text, and optional near-alt similarity
+- Added `POST /api/maintenance/duplicates/resolve` with `action=merge|delete`, keeper selection, and `confirm_token=PURGE`
+- Merge action consolidates tags, chooses a stronger alt text, fills missing core fields on the keeper, then deletes extra records
+- Added Duplicate Detector section in Maintenance UI with scan controls, grouped result list, keeper selector, and resolve action
+
+### 13. M1 — Maintenance page orphan file finder — applied 2026-04-05
+
+- Added `GET /api/maintenance/orphans` to compare metadata records vs storage files in both directions
+- Scan output includes missing-file records plus orphaned WebP/High-Res files for both local and SharePoint modes
+- Added `POST /api/maintenance/orphans/delete-records` to bulk-delete orphaned records with `confirm_token=PURGE`
+- Added `POST /api/maintenance/orphans/flag-missing` to add a `?missing-file` tag and optionally reset status to `pending-review`
+- Added Orphan Finder section in Maintenance UI with scan, flag, and delete actions
+
+### 12. M7 — Maintenance page record purge by status — applied 2026-04-05
+
+- Added `GET /api/maintenance/purge-preview` for safe preflight count by status (`rejected` / `archived`)
+- Added `POST /api/maintenance/purge-status` with explicit `confirm_token=PURGE` and stale preview count protection
+- Added optional file deletion for both local (`IMAGE_FOLDER/WebP` + `IMAGE_FOLDER/High-Res`) and SharePoint (`Images/WebP` + `Images/High-Res`) paths
+- Added safe path sanitization and traversal checks before local deletion
+- Added maintenance UI controls for preview-first purge, confirmation modal, and structured result reporting
+
+### 11. M8 — High-Res source folders + maintenance sync utility — applied 2026-04-05
+
+- High-Res storage is source-based: `High-Res/{source}/...`; WebP remains category-based under `WebP/{category}/...`
+- Added canonical `Source` field support in both metadata clients (`LocalClient` and `SharePointListClient`)
+- Updated stock catalog and upload processing to write source-aware metadata and High-Res paths
+- Updated `ImageScanner` and `src/main.py` to scan `IMAGE_FOLDER/High-Res` source trees
+- Added `/maintenance` page and `/api/maintenance/sync-highres` SSE utility
+- Sync utility supports dry-run, catalogs unprocessed High-Res files, and reports orphaned WebP files
+- Added maintenance link to the home header navigation
+
+### 10. M9 — Remove all Airtable references — applied 2026-04-05
+
+- Deleted `src/airtable_client.py`
+- Replaced live-path Airtable imports in `src/app.py` (`run_clean`, `api_preview`) with `SharePointListClient`
+- Renamed legacy `run_scan_airtable` route to `run_scan_live`
+- Updated source/doc wording in `src/main.py`, `src/local_client.py`, `src/sharepoint_list_client.py`, `src/sharepoint_client.py`, `src/config.py`, `src/__init__.py`
+- Updated documentation references in `specification.md`, `development.md`, and `.github/copilot-instructions.md`
+- Verified no remaining Airtable references in source files and canonical docs
+
+### 9. Local-ready setup + production auth-bypass guardrail — applied 2026-04-05
+
+- Added `DEV_AUTH_BYPASS` config with local-safe default behavior in TEST_MODE
+- Added runtime guardrail: app/CLI now fail fast if `DEV_AUTH_BYPASS=true` while `TEST_MODE=false`
+- Added `@login_required` to previously open API/utility routes (`/api/images`, tag-library writes, upload stage/process, `/run/*`)
+- Updated VS Code tasks to run via `.venv/bin/python3` and local-safe env flags
+- Added `pytest` to `requirements.txt` for consistent local test execution
+- Updated local docs (`README.md`, `development.md`, `.env.example`) with the validated local workflow
 
 ### 1. Search-first home screen + welcome modal — applied 2026-04-05
 

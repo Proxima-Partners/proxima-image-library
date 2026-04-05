@@ -98,9 +98,12 @@ def _thumb_local(location: str) -> types.ImageContent | None:
     if not location:
         return None
     try:
-        path = Path(Config.IMAGE_FOLDER) / location
+        base = Path(Config.IMAGE_FOLDER)
+        path = base / "WebP" / location
         if not path.exists():
-            return None
+            path = base / location
+            if not path.exists():
+                return None
         suffix = path.suffix.lower()
         mime = "image/webp" if suffix == ".webp" else "image/jpeg" if suffix in (".jpg", ".jpeg") else "image/png"
         data = base64.b64encode(path.read_bytes()).decode()
@@ -209,6 +212,11 @@ async def list_tools() -> list[types.Tool]:
                         "type": "string",
                         "enum": ["Headshots", "Community", "Locations", "Situations", "Graphics", "Banners"],
                         "description": "Storage category. Infer from image content if not specified by user.",
+                    },
+                    "source": {
+                        "type": "string",
+                        "enum": ["ShutterStock", "AdobeStock", "Unsplash", "Pexels", "Pixabay", "Internal"],
+                        "description": "Optional source/provenance for the High-Res folder.",
                     },
                 },
                 "required": ["download_url", "original_filename", "category"],
@@ -570,6 +578,7 @@ async def _catalog_stock_image(args: dict) -> list[types.TextContent]:
     download_url = args.get("download_url", "").strip()
     original_filename = args.get("original_filename", "image.jpg").strip()
     category = args.get("category", "")
+    source = args.get("source", "").strip()
 
     if not download_url:
         return [types.TextContent(type="text", text=json.dumps({"error": "download_url is required"}))]
@@ -610,6 +619,7 @@ async def _catalog_stock_image(args: dict) -> list[types.TextContent]:
             sp_client=sp_client,
             image_folder=Config.IMAGE_FOLDER,
             storage_mode=storage_mode,
+            source=source or None,
         )
         result["webp_url"] = _webp_url(result.get("location", ""))
         return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
@@ -659,6 +669,7 @@ async def _catalog_image_from_file(args: dict) -> list[types.TextContent]:
             sp_client=sp_client,
             image_folder=Config.IMAGE_FOLDER,
             storage_mode=storage_mode,
+            source="Internal",
         )
         result["webp_url"] = _webp_url(result.get("location", ""))
         return [types.TextContent(type="text", text=json.dumps(result, indent=2))]

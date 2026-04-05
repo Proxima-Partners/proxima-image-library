@@ -18,10 +18,11 @@ cp .env.example .env        # fill in keys and IMAGE_FOLDER
 
 ```bash
 source .venv/bin/activate
-flask --app src.app run --port 5000 --debug
+TEST_MODE=true STORAGE_MODE=local DEV_AUTH_BYPASS=true .venv/bin/python3 -m flask --app src.app run --port 5000 --debug
 ```
 
-`.env` must have `TEST_MODE=true` and `STORAGE_MODE=local`.
+`.env` should have `TEST_MODE=true` and `STORAGE_MODE=local`.
+Set `DEV_AUTH_BYPASS=true` to skip Microsoft login in local TEST_MODE.
 
 **Live (SharePoint backend):**
 
@@ -32,7 +33,11 @@ flask --app src.app run --port 5000
 
 Open **[http://localhost:5000](http://localhost:5000)** — login via Microsoft/MSAL on first visit.
 
-Minimum `.env` for dev: `ANTHROPIC_API_KEY`, `IMAGE_FOLDER`, `TEST_MODE=true`, `STORAGE_MODE=local`, `FLASK_SECRET_KEY`, MSAL vars.
+When `DEV_AUTH_BYPASS=true` in TEST_MODE, the app auto-authenticates a local session and opens directly.
+
+Minimum `.env` for dev: `ANTHROPIC_API_KEY`, `IMAGE_FOLDER`, `TEST_MODE=true`, `STORAGE_MODE=local`, `FLASK_SECRET_KEY`.
+Optional for local login bypass: `DEV_AUTH_BYPASS=true`.
+MSAL vars are required when testing real auth flow or running live mode.
 Full setup: see [development.md](development.md#environment-variables-reference)
 
 ---
@@ -57,10 +62,12 @@ src/
 
 templates/
 ├── index.html                  Search-first library browser — hero, category tiles, browse grid
+├── maintenance.html            Admin maintenance console — M1–M8 + M10–M20 operations
 ├── stock_search.html           Stock photo search — phrase chips → results grid → download modal
 ├── review.html                 Review queue — approve/reject/archive pending images
 ├── upload.html                 Image upload and catalog pipeline with SSE progress
-└── tag_manager.html            Tag vocabulary editor
+├── tag_manager.html            Tag vocabulary editor
+└── login_error.html            Access denied/error template
 
 tests/                          pytest — rename_assets, ImageScanner
 test_data/                      local_table.json — 253 records for local dev/testing
@@ -74,12 +81,18 @@ test_data/                      local_table.json — 253 records for local dev/t
 
 | Task | Command |
 | ---- | ------- |
-| Start server (dev) | `flask --app src.app run --port 5000 --debug` |
-| Start server (live) | `flask --app src.app run --port 5000` |
-| Run tests | `pytest` |
-| Sync images to SharePoint | `python3 -u -m src.main` |
-| Rename images (preview) | `python3 -m src.rename_assets --prefix proxima` |
-| Rename images (apply) | `python3 -m src.rename_assets --prefix proxima --apply` |
+| Start server (dev) | `TEST_MODE=true STORAGE_MODE=local DEV_AUTH_BYPASS=true .venv/bin/python3 -m flask --app src.app run --port 5000 --debug` |
+| Start server (live) | `.venv/bin/python3 -m flask --app src.app run --port 5000` |
+| Run tests | `.venv/bin/python3 -m pytest -v` |
+| Sync images to SharePoint | `.venv/bin/python3 -u -m src.main` |
+| Rename images (preview) | `.venv/bin/python3 -m src.rename_assets --prefix proxima` |
+| Rename images (apply) | `.venv/bin/python3 -m src.rename_assets --prefix proxima --apply` |
+
+### Maintenance Access
+
+- `/maintenance` and `/api/maintenance/*` are admin-gated in normal auth mode.
+- Set `MAINTENANCE_ADMIN_USERS` to a comma-separated allowlist of emails/UPNs.
+- In local TEST mode only, `DEV_AUTH_BYPASS=true` allows bypass login for faster iteration.
 
 ---
 
@@ -124,5 +137,5 @@ Register in `~/Library/Application Support/Claude/claude_desktop_config.json`:
 | [specification.md](specification.md) | Image output targets, naming, SharePoint List schema, AI metadata spec |
 | [search-parameter.md](search-parameter.md) | Stock photo API parameters, auth, attribution requirements |
 | [project-scope.md](project-scope.md) | Feature definitions, application parameters, and developer onboarding (including guidance for developers using OpenAI-based coding tools) |
-| [EDIT_LIST.md](EDIT_LIST.md) | Applied changes and future development queue |
+| [EDIT_LIST.md](EDIT_LIST.md) | Applied changes and active future development queue |
 | [PRODUCTION_DEPLOY.md](PRODUCTION_DEPLOY.md) | Deployment checklist for Azure App Service |

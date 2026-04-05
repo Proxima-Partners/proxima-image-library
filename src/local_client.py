@@ -1,4 +1,4 @@
-"""Local JSON-backed table used in TEST_MODE — mirrors AirtableClient interface."""
+"""Local JSON-backed table used in TEST_MODE — mirrors SharePoint list interface."""
 
 import json
 import threading
@@ -12,7 +12,7 @@ _LOCK = threading.Lock()  # serialise concurrent reads/writes across all LocalCl
 
 
 class LocalClient:
-    """Drop-in replacement for AirtableClient that stores records in a local JSON file."""
+    """Local metadata client that stores records in a JSON file."""
 
     def __init__(self, db_path: Path = _DEFAULT_PATH):
         self.db_path = db_path
@@ -46,7 +46,7 @@ class LocalClient:
         return False
 
     # ------------------------------------------------------------------
-    # Public interface (matches AirtableClient)
+    # Public interface (matches SharePointListClient)
     # ------------------------------------------------------------------
 
     def get_records(self, limit: int = 100) -> List[Dict]:
@@ -71,6 +71,7 @@ class LocalClient:
         slug: str = "",
         location: str = "",
         high_res_location: str = "",
+        source: str = "Internal",
     ) -> Optional[Dict]:
         records = self._load()
         record = {
@@ -83,6 +84,7 @@ class LocalClient:
                 "Slug": slug,
                 "Location": location,
                 "High-Res Location": high_res_location,
+                "Source": source,
             },
         }
         if image_url:
@@ -103,11 +105,56 @@ class LocalClient:
 
 
     def delete_records(self, record_ids: List[str]) -> int:
-        records = self._load()
-        id_set = set(record_ids)
-        kept = [r for r in records if r["id"] not in id_set]
-        self._save(kept)
-        return len(records) - len(kept)
+        with _LOCK:
+            records = self._load()
+            id_set = set(record_ids)
+            kept = [r for r in records if r["id"] not in id_set]
+            self._save(kept)
+            return len(records) - len(kept)
+
+    def bulk_patch_fields(self, patches: List[tuple[str, Dict]]) -> Dict:
+        """Apply many record field patches in a single load/save cycle."""
+        if not patches:
+            return {"updated": 0, "failed_ids": [], "missing_ids": []}
+
+        by_id_patch: Dict[str, Dict] = {}
+        for record_id, fields in patches:
+            rid = str(record_id or "").strip()
+            if not rid or not isinstance(fields, dict) or not fields:
+                continue
+            by_id_patch.setdefault(rid, {}).update(fields)
+
+        if not by_id_patch:
+            return {"updated": 0, "failed_ids": [], "missing_ids": []}
+
+        with _LOCK:
+            records = self._load()
+            record_map = {str(r.get("id", "")).strip(): r for r in records}
+
+            updated = 0
+            missing_ids: List[str] = []
+            for rid, fields in by_id_patch.items():
+                rec = record_map.get(rid)
+                if rec is None:
+                    missing_ids.append(rid)
+                    continue
+                rec_fields = rec.get("fields", {})
+                changed = False
+                for key, value in fields.items():
+                    if rec_fields.get(key) != value:
+                        rec_fields[key] = value
+                        changed = True
+                if changed:
+                    updated += 1
+
+            if updated > 0:
+                self._save(records)
+
+        return {"updated": updated, "failed_ids": [], "missing_ids": missing_ids}
+
+    def bulk_delete_records(self, record_ids: List[str]) -> int:
+        """Delete records in bulk. Local mode already uses a single write."""
+        return self.delete_records(record_ids)
 
     def delete_all_records(self) -> int:
         records = self._load()

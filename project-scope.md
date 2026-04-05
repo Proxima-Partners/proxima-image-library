@@ -59,12 +59,12 @@ Locates image files based on description. Retrieves the file based on user selec
 ### Feature 5: Utility Features
 
 1. **Library maintenance**
-    - Compare image files in SharePoint to SharePoint List records
-    - Process new or modified files found in SharePoint
-    - Offer user option to delete record if image file is missing
+    - Dedicated `/maintenance` console for sync, orphan detection, duplicate resolution, retag, status reset, broken thumbnail handling, and CSV export
+    - Governance operations: health snapshot, integrity scorecard, drift queue, category normalization, checkpoints, scheduled jobs, audit trail, and approvals
+    - Destructive operations enforce guardrails (`expected_count`, max batch, optional approval token, optional checkpoint)
 2. **Clean and reindex**
-    - Deletes all SharePoint List records
-    - Scans the image library and processes each image to repopulate
+    - Controlled maintenance paths with confirmation and approval flow
+    - Bulk operations support both local TEST mode and SharePoint live mode
 
 ### Feature 6: Image Review Workflow
 
@@ -87,7 +87,7 @@ Locates image files based on description. Retrieves the file based on user selec
 2. Submit search to external stock photo API (Feature 3) or query SharePoint List (Feature 4)
 3. Display image selection UI with results and inline thumbnails
 4. Download the selected image at the highest resolution available
-5. Store original high-res image in `High-Res/` (source-based subfolder — see M8 in EDIT_LIST)
+5. Store original high-res image in `High-Res/` (source-based subfolder)
 6. Transform image to WebP format per `specification.md`
 7. Pass image to Claude vision to generate alt text (max 125 chars) and tags; provide stock source metadata as context
 8. Write metadata (filename, alt text, tags, slug, location, status=pending-review) to SharePoint List record
@@ -98,12 +98,13 @@ Locates image files based on description. Retrieves the file based on user selec
 
 1. Image files in SharePoint (production) or `IMAGE_FOLDER` local path (development, `STORAGE_MODE=local`)
 2. Two parallel storage structures: `High-Res/` and `WebP/`
-3. High-Res: highest resolution from original source; future structure uses source-based subfolders (ShutterStock, AdobeStock, Pexels, etc.)
+3. High-Res: highest resolution from original source; uses source-based subfolders (`ShutterStock`, `AdobeStock`, `Unsplash`, `Pexels`, `Pixabay`, `Internal`)
 4. WebP: converted to `.webp`, transformed per `specification.md`; organized by content category
 5. UI delivered via Flask-rendered templates; shares auth session with the API
 6. All storage secured via MSAL authentication (Microsoft Azure AD)
 7. Security: no credentials in code, path traversal protection, input validation at all API boundaries
 8. All new records created with `status=pending-review`; must pass review queue before considered approved
+9. Maintenance endpoints are allowlist-gated via `MAINTENANCE_ADMIN_USERS` (except local auth bypass in TEST mode)
 
 ## Supporting Reference Files
 
