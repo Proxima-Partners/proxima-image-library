@@ -84,6 +84,25 @@ Open [http://localhost:5000](http://localhost:5000) — first visit redirects to
 > If port 5000 is in use on macOS, disable **AirPlay Receiver** in System Settings → General → AirDrop & Handoff.
 > **Important:** Always restart Flask after changing `.env`. The running process does not reload environment variables on file change — only code changes trigger the reloader.
 
+### Local MSAL auth testing
+
+Use this mode when validating auth behavior in TEST_MODE:
+
+```bash
+TEST_MODE=true STORAGE_MODE=local DEV_AUTH_BYPASS=false .venv/bin/python3 -m flask --app src.app run --port 5000
+```
+
+Auth testing notes:
+
+- Use `http://localhost:5000` consistently for login and callback.
+- Do not mix `localhost` and `127.0.0.1` in one login flow (session state mismatch risk).
+- If bypass mode was used earlier, stale bypass sessions are cleared automatically when bypass is off.
+- Session expiry is enforced from MSAL `exp` claim.
+- TEST_MODE helper endpoint for manual expiry validation:
+  - `POST /auth/test-expire-session`
+  - expires the current authenticated session for repeatable testing
+  - GET is not allowed (returns 405)
+
 ---
 
 ## MCP Server (Claude Desktop Integration)

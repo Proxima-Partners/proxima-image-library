@@ -213,3 +213,14 @@ Source image (any supported format)
 ```
 
 This pipeline is implemented in the current codebase for upload and stock-catalog flows.
+
+---
+
+## Auth and Session Notes
+
+- Runtime auth is handled in Flask via MSAL session cookies and `@login_required` route protection.
+- Session expiry is enforced from token claims (`exp`) during authenticated requests.
+- TEST_MODE-only manual helper endpoint: `POST /auth/test-expire-session`
+    - Purpose: deterministic local validation of expired-session behavior
+    - Availability: only when `TEST_MODE=true`
+    - Method: POST only

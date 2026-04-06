@@ -40,11 +40,15 @@ Steps required before and after each production deployment to Azure App Service.
 
 - [ ] Add production redirect URI to Azure AD app registration:
   `https://<production-hostname>/auth/callback`
+- [ ] Confirm `MSAL_REDIRECT_URI` exactly matches the Azure app registration redirect URI
 - [ ] Verify MSAL login flow end-to-end with a liveproxima.org account
 - [ ] Confirm sign-out clears session correctly
+- [ ] Verify expired-session behavior forces re-login (session expiry enforced from token claims)
 - [ ] Verify maintenance access control:
   - Allowlisted user can access `/maintenance` and `/api/maintenance/*`
   - Non-allowlisted authenticated user receives `403`
+- [ ] Confirm TEST_MODE-only auth helper endpoint is unavailable in production:
+  - `POST /auth/test-expire-session` should return `404` when `TEST_MODE=false`
 
 ---
 

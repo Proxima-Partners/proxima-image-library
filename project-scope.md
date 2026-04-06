@@ -8,7 +8,7 @@ Locates image files based on description. Retrieves the file based on user selec
 - **AI:** Claude vision API (`claude-sonnet-4-6`) — generates alt text and tags from image content
 - **Metadata store:** SharePoint List — stores filename, alt text, tags, status, slug, location (WebP path)
 - **Image storage:** SharePoint document library (production); local `IMAGE_FOLDER` (development via `STORAGE_MODE=local`)
-- **Auth:** MSAL (Microsoft Authentication Library) — all Flask routes protected; MSAL session cookie
+- **Auth:** MSAL (Microsoft Authentication Library) — all Flask routes protected; MSAL session cookie with token-claim expiry enforcement
 - **Integration:** MCP server (`src/mcp_server.py`) exposes tools to Claude Desktop for writing workflow
 
 ## Feature Status
@@ -105,6 +105,8 @@ Locates image files based on description. Retrieves the file based on user selec
 7. Security: no credentials in code, path traversal protection, input validation at all API boundaries
 8. All new records created with `status=pending-review`; must pass review queue before considered approved
 9. Maintenance endpoints are allowlist-gated via `MAINTENANCE_ADMIN_USERS` (except local auth bypass in TEST mode)
+10. Local MSAL testing should use `localhost` consistently; mixing `localhost` and `127.0.0.1` can break auth state continuity
+11. TEST_MODE includes a deterministic auth-session expiry helper endpoint: `POST /auth/test-expire-session`
 
 ## Supporting Reference Files
 
@@ -207,6 +209,7 @@ Image pipeline (src/image_processor.py)
 ```
 
 All Flask routes are protected by `@login_required` (MSAL / Azure AD). The `/health` endpoint is intentionally unprotected for Azure App Service health checks.
+Session expiry is enforced from the MSAL `exp` claim. In TEST_MODE only, `POST /auth/test-expire-session` can be used to force expiry during manual validation.
 
 ### File and Schema Conventions
 

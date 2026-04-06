@@ -24,6 +24,10 @@ TEST_MODE=true STORAGE_MODE=local DEV_AUTH_BYPASS=true .venv/bin/python3 -m flas
 `.env` should have `TEST_MODE=true` and `STORAGE_MODE=local`.
 Set `DEV_AUTH_BYPASS=true` to skip Microsoft login in local TEST_MODE.
 
+To test real Microsoft auth locally, run with `DEV_AUTH_BYPASS=false` and use
+`http://localhost:5000` consistently for login/callback. Do not mix
+`localhost` and `127.0.0.1` during the same auth flow.
+
 **Live (SharePoint backend):**
 
 ```bash
@@ -82,8 +86,10 @@ test_data/                      local_table.json — 253 records for local dev/t
 | Task | Command |
 | ---- | ------- |
 | Start server (dev) | `TEST_MODE=true STORAGE_MODE=local DEV_AUTH_BYPASS=true .venv/bin/python3 -m flask --app src.app run --port 5000 --debug` |
+| Start server (dev auth required) | `TEST_MODE=true STORAGE_MODE=local DEV_AUTH_BYPASS=false .venv/bin/python3 -m flask --app src.app run --port 5000` |
 | Start server (live) | `.venv/bin/python3 -m flask --app src.app run --port 5000` |
 | Run tests | `.venv/bin/python3 -m pytest -v` |
+| Run automated T1 suite | `.venv/bin/python3 scripts/run_t1_suite.py` |
 | Sync images to SharePoint | `.venv/bin/python3 -u -m src.main` |
 | Rename images (preview) | `.venv/bin/python3 -m src.rename_assets --prefix proxima` |
 | Rename images (apply) | `.venv/bin/python3 -m src.rename_assets --prefix proxima --apply` |
@@ -93,6 +99,14 @@ test_data/                      local_table.json — 253 records for local dev/t
 - `/maintenance` and `/api/maintenance/*` are admin-gated in normal auth mode.
 - Set `MAINTENANCE_ADMIN_USERS` to a comma-separated allowlist of emails/UPNs.
 - In local TEST mode only, `DEV_AUTH_BYPASS=true` allows bypass login for faster iteration.
+
+### Auth Session Validation (TEST_MODE only)
+
+- Session expiry is enforced from the MSAL `exp` claim.
+- Local auth testing helper endpoint: `POST /auth/test-expire-session`
+  - available only when `TEST_MODE=true`
+  - marks current session expired for deterministic manual testing
+  - returns redirect to `/login` when not authenticated
 
 ---
 

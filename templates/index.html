@@ -367,6 +367,31 @@
       grid-column: 1 / -1; text-align: center;
       padding: 60px 20px; color: var(--muted); font-size: 14px;
     }
+    #grid-pagination {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      padding: 0 16px 18px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    #grid-pagination.hidden { display: none; }
+    #grid-load-more {
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--accent);
+      border-radius: 20px;
+      padding: 7px 14px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    #grid-load-more:hover {
+      border-color: var(--accent);
+      background: #f0f9fb;
+    }
     .spinner {
       width: 28px; height: 28px; border: 3px solid var(--border);
       border-top-color: var(--accent); border-radius: 50%;
@@ -597,6 +622,10 @@
       <div id="grid">
         <div id="grid-status"><div class="spinner"></div>Loading library…</div>
       </div>
+      <div id="grid-pagination" class="hidden">
+        <span id="grid-load-info"></span>
+        <button id="grid-load-more" type="button">Load more</button>
+      </div>
     </div>
   </div>
 </div>
@@ -646,9 +675,25 @@
   let searchQ       = '';
   let currentImage  = null;
   let inBrowseMode  = false;
+  const PAGE_SIZE   = 60;
+  let visibleCount  = PAGE_SIZE;
+  let lastFilterKey = '';
 
   function esc(s) {
     return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function locationParent(location) {
+    if (!location) return '.';
+    const parts = String(location).split('/');
+    if (parts.length <= 1) return '.';
+    return parts.slice(0, -1).join('/');
+  }
+
+  function buildFilterKey() {
+    const folders = [...activeFolders].sort().join('|');
+    const tags = [...activeTags].sort().join('|');
+    return [searchQ, activeStatus, folders, tags].join('::');
   }
 
   // ── Category colors ────────────────────────────────────────────────────────
@@ -891,9 +936,15 @@
 
   // ── Grid ───────────────────────────────────────────────────────────────────
   function renderGrid() {
+    const filterKey = buildFilterKey();
+    if (filterKey !== lastFilterKey) {
+      visibleCount = PAGE_SIZE;
+      lastFilterKey = filterKey;
+    }
+
     const filtered = allImages.filter(img => {
       if (activeFolders.size) {
-        const imgFolder = img.location ? img.location.split('/')[0] : '';
+        const imgFolder = locationParent(img.location);
         if (!activeFolders.has(imgFolder)) return false;
       }
       if (activeStatus && img.status !== activeStatus) return false;
@@ -912,12 +963,17 @@
     document.getElementById('browse-result-count').textContent = n + ' image' + (n === 1 ? '' : 's');
 
     const grid = document.getElementById('grid');
+    const pager = document.getElementById('grid-pagination');
+    const pagerInfo = document.getElementById('grid-load-info');
     if (!n) {
       grid.innerHTML = '<div id="grid-status">No images match your search.</div>';
+      pager.classList.add('hidden');
       return;
     }
 
-    grid.innerHTML = filtered.map((img, i) => {
+    const visible = filtered.slice(0, visibleCount);
+
+    grid.innerHTML = visible.map((img, i) => {
       const dot = img.status && img.status !== 'approved'
         ? `<span class="status-dot ${esc(img.status)}" title="${esc(img.status)}"></span>` : '';
       return `<div class="img-card" data-idx="${i}">
@@ -929,9 +985,21 @@
     }).join('');
 
     grid.querySelectorAll('.img-card').forEach(card => {
-      card.addEventListener('click', function () { openDetail(filtered[+this.dataset.idx]); });
+      card.addEventListener('click', function () { openDetail(visible[+this.dataset.idx]); });
     });
+
+    if (visible.length < n) {
+      pagerInfo.textContent = `Showing ${visible.length} of ${n}`;
+      pager.classList.remove('hidden');
+    } else {
+      pager.classList.add('hidden');
+    }
   }
+
+  document.getElementById('grid-load-more').addEventListener('click', () => {
+    visibleCount += PAGE_SIZE;
+    renderGrid();
+  });
 
   // ── Detail modal ───────────────────────────────────────────────────────────
   function openDetail(img) {

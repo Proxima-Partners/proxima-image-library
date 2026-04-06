@@ -1,0 +1,36 @@
+name: T1 Regression
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  t1-regression:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run automated T1 suite
+        run: |
+          python scripts/run_t1_suite.py --report-file test_data/t1_ci_report.json
+
+      - name: Upload T1 report artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: t1-ci-report
+          path: test_data/t1_ci_report.json

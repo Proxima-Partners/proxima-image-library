@@ -60,13 +60,40 @@ def _msal_app():
     )
 
 
+def _is_bypass_session_user(user_claims: Optional[Dict]) -> bool:
+    return isinstance(user_claims, dict) and user_claims.get("auth") == "bypass"
+
+
+def _is_user_session_expired(user_claims: Optional[Dict]) -> bool:
+    """Return True when MSAL `exp` claim is present and in the past."""
+    if not isinstance(user_claims, dict):
+        return False
+    exp = user_claims.get("exp")
+    if exp in (None, ""):
+        return False
+    try:
+        return int(exp) <= int(time.time())
+    except Exception:
+        return False
+
+
 def login_required(f):
     @functools.wraps(f)
     def decorated(*args, **kwargs):
         if _auth_bypass_enabled():
             session.setdefault("user", {"name": "Local Dev User", "auth": "bypass"})
             return f(*args, **kwargs)
-        if not session.get("user"):
+
+        user_claims = session.get("user")
+        if _is_user_session_expired(user_claims):
+            session.pop("user", None)
+            session.pop("auth_flow", None)
+            if request.path.startswith("/api/") or request.is_json:
+                return jsonify({"error": "Session expired"}), 401
+            session["next"] = request.url
+            return redirect(url_for("login"))
+
+        if not user_claims:
             if request.path.startswith("/api/") or request.is_json:
                 return jsonify({"error": "Authentication required"}), 401
             session["next"] = request.url
@@ -97,6 +124,18 @@ def _is_maintenance_admin_user(user_claims: Dict) -> bool:
 
 
 @app.before_request
+def clear_stale_bypass_session():
+    # If bypass was used in a previous run, do not treat that session as
+    # authenticated when bypass is now disabled.
+    if _auth_bypass_enabled():
+        return None
+    if _is_bypass_session_user(session.get("user")):
+        session.pop("user", None)
+        session.pop("auth_flow", None)
+    return None
+
+
+@app.before_request
 def enforce_maintenance_admin_access():
     path = request.path or ""
     if path != "/maintenance" and not path.startswith("/api/maintenance/"):
@@ -106,6 +145,15 @@ def enforce_maintenance_admin_access():
         return None
 
     user_claims = session.get("user")
+
+    if _is_user_session_expired(user_claims):
+        session.pop("user", None)
+        session.pop("auth_flow", None)
+        if path.startswith("/api/") or request.is_json:
+            return jsonify({"error": "Session expired"}), 401
+        session["next"] = request.url
+        return redirect(url_for("login"))
+
     if not user_claims:
         if path.startswith("/api/") or request.is_json:
             return jsonify({"error": "Authentication required"}), 401
@@ -125,9 +173,25 @@ def login():
     if _auth_bypass_enabled():
         session.setdefault("user", {"name": "Local Dev User", "auth": "bypass"})
         return redirect(url_for("index"))
+
+    # Keep login + callback on the same host as MSAL_REDIRECT_URI so the
+    # session cookie containing auth_flow is preserved across the redirect.
+    redirect_parts = urlparse(Config.MSAL_REDIRECT_URI)
+    expected_host = (redirect_parts.netloc or "").lower()
+    current_host = (request.host or "").lower()
+    if expected_host and current_host and current_host != expected_host:
+        canonical_login = f"{redirect_parts.scheme}://{redirect_parts.netloc}{url_for('login')}"
+        return redirect(canonical_login)
+
+    flow_kwargs = {
+        "redirect_uri": Config.MSAL_REDIRECT_URI,
+    }
+    if session.pop("force_prompt_login", False):
+        flow_kwargs["prompt"] = "login"
+
     flow = _msal_app().initiate_auth_code_flow(
         Config.MSAL_SCOPES,
-        redirect_uri=Config.MSAL_REDIRECT_URI,
+        **flow_kwargs,
     )
     session["auth_flow"] = flow
     return redirect(flow["auth_uri"])
@@ -135,9 +199,19 @@ def login():
 
 @app.route("/auth/callback")
 def auth_callback():
+    auth_flow = session.get("auth_flow")
+    if not auth_flow:
+        return render_template(
+            "login_error.html",
+            error=(
+                "Missing login state. Start sign-in from the app login page using the "
+                "same host as MSAL_REDIRECT_URI (localhost vs 127.0.0.1 must match)."
+            ),
+        ), 401
+
     try:
         result = _msal_app().acquire_token_by_auth_code_flow(
-            session.get("auth_flow", {}),
+            auth_flow,
             request.args,
         )
         if "error" in result:
@@ -160,6 +234,24 @@ def logout():
         f"?post_logout_redirect_uri={url_for('index', _external=True)}"
     )
     return redirect(logout_url)
+
+
+@app.route("/auth/test-expire-session", methods=["POST"])
+@login_required
+def test_expire_session():
+    """TEST_MODE helper: force-expire current session for auth-flow validation."""
+    if not Config.TEST_MODE:
+        return jsonify({"error": "Not found"}), 404
+
+    user_claims = session.get("user")
+    if isinstance(user_claims, dict):
+        user_claims["exp"] = 0
+        session["user"] = user_claims
+        session["force_prompt_login"] = True
+    else:
+        session.pop("user", None)
+
+    return jsonify({"ok": True, "message": "Session marked expired"})
 
 _client = None
 _sp_client = None

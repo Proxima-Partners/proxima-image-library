@@ -6,6 +6,10 @@ Pending changes — rebuild only on approval.
 
 ## Pending
 
+- T1. Comprehensive pre-production testing protocol — in progress (local validation complete; production validation pending Azure deployment)
+- T2. Security protocol audit & penetration checklist — not started
+- T3. Comprehensive pre-production code audit — not started
+
 ---
 
 ## Future Development Queue
@@ -212,34 +216,203 @@ Systematic review of the entire codebase before Azure production deployment. Goa
 - Run `pip audit` — resolve any CVEs (overlaps with T2)
 - Confirm all tests in `tests/` pass cleanly against the current codebase
 
-### W1. End-to-end test: Proxima Writing → Image Library → Webflow CMS
-
-Test the full writing workflow from Claude through to published content:
-
-**Skills (proxima-claude-org-skills):**
-
-- Invoke Blog Writing, Article Writing skills via Claude
-- Confirm Branding Skill is correctly inherited as base in all writing skills
-- Verify photo suggestion phrases are extracted and passed to Image Library MCP
-
-**MCP integration:**
-
-- `search_image_library` tool returns ranked results from the library
-- `catalog_image_from_file` tool correctly processes a dropped image end-to-end
-- Confirm MCP server loads correctly in Claude Desktop (absolute paths, `.env` sourced)
-
-**CMS push:**
-
-- Selected images and written content pushed to Webflow CMS collection items
-- Verify field mapping: title, body, author, image, slug, tags
-- Confirm published state and staging vs. live behavior
-
-**Acceptance criteria:**
-
-- Full run from blank prompt → finished article → Webflow CMS item with image, no manual steps
-- Review queue receives any newly cataloged images from the session
-
 ## Applied
+
+### T1.A — Baseline pre-production smoke checks — applied 2026-04-05
+
+- Ran `.venv/bin/python3 -m pytest -v`: 19/19 tests passed
+- Ran `Sync Images (TEST_MODE)`: processed 1 new image and completed status report without runtime error
+- Auth gate validation with `DEV_AUTH_BYPASS=false`:
+  - `GET /api/images` -> 401 JSON (`{"error":"Authentication required"}`)
+  - `GET /api/pending-count` -> 401 JSON (`{"error":"Authentication required"}`)
+  - `GET /api/maintenance/orphans` -> 401 JSON (`{"error":"Authentication required"}`)
+  - `GET /` -> 302 to `/login`, and `/login` -> 302 to Microsoft authorize URL
+- TEST_MODE endpoint smoke checks passed for: `/health`, `/api/pending-count`, `/api/images`
+- Maintenance endpoint smoke checks passed for:
+  - `/api/maintenance/duplicates`, `/api/maintenance/orphans`, `/api/maintenance/export-csv`
+  - `/api/maintenance/health-snapshot`, `/api/maintenance/integrity-scorecard`, `/api/maintenance/aging-drift`, `/api/maintenance/quality-drift-queue`, `/api/maintenance/category-normalization/preview`, `/api/maintenance/checkpoints`, `/api/maintenance/scheduled-jobs`, `/api/maintenance/audit`, `/api/maintenance/guardrails`, `/api/maintenance/approvals`
+
+### T1.B — Image/review/tag/stock/MCP functional checks — applied 2026-04-05
+
+- Upload stage acceptance validated for JPEG, PNG, WebP, GIF via `/api/upload/stage`
+- CMYK JPEG processed successfully through `/api/upload/process` (metadata generated, pending-review record created)
+- Oversized JPEG processed successfully and resized WebP verified at `1600x1100` (max side cap enforced)
+- Duplicate filename flow verified: two ingests of same source produced unique slugs/filenames
+- Alt text checks passed for sampled processed records:
+  - length <= 125 chars
+  - no `Image of` / `Picture of` prefix
+- Tag checks passed for sampled processed records: non-suggested tags stayed inside approved vocabulary; suggestions were `?`-prefixed
+- Review workflow checks passed:
+  - `/api/pending-count` matched `/api/images?status=pending-review`
+  - `/api/image-status` transitions verified for approved/rejected/archived/pending-review
+  - Concurrent status updates succeeded (HTTP 200) and `test_data/local_table.json` remained valid JSON
+- Tag manager checks passed:
+  - add, promote suggestion, remove via `/api/tag-library/*`
+  - promoted tag persisted in library responses before removal
+- Stock flow checks passed:
+  - `/api/stock-search` returned results from Pexels/Unsplash/Pixabay in ~1.5s (under 25s target)
+  - `/api/catalog-stock` SSE completed in ~4.5s with result payload
+  - cataloged stock image landed in `High-Res/Pexels/...` and pending-review metadata created
+  - Shutterstock quota counters (`/api/shutterstock/quota`, `/api/shutterstock/track`) incremented correctly
+- MCP checks passed:
+  - `search_image_library` returned text + thumbnail results for known phrase
+  - `catalog_image_from_file` accepted base64 image and created pending-review record
+
+### T1.C — Performance and destructive guardrail verification — applied 2026-04-05
+
+- `/api/images` performance check at 260 records:
+  - 5-run max response time: ~0.0066s
+  - Average response time: ~0.0029s
+  - Meets T1 target `< 2s` under local TEST_MODE conditions
+- Two-step destructive approval guardrail verified end-to-end:
+  - Enabled `two_step_approval_required=true`
+  - Destructive call without `approval_token` returned 403 (`approval_token is required by guardrails`)
+  - Approval token requested + approved via `/api/maintenance/approvals/*`
+  - Same destructive call succeeded with approved token and deleted target record
+  - Guardrail configuration restored to prior state after test
+
+### T1.D — Auth/session non-interactive validation — applied 2026-04-05
+
+- Ran isolated auth-required server on port `5002` with `TEST_MODE=true`, `DEV_AUTH_BYPASS=false`
+- Verified unauthenticated API behavior:
+  - `GET /api/images` -> 401 JSON (`{"error":"Authentication required"}`)
+- Verified login redirect behavior:
+  - `GET /login` -> 302 redirect to Microsoft authorize URL
+- Verified callback error path (simulated denied auth):
+  - `GET /auth/callback?error=access_denied...` -> 401 login error page
+- Verified authenticated-session gate behavior using signed Flask session cookie:
+  - Protected API returns 200 while authenticated cookie is present
+- Verified logout clears session:
+  - `GET /logout` -> redirect
+  - subsequent protected API request with same client -> 401
+- Verified session persistence across server restart:
+  - authenticated signed session cookie accepted before restart
+  - same cookie accepted after restart (protected API remained 200)
+- Remaining manual auth checks for T1:
+  - real valid-user MSAL sign-in flow in browser
+  - real invalid-user MSAL sign-in outcome from identity provider
+  - expired-token behavior after real token issuance/expiry window
+
+### T1.E — Library/review UI behavior validation — applied 2026-04-05 (partial)
+
+- Search relevance checks passed (client-side token match behavior):
+  - `san francisco` -> 70 matches
+  - `logo` -> 28 matches
+  - `golden gate` -> 15 matches
+- Tag + keyword combo check passed (example: `icon` + `diagram` produced expected result set)
+- Thumbnail integrity check passed:
+  - 259 thumbnails requested via `/thumbnail?path=...`
+  - 0 broken responses
+- Review queue approve-all behavior validated via API-equivalent flow:
+  - pending before run: 6
+  - after batch approve: 0 pending
+  - records restored back to pending-review after test
+- Badge refresh hooks confirmed in UI code:
+  - interval refresh present (`setInterval(refreshReviewBadge, 30000)`)
+  - return-to-page refresh present (`pageshow` listener)
+- Approve-all wiring confirmed in UI code:
+  - `Approve all` button exists in `review.html`
+  - batch action uses `Promise.all(...)`
+
+**Gaps found during T1.E:**
+
+- Category filter mismatch for nested folders (functional bug):
+  - UI `renderGrid()` compares only first location segment (`img.location.split('/')[0]`)
+  - Sidebar folder selection uses full folder values (for example `photography/SanFrancisco_Images`)
+  - Result: 7/7 nested-folder categories returned incorrect (zero) results in test
+- No pagination/load-more behavior implemented in library UI:
+  - no `load more` control
+  - no pagination logic in `index.html`
+  - grid renders entire filtered set at once
+
+### T1.E.1 — UI gap remediation and revalidation — applied 2026-04-05
+
+- Implemented nested-folder category filter fix in `templates/index.html`:
+  - `renderGrid()` now compares selected folder against the image parent folder path
+  - corrected mismatch for nested category values (for example `photography/SanFrancisco_Images`)
+- Implemented load-more pagination in `templates/index.html`:
+  - added `PAGE_SIZE` paging state and filter-key reset behavior
+  - added `Load more` control and `Showing X of Y` status in browse view
+  - grid now renders incrementally rather than all filtered records at once
+- Re-ran T1.E validation after fix:
+  - nested-folder mismatch count: `0` (was `7`)
+  - pagination/load-more controls: present and wired
+  - thumbnail integrity recheck: `259` checked, `0` broken
+  - approve-all equivalent behavior recheck: pending dropped to `0` and restored successfully
+- T1.E previously identified gaps are now resolved.
+
+### T1.F — Production readiness preflight — applied 2026-04-05 (partial)
+
+- Environment/config preflight completed (non-sensitive checks):
+  - required production key set present count: 19/19 in `.env`
+  - `FLASK_SECRET_KEY` strength check passed (length 64, non-default)
+  - `.gitignore` includes `.env`
+- Current mode flags indicate **local/dev** runtime (not production):
+  - `TEST_MODE=true`
+  - `STORAGE_MODE=local`
+  - `DEV_AUTH_BYPASS=true`
+- Health endpoint checks passed in running app:
+  - `GET /health` -> 200
+  - `GET /healthz` -> 200
+- Schema alignment checks passed at code/spec level:
+  - `specification.md` record fields align with local metadata client field keys
+  - SharePoint list client mapping aligns with spec (`Title/AltText/Tags/Status/Slug/Location/HighResLocation/Source`)
+- Deployment checklist cross-check (`PRODUCTION_DEPLOY.md`) confirms required production switches and redirect-URI setup steps are documented.
+
+**Remaining for full T1.F completion (environment-dependent):**
+
+- Flip runtime to production values and re-validate:
+  - `TEST_MODE=false`
+  - `STORAGE_MODE=sharepoint`
+  - `DEV_AUTH_BYPASS=false`
+- Verify Azure App Service live health endpoints in deployed environment
+- Verify Azure AD app registration contains the production `MSAL_REDIRECT_URI`
+- Verify SharePoint List columns exist in the live tenant and match expected internal names
+
+### T1.G — Automated T1 regression harness — applied 2026-04-05
+
+- Added isolated, repeatable T1 automation runner: `scripts/run_t1_suite.py`
+  - seeds deterministic local fixture data and images
+  - starts/stops Flask test servers automatically (bypass and auth-required modes)
+  - validates health, smoke endpoints, review transitions, pending-count consistency, thumbnail integrity, nested-folder behavior, and UI wiring (badge refresh, approve-all, load-more)
+  - validates non-interactive auth gate behavior (`401` APIs + `/` redirect to `/login`) without requiring external MSAL tenant discovery
+  - writes JSON report (`test_data/t1_last_report.json`) and exits non-zero on regression failures
+- Added pytest wrapper test: `tests/test_t1_suite.py` to run the T1 automation suite in test runs
+- Added VS Code task: `Run T1 Regression Suite`
+- Added CI workflow: `.github/workflows/t1-regression.yml`
+  - runs on `push` and `pull_request` to `main`
+  - executes T1 suite and uploads JSON report artifact
+- Added README command entry for running the automated T1 suite
+
+### T1.H — Manual auth validation completion (local scope) — applied 2026-04-05
+
+- Valid-user MSAL browser login check passed in local auth-required mode
+- Invalid-user MSAL browser login check passed (tenant denial for non-member account)
+- Session-expiry behavior validated in local TEST_MODE:
+  - enforced `exp` claim validation for authenticated sessions
+  - added `POST /auth/test-expire-session` (TEST_MODE only) to force expiry for deterministic testing
+  - forced interactive sign-in prompt after forced expiry to avoid silent SSO masking
+- Forced-expiry verification passed:
+  - protected API requests return 401 after expiry
+  - page routes redirect to `/login` until re-authenticated
+- Remaining blocker for full T1 closure:
+  - production checks in T1.F cannot complete until Azure App Service deployment is available
+
+### W1. Proxima Writing → Image Library → Webflow CMS integration — applied 2026-04-05
+
+- Confirmed Blog Writing Skill, Article Writing Skill, and Branding Skill are complete and correctly wired
+- Confirmed all 4 Image Library MCP tools (`search_image_library`, `search_stock_photos`, `catalog_stock_image`, `catalog_image_from_file`) are implemented and registered in Claude Desktop
+- Confirmed all stock photo API keys present in `.env` (Pexels, Unsplash, Pixabay, Shutterstock)
+- Added **Webflow CMS Publishing** section to `Project-Instructions.md`:
+  - Mapped Blog output (13 fields) to Blog Items collection field slugs
+  - Mapped Article output (10 fields) to Article Items collection field slugs
+  - Hardcoded stable reference IDs: Authors, Blog categories, Article types (all from proxima.cafe)
+  - Dynamic tag ID lookup via `list_collection_items` on Tags collection
+  - Image field handling: SharePoint CDN URL in production; local mode requires manual upload
+  - Draft creation via `create_collection_items`; optional live publish via `publish_collection_items`
+  - Noted gap: Blog category "Story" not yet in Webflow Categories — instructions offer to create it
+- Added **URL Slug** field to Article Skill output format (required by Webflow Article Items collection)
+- Image field in local/test mode cannot be auto-set (localhost URL not publicly accessible); user notified to set manually in Webflow Designer
 
 ### 20. M10-M19 — Maintenance governance and quality operations — applied 2026-04-05
 

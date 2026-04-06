@@ -79,6 +79,20 @@ def _webp_url(location: str) -> str:
     return f"http://localhost:5000/image?path={location}"
 
 
+_THUMB_MAX_PX = 200  # max width or height for inline thumbnails
+
+
+def _resize_to_jpeg_bytes(raw: bytes, max_px: int = _THUMB_MAX_PX) -> bytes:
+    """Resize raw image bytes to fit within max_px on longest side, return JPEG bytes."""
+    from PIL import Image
+    import io
+    img = Image.open(io.BytesIO(raw)).convert("RGB")
+    img.thumbnail((max_px, max_px), Image.LANCZOS)
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG", quality=70, optimize=True)
+    return buf.getvalue()
+
+
 def _fetch_thumb(url: str) -> types.ImageContent | None:
     """Fetch a thumbnail URL and return as MCP ImageContent, or None on failure."""
     if not url:
@@ -86,9 +100,9 @@ def _fetch_thumb(url: str) -> types.ImageContent | None:
     try:
         resp = _requests.get(url, timeout=10)
         resp.raise_for_status()
-        mime = resp.headers.get("Content-Type", "image/jpeg").split(";")[0].strip()
-        data = base64.b64encode(resp.content).decode()
-        return types.ImageContent(type="image", data=data, mimeType=mime)
+        jpeg_bytes = _resize_to_jpeg_bytes(resp.content)
+        data = base64.b64encode(jpeg_bytes).decode()
+        return types.ImageContent(type="image", data=data, mimeType="image/jpeg")
     except Exception:
         return None
 
@@ -104,10 +118,9 @@ def _thumb_local(location: str) -> types.ImageContent | None:
             path = base / location
             if not path.exists():
                 return None
-        suffix = path.suffix.lower()
-        mime = "image/webp" if suffix == ".webp" else "image/jpeg" if suffix in (".jpg", ".jpeg") else "image/png"
-        data = base64.b64encode(path.read_bytes()).decode()
-        return types.ImageContent(type="image", data=data, mimeType=mime)
+        jpeg_bytes = _resize_to_jpeg_bytes(path.read_bytes())
+        data = base64.b64encode(jpeg_bytes).decode()
+        return types.ImageContent(type="image", data=data, mimeType="image/jpeg")
     except Exception:
         return None
 
@@ -312,9 +325,6 @@ async def _search_image_library(args: dict) -> list[types.TextContent]:
             ),
         )]
 
-    import json
-    contents: list = [types.TextContent(type="text", text=json.dumps(results, indent=2))]
-
     # Fetch thumbnails in parallel
     def _get_thumb(item):
         loc = item.get("location", "")
@@ -334,13 +344,19 @@ async def _search_image_library(args: dict) -> list[types.TextContent]:
             except Exception:
                 pass
 
-    for idx in sorted(thumb_map):
-        item, img = thumb_map[idx]
-        contents.append(types.TextContent(
-            type="text",
-            text=f"**Library #{idx + 1}** — {item.get('alt_text', item.get('filename', ''))[:80]}"
-        ))
-        contents.append(img)
+    import json
+    contents: list = []
+
+    for idx, item in enumerate(results):
+        label = (
+            f"**#{idx + 1}** | slug: {item.get('slug','')} | "
+            f"alt: {item.get('alt_text','')[:80]} | "
+            f"tags: {item.get('tags','')[:60]} | "
+            f"location: {item.get('location','')}"
+        )
+        contents.append(types.TextContent(type="text", text=label))
+        if idx in thumb_map:
+            contents.append(thumb_map[idx][1])
 
     return contents
 
@@ -529,7 +545,7 @@ async def _search_stock_photos(args: dict) -> list[types.TextContent]:
             except Exception as e:
                 output[phrase][lib] = {"results": [], "error": str(e)}
 
-    contents: list = [types.TextContent(type="text", text=json.dumps(output, indent=2))]
+    contents: list = []
 
     # Collect thumbnails to fetch: (phrase, source, index, url, title)
     to_fetch = []
