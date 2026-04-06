@@ -153,3 +153,4 @@ Register in `~/Library/Application Support/Claude/claude_desktop_config.json`:
 | [project-scope.md](project-scope.md) | Feature definitions, application parameters, and developer onboarding (including guidance for developers using OpenAI-based coding tools) |
 | [EDIT_LIST.md](EDIT_LIST.md) | Applied changes and active future development queue |
 | [PRODUCTION_DEPLOY.md](PRODUCTION_DEPLOY.md) | Deployment checklist for Azure App Service |
+| [NEXT_TIME_START.md](NEXT_TIME_START.md) | Quick resume checklist for next session (env, run modes, tests, and current checkpoint) |
