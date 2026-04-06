@@ -571,6 +571,141 @@ def api_catalog_stock():
                     headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
+@app.route("/api/mcp/catalog-stock", methods=["POST"])
+def api_mcp_catalog_stock():
+    """Internal endpoint for Pete MCP server to catalog a stock image.
+    Protected by X-MCP-Secret header instead of MSAL session auth.
+    Returns JSON directly (no SSE streaming).
+    """
+    secret = os.getenv("MCP_INTERNAL_SECRET", "")
+    if not secret or request.headers.get("X-MCP-Secret") != secret:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    data = request.get_json(force=True) or {}
+    download_url = data.get("download_url", "").strip()
+    filename = data.get("filename", "image.jpg").strip() or "image.jpg"
+    category = data.get("category", "").strip() or None
+    source = data.get("source", "").strip()
+    title = data.get("title", "").strip()
+    tags_raw = data.get("tags", "")
+    photographer = data.get("photographer", "").strip()
+
+    from src.image_processor import CATEGORIES, process_image
+
+    if not download_url:
+        return jsonify({"error": "download_url required"}), 400
+
+    domain = urlparse(download_url).netloc.lower()
+    _allowed = {"images.pexels.com", "www.pexels.com", "cdn.pixabay.com", "pixabay.com", "images.unsplash.com"}
+    if not any(domain == d or domain.endswith("." + d) for d in _allowed):
+        return jsonify({"error": "URL not permitted"}), 403
+
+    if category is not None and category not in CATEGORIES:
+        return jsonify({"error": f"Invalid category. Must be one of: {CATEGORIES}"}), 400
+
+    tags = [t.strip() for t in tags_raw.split(",") if t.strip()] if tags_raw else []
+    source_context = _stock_source_context(source, title, tags, photographer)
+
+    try:
+        resp = requests.get(download_url, timeout=30)
+        resp.raise_for_status()
+        file_bytes = resp.content
+    except Exception as e:
+        return jsonify({"error": f"Download failed: {e}"}), 502
+
+    try:
+        from src.ai_generator import AltTextGenerator
+        gen = AltTextGenerator()
+
+        if Config.TEST_MODE:
+            list_client = LocalClient()
+            sp_client = None
+            storage_mode = "local"
+        else:
+            from src.sharepoint_list_client import SharePointListClient
+            from src.sharepoint_client import SharePointClient
+            list_client = SharePointListClient()
+            sp_client = SharePointClient()
+            storage_mode = "sharepoint"
+
+        result = process_image(
+            file_bytes=file_bytes,
+            original_filename=filename,
+            generator=gen,
+            list_client=list_client,
+            sp_client=sp_client,
+            image_folder=Config.IMAGE_FOLDER,
+            storage_mode=storage_mode,
+            category=category,
+            source_context=source_context or None,
+            source=source or None,
+        )
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/mcp/catalog-from-file", methods=["POST"])
+def api_mcp_catalog_from_file():
+    """Internal endpoint for Pete MCP server to catalog a base64-encoded image file.
+    Protected by X-MCP-Secret header instead of MSAL session auth.
+    Returns JSON directly.
+    """
+    import base64 as _base64
+
+    secret = os.getenv("MCP_INTERNAL_SECRET", "")
+    if not secret or request.headers.get("X-MCP-Secret") != secret:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    data = request.get_json(force=True) or {}
+    image_data = data.get("image_data", "").strip()
+    filename = data.get("filename", "image.jpg").strip() or "image.jpg"
+    category = data.get("category", "").strip() or None
+
+    from src.image_processor import CATEGORIES, process_image
+
+    if not image_data:
+        return jsonify({"error": "image_data required"}), 400
+
+    if category is not None and category not in CATEGORIES:
+        return jsonify({"error": f"Invalid category. Must be one of: {CATEGORIES}"}), 400
+
+    try:
+        file_bytes = _base64.b64decode(image_data)
+    except Exception as e:
+        return jsonify({"error": f"Invalid base64 data: {e}"}), 400
+
+    try:
+        from src.ai_generator import AltTextGenerator
+        gen = AltTextGenerator()
+
+        if Config.TEST_MODE:
+            list_client = LocalClient()
+            sp_client = None
+            storage_mode = "local"
+        else:
+            from src.sharepoint_list_client import SharePointListClient
+            from src.sharepoint_client import SharePointClient
+            list_client = SharePointListClient()
+            sp_client = SharePointClient()
+            storage_mode = "sharepoint"
+
+        result = process_image(
+            file_bytes=file_bytes,
+            original_filename=filename,
+            generator=gen,
+            list_client=list_client,
+            sp_client=sp_client,
+            image_folder=Config.IMAGE_FOLDER,
+            storage_mode=storage_mode,
+            category=category,
+            source="Internal",
+        )
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/api/download-image")
 @login_required
 def api_download_image():
