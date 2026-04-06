@@ -1,9 +1,10 @@
 """Microsoft Graph API client for SharePoint image storage."""
 
+import concurrent.futures
 import os
 import time
 from io import BytesIO
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 from typing import List, Tuple
 
 import requests
@@ -21,6 +22,8 @@ class SharePointClient:
         self.drive_id = os.getenv("SHAREPOINT_DRIVE_ID", "")
         self._token: str = ""
         self._token_expiry: float = 0.0
+        _local = os.getenv("ONEDRIVE_LOCAL_PATH", "").strip()
+        self._local_base: Path | None = Path(_local) if _local and Path(_local).is_dir() else None
 
     def _get_token(self) -> str:
         if self._token and time.time() < self._token_expiry - 60:
@@ -66,25 +69,67 @@ class SharePointClient:
         Returns list of (sharepoint_path, relative_path) tuples where:
           sharepoint_path — full path from drive root (e.g. "Images/High-Res/photo.jpg")
           relative_path   — relative to folder_path (e.g. "High-Res/photo.jpg")
+
+        Uses local OneDrive sync when ONEDRIVE_LOCAL_PATH is set (much faster).
         """
         supported = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
-        results: List[Tuple[str, str]] = []
+        if self._local_base is not None:
+            local_dir = self._local_base / folder_path if folder_path else self._local_base
+            if local_dir.is_dir():
+                results: List[Tuple[str, str]] = []
+                for dirpath, _, filenames in os.walk(local_dir):
+                    for name in filenames:
+                        if name.startswith(".") or name == "desktop.ini":
+                            continue
+                        if Path(name).suffix.lower() in supported:
+                            full = Path(dirpath) / name
+                            sp_path = str(full.relative_to(self._local_base)).replace(os.sep, "/")
+                            rel = str(full.relative_to(local_dir)).replace(os.sep, "/")
+                            results.append((sp_path, rel))
+                return results
+        results = []
         self._walk(folder_path, folder_path, supported, results)
         return results
 
     def _walk(self, root: str, current: str, supported: set, results: list):
-        for item in self.list_folder(current):
+        items = self.list_folder(current)
+        folders = [item for item in items if "folder" in item]
+        files = [item for item in items if "file" in item]
+
+        for item in files:
             name = item["name"]
             path = f"{current}/{name}" if current else name
-            if "folder" in item:
-                self._walk(root, path, supported, results)
-            elif "file" in item:
-                if PurePosixPath(name).suffix.lower() in supported:
-                    rel = path[len(root):].lstrip("/") if root else path
-                    results.append((path, rel))
+            if PurePosixPath(name).suffix.lower() in supported:
+                rel = path[len(root):].lstrip("/") if root else path
+                results.append((path, rel))
+
+        if folders:
+            sub_results: List[List[Tuple[str, str]]] = [[] for _ in folders]
+            with concurrent.futures.ThreadPoolExecutor(max_workers=min(8, len(folders))) as pool:
+                futs = {
+                    pool.submit(self._walk_collect, root, f"{current}/{f['name']}" if current else f["name"], supported): i
+                    for i, f in enumerate(folders)
+                }
+                for fut in concurrent.futures.as_completed(futs):
+                    sub_results[futs[fut]] = fut.result()
+            for sub in sub_results:
+                results.extend(sub)
+
+    def _walk_collect(self, root: str, current: str, supported: set) -> List[Tuple[str, str]]:
+        """Thread-safe wrapper around _walk that returns results instead of appending."""
+        collected: List[Tuple[str, str]] = []
+        self._walk(root, current, supported, collected)
+        return collected
 
     def get_file_bytes(self, sharepoint_path: str) -> bytes:
-        """Download file content by its full path from the drive root."""
+        """Download file content by its full path from the drive root.
+
+        Reads from local OneDrive sync when available to avoid an API round-trip.
+        """
+        if self._local_base is not None:
+            local_file = self._local_base / sharepoint_path
+            if local_file.is_file():
+                return local_file.read_bytes()
         url = f"{self.GRAPH_BASE}/drives/{self.drive_id}/root:/{sharepoint_path}:/content"
         resp = requests.get(url, headers=self._headers(), timeout=30)
         resp.raise_for_status()
