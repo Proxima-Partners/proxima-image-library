@@ -44,6 +44,15 @@ Optional for local login bypass: `DEV_AUTH_BYPASS=true`.
 MSAL vars are required when testing real auth flow or running live mode.
 Full setup: see [development.md](development.md#environment-variables-reference)
 
+## Production Notes
+
+- Production host: `https://library.liveproxima.org`
+- Azure App Service: `PP-App-Serv`
+- Store production secrets and runtime configuration in Azure App Service Application Settings, not in a checked-in file
+- Microsoft Entra redirect URI must exactly match the production host callback: `https://library.liveproxima.org/auth/callback`
+- On Azure App Service, staged uploads are stored under shared `/home` storage so the upload stage and process requests can resolve the same file across requests
+- After each production deploy, verify one complete upload and confirm the item appears in the library with metadata persisted
+
 ---
 
 ## Project Structure

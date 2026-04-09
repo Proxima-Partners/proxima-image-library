@@ -64,13 +64,18 @@ Expected result:
 ## 6) Current project checkpoint
 
 - T1 local validation is complete.
-- T1 production validation is still pending because Azure App Service is not deployed yet.
-- Remaining T1 production checks:
-  - Live health endpoints in Azure
-  - Production redirect URI validation
-  - Live SharePoint schema and read/write verification
+- Production app is live at `https://library.liveproxima.org`.
+- Microsoft login on the custom domain is working.
+- Health endpoints have already been validated live.
+- Latest production fix pushed: `767ac1d` (`Use shared staging dir for uploads`).
+- Deployment run to watch next: GitHub Actions run `24216649585`.
+- Immediate validation target after that deploy finishes:
+  - Retry upload from `/upload`
+  - Confirm `Unknown or expired file ID` is gone
+  - Confirm uploaded item appears in the library with metadata persisted
 
 ## 7) Next logical step
 
-- If Azure is still not deployed: begin T2 security audit work.
-- If Azure is deployed: complete T1 production checks and close T1.
+- Check whether deployment run `24216649585` completed successfully.
+- If successful, run one live upload on `library.liveproxima.org` and verify the record appears in the library.
+- If upload still fails, capture the exact UI error text and inspect Azure logs before changing code.

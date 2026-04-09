@@ -93,15 +93,24 @@ Steps required before and after each production deployment to Azure App Service.
   - Confirm `AZURE_CREDENTIALS` exists for `.github/workflows/azure-deploy.yml`
   - If missing, recreate it from an Azure service principal with permission to deploy to `PP-App-Serv`
 - [ ] Trigger deployment from GitHub Actions or push to `main`
+- [ ] Watch the GitHub Actions run created from the latest push and wait for a clean success before testing production
 - [ ] In Azure App Service -> Deployment Center / Log stream, confirm the app boots with `bash startup.sh`
+
+### Current live deploy note
+
+- Latest upload reliability fix pushed: commit `767ac1d` (`Use shared staging dir for uploads`)
+- The corresponding deploy run is `24216649585`
+- This change moves staged uploads off instance-local temp storage and onto shared Azure `/home` storage to prevent `Unknown or expired file ID` during `/api/upload/process`
 
 ---
 
 ## Post-Deploy Checks
 
 - [ ] Health endpoints return 200: `GET /health` and `GET /healthz`
+- [ ] Login flow on `https://library.liveproxima.org` redirects back to `https://library.liveproxima.org/auth/callback`
 - [ ] Library loads and images display
-- [ ] Upload pipeline completes without connection errors
+- [ ] Upload pipeline completes without connection errors or `Unknown or expired file ID`
+- [ ] Uploaded item appears in the library and its SharePoint List metadata record is created
 - [ ] Review queue loads and status changes persist
 - [ ] Maintenance page loads for admin accounts and is blocked for non-admin accounts
 - [ ] Stock search returns results from configured sources
