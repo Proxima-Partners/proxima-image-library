@@ -5,9 +5,14 @@ on:
     branches: [main]
   workflow_dispatch:
 
+concurrency:
+  group: azure-deploy-main
+  cancel-in-progress: true
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     steps:
       - uses: actions/checkout@v4
