@@ -6,6 +6,9 @@ Steps required before and after each production deployment to Azure App Service.
 
 ## Environment
 
+- [ ] Azure App Service -> `PP-App-Serv` -> Settings -> Environment variables / Application settings:
+  - Add all runtime values from the production config set here rather than in a checked-in file
+  - Restart the app after saving changes
 - [ ] Set `TEST_MODE=false`
 - [ ] Set `STORAGE_MODE=sharepoint`
 - [ ] Set `DEV_AUTH_BYPASS=false` (required: runtime validation blocks bypass outside TEST_MODE)
@@ -17,6 +20,14 @@ Steps required before and after each production deployment to Azure App Service.
   - `FLASK_SECRET_KEY`
   - `MSAL_CLIENT_ID`, `MSAL_CLIENT_SECRET`, `MSAL_TENANT_ID`, `MSAL_REDIRECT_URI`
   - `CORS_ORIGINS`
+- [ ] Confirm security settings are explicit in Azure App Settings:
+  - `SESSION_COOKIE_SECURE=true`
+  - `SESSION_COOKIE_SAMESITE=Lax`
+  - `MAX_UPLOAD_BYTES=20971520`
+  - `MAX_REQUEST_BYTES=83886080`
+  - `RATE_LIMIT_WINDOW_SECONDS=60`
+  - `RATE_LIMIT_AUTH_REQUESTS=20`
+  - `RATE_LIMIT_STREAM_REQUESTS=8`
 - [ ] Confirm recommended SharePoint settings are explicit:
   - `SHAREPOINT_LIST_NAME` (default `Assets`)
   - `SHAREPOINT_IMAGE_FOLDER` (default `Images`)
@@ -38,8 +49,12 @@ Steps required before and after each production deployment to Azure App Service.
 
 ## Auth
 
-- [ ] Add production redirect URI to Azure AD app registration:
+- [ ] Microsoft Entra ID -> App registrations -> Authentication:
+  - Add production redirect URI:
   `https://<production-hostname>/auth/callback`
+- [ ] Microsoft Entra ID -> App registrations -> Certificates & secrets:
+  - Ensure the app registration has an active client secret
+  - Copy that secret value into Azure App Service Application Settings as `MSAL_CLIENT_SECRET` unless switching to Key Vault references
 - [ ] Confirm `MSAL_REDIRECT_URI` exactly matches the Azure app registration redirect URI
 - [ ] Verify MSAL login flow end-to-end with a liveproxima.org account
 - [ ] Confirm sign-out clears session correctly
@@ -69,6 +84,16 @@ Steps required before and after each production deployment to Azure App Service.
 
 - [ ] Review `EDIT_LIST.md` and confirm there are no unresolved go-live blockers
 - [ ] Keep `EDIT_LIST.md` as a living change log; do not delete it as part of deployment
+
+---
+
+## Deployment Pipeline
+
+- [ ] GitHub -> Repository settings -> Secrets and variables -> Actions:
+  - Confirm `AZURE_CREDENTIALS` exists for `.github/workflows/azure-deploy.yml`
+  - If missing, recreate it from an Azure service principal with permission to deploy to `PP-App-Serv`
+- [ ] Trigger deployment from GitHub Actions or push to `main`
+- [ ] In Azure App Service -> Deployment Center / Log stream, confirm the app boots with `bash startup.sh`
 
 ---
 

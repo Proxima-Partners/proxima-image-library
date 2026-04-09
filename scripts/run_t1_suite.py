@@ -201,6 +201,13 @@ def _wait_for_health(base_url: str, timeout_seconds: float = 25.0) -> bool:
     return False
 
 
+def _same_origin_headers(base_url: str) -> Dict[str, str]:
+    return {
+        "Origin": base_url,
+        "Referer": f"{base_url}/library",
+    }
+
+
 def _start_server(port: int, image_root: Path, bypass_auth: bool) -> subprocess.Popen:
     env = os.environ.copy()
     env.update(
@@ -381,6 +388,7 @@ def _check_status_transitions(base_url: str) -> CheckResult:
         patch = requests.patch(
             f"{base_url}/api/image-status",
             json={"id": rid, "status": status},
+            headers=_same_origin_headers(base_url),
             timeout=10,
         )
         images = requests.get(f"{base_url}/api/images", timeout=10).json().get("images", [])
@@ -404,6 +412,7 @@ def _check_batch_approve(base_url: str) -> CheckResult:
         requests.patch(
             f"{base_url}/api/image-status",
             json={"id": rid, "status": "approved"},
+            headers=_same_origin_headers(base_url),
             timeout=10,
         ).status_code
         for rid in ids
@@ -415,6 +424,7 @@ def _check_batch_approve(base_url: str) -> CheckResult:
         requests.patch(
             f"{base_url}/api/image-status",
             json={"id": rid, "status": "pending-review"},
+            headers=_same_origin_headers(base_url),
             timeout=10,
         ).status_code
         for rid in ids
@@ -444,6 +454,7 @@ def _check_concurrency_lock(base_url: str) -> CheckResult:
         resp = requests.patch(
             f"{base_url}/api/image-status",
             json={"id": record_id, "status": status},
+            headers=_same_origin_headers(base_url),
             timeout=10,
         )
         return resp.status_code

@@ -287,6 +287,8 @@
 </main>
 
 <script>
+  window.PROXIMA_CSRF_TOKEN = {{ csrf_token|tojson }};
+
   const dropZone    = document.getElementById('drop-zone');
   const fileInput   = document.getElementById('file-input');
   const fileListEl  = document.getElementById('file-list');
@@ -385,6 +387,9 @@
     try {
       const res = await fetch('/api/upload/stage', { method: 'POST', body: formData });
       const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || `Upload stage failed (${res.status})`);
+      }
       staged = data.staged || [];
     } catch (err) {
       alert(`Upload failed: ${err.message}`);
@@ -405,6 +410,11 @@
       }
     }
 
+    if (!staged.some(s => s.id)) {
+      processBtn.disabled = false;
+      return;
+    }
+
     resultsPane.scrollIntoView({ behavior: 'smooth' });
 
     // Process each staged file sequentially via SSE
@@ -414,7 +424,7 @@
       card.setStatus('running');
 
       await new Promise(resolve => {
-        const url = `/api/upload/process?id=${encodeURIComponent(s.id)}`;
+        const url = `/api/upload/process?id=${encodeURIComponent(s.id)}&csrf_token=${encodeURIComponent(window.PROXIMA_CSRF_TOKEN)}`;
         const es = new EventSource(url);
         let finished = false;
 

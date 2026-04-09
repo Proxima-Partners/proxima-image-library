@@ -36,6 +36,16 @@ class Config:
 
     # Flask session
     FLASK_SECRET_KEY = os.getenv("FLASK_SECRET_KEY", "dev-secret-change-in-prod")
+    SESSION_COOKIE_SECURE = os.getenv(
+        "SESSION_COOKIE_SECURE",
+        "false" if TEST_MODE else "true",
+    ).lower() in ("1", "true", "yes")
+    SESSION_COOKIE_SAMESITE = os.getenv("SESSION_COOKIE_SAMESITE", "Lax")
+    MAX_UPLOAD_BYTES = int(os.getenv("MAX_UPLOAD_BYTES", str(20 * 1024 * 1024)))
+    MAX_REQUEST_BYTES = int(os.getenv("MAX_REQUEST_BYTES", str(4 * MAX_UPLOAD_BYTES)))
+    RATE_LIMIT_WINDOW_SECONDS = int(os.getenv("RATE_LIMIT_WINDOW_SECONDS", "60"))
+    RATE_LIMIT_AUTH_REQUESTS = int(os.getenv("RATE_LIMIT_AUTH_REQUESTS", "20"))
+    RATE_LIMIT_STREAM_REQUESTS = int(os.getenv("RATE_LIMIT_STREAM_REQUESTS", "8"))
 
     # MSAL user authentication
     MSAL_CLIENT_ID = os.getenv("MSAL_CLIENT_ID", "")
@@ -77,6 +87,20 @@ class Config:
             raise ValueError(
                 "Invalid configuration: DEV_AUTH_BYPASS=true is only allowed when TEST_MODE=true"
             )
+        if Config.MAX_UPLOAD_BYTES <= 0 or Config.MAX_REQUEST_BYTES < Config.MAX_UPLOAD_BYTES:
+            raise ValueError("Invalid upload limits: MAX_REQUEST_BYTES must be >= MAX_UPLOAD_BYTES > 0")
+        if (
+            Config.RATE_LIMIT_WINDOW_SECONDS <= 0
+            or Config.RATE_LIMIT_AUTH_REQUESTS <= 0
+            or Config.RATE_LIMIT_STREAM_REQUESTS <= 0
+        ):
+            raise ValueError("Invalid rate limit configuration: all rate limit values must be > 0")
+        if not Config.TEST_MODE:
+            secret = Config.FLASK_SECRET_KEY or ""
+            if secret == "dev-secret-change-in-prod" or len(secret) < 32:
+                raise ValueError(
+                    "Invalid configuration: FLASK_SECRET_KEY must be set to a strong random secret in non-test mode"
+                )
 
     @staticmethod
     def validate():

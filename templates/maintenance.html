@@ -982,6 +982,8 @@
   </div>
 
   <script>
+    window.PROXIMA_CSRF_TOKEN = {{ csrf_token|tojson }};
+
     const runBtn = document.getElementById('run');
     const sourceSelect = document.getElementById('source');
     const dryRunInput = document.getElementById('dry-run');
@@ -2005,6 +2007,7 @@
       const source = sourceSelect.value.trim();
       if (source) params.set('source', source);
       if (dryRunInput.checked) params.set('dry_run', 'true');
+      params.set('csrf_token', window.PROXIMA_CSRF_TOKEN);
 
       const es = new EventSource(`/api/maintenance/sync-highres?${params.toString()}`);
       activeEs = es;
@@ -2491,6 +2494,7 @@
       appendRetagLine('Starting bulk re-tag run...');
 
       const params = buildRetagParams();
+  params.set('csrf_token', window.PROXIMA_CSRF_TOKEN);
       const es = new EventSource(`/api/maintenance/retag-run?${params.toString()}`);
       retagEs = es;
 

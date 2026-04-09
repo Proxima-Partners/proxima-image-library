@@ -593,6 +593,8 @@
   </div>
 
   <script>
+    window.PROXIMA_CSRF_TOKEN = {{ csrf_token|tojson }};
+
     // ── State ────────────────────────────────────────────────────────────
     let phrases = [];
 
@@ -1042,6 +1044,7 @@
         title: title || '',
         tags: (tags || []).join(','),
         photographer: photographer || '',
+        csrf_token: window.PROXIMA_CSRF_TOKEN,
       });
       const es = new EventSource(`/api/catalog-stock?${params}`);
 

@@ -6,8 +6,8 @@ Pending changes — rebuild only on approval.
 
 ## Pending
 
-- T1. Comprehensive pre-production testing protocol — in progress (local validation complete; production validation pending Azure deployment)
-- T2. Security protocol audit & penetration checklist — not started
+- T1. Comprehensive pre-production testing protocol — in progress (local validation complete; Azure configuration and live production validation pending)
+- T2. Security protocol audit & penetration checklist — local hardening complete; production verification pending Azure rollout
 - T3. Comprehensive pre-production code audit — not started
 
 ---
@@ -257,6 +257,39 @@ Systematic review of the entire codebase before Azure production deployment. Goa
 - MCP checks passed:
   - `search_image_library` returned text + thumbnail results for known phrase
   - `catalog_image_from_file` accepted base64 image and created pending-review record
+
+### T2.A — App-layer security hardening — applied 2026-04-09
+
+- Restricted `/run/*` routes to maintenance admins via the existing maintenance allowlist
+- Enforced production-safe config validation:
+  - non-test runtime rejects default or weak `FLASK_SECRET_KEY`
+  - non-test runtime rejects invalid upload and rate-limit settings
+- Hardened Flask session config for production with `HttpOnly`, configurable `Secure`, and `SameSite`
+- Added CSRF token generation and validation for SSE/browser-triggered flows
+- Enforced same-origin checks on mutating browser requests
+- Added response security headers:
+  - `Content-Security-Policy`
+  - `Strict-Transport-Security` when served via HTTPS
+  - `X-Content-Type-Options`
+  - `X-Frame-Options`
+  - `Referrer-Policy`
+  - `Permissions-Policy`
+  - `Cross-Origin-Opener-Policy`
+- Added lightweight in-process rate limiting for auth-sensitive and streaming endpoints
+- Added upload and remote-download image validation:
+  - max file size enforcement
+  - content verification via Pillow instead of extension-only trust
+  - bounded remote downloads before ingest
+- Updated browser templates and the T1 harness to satisfy CSRF and same-origin protections
+- Added regression coverage in `tests/test_security_controls.py`
+
+### T2.B — Dependency audit and pinning — applied 2026-04-09
+
+- Ran `pip-audit` against `requirements.txt`
+- Upgraded `requests` from `2.31.0` to `2.33.0` to clear known CVEs
+- Pinned direct dependencies to exact versions to reduce supply-chain drift
+- Re-ran dependency audit successfully with no known vulnerabilities reported
+- Re-ran `pytest -v` and the T1 regression suite successfully after dependency changes
 
 ### T1.C — Performance and destructive guardrail verification — applied 2026-04-05
 

@@ -5,6 +5,7 @@ import os
 import queue
 import re
 import hashlib
+import secrets
 import subprocess
 import sys
 import tempfile
@@ -29,6 +30,7 @@ import requests
 from flask import Flask, Response, jsonify, redirect, render_template, request, session, stream_with_context, url_for
 from flask_cors import CORS
 from PIL import Image as PILImage
+from werkzeug.exceptions import RequestEntityTooLarge
 
 from src.local_client import LocalClient
 from src.config import Config
@@ -38,10 +40,35 @@ Config.validate_runtime()
 
 app = Flask(__name__, template_folder="../templates", static_folder="../static")
 app.secret_key = Config.FLASK_SECRET_KEY
+app.config.update(
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SECURE=Config.SESSION_COOKIE_SECURE,
+    SESSION_COOKIE_SAMESITE=Config.SESSION_COOKIE_SAMESITE,
+    MAX_CONTENT_LENGTH=Config.MAX_REQUEST_BYTES,
+)
 
 # Allow configured origins to call the API (Webflow frontend + localhost dev)
 CORS(app, resources={r"/api/*": {"origins": Config.CORS_ORIGINS}},
      supports_credentials=False)
+
+_CSRF_QUERY_REQUIRED_PATHS = {
+    "/api/catalog-stock",
+    "/api/upload/process",
+    "/api/maintenance/retag-run",
+    "/api/maintenance/sync-highres",
+}
+_RATE_LIMIT_RULES = {
+    "/api/parse-suggestions": (Config.RATE_LIMIT_AUTH_REQUESTS, Config.RATE_LIMIT_WINDOW_SECONDS),
+    "/api/stock-search": (Config.RATE_LIMIT_AUTH_REQUESTS, Config.RATE_LIMIT_WINDOW_SECONDS),
+    "/api/download-image": (Config.RATE_LIMIT_AUTH_REQUESTS * 2, Config.RATE_LIMIT_WINDOW_SECONDS),
+    "/api/upload/stage": (Config.RATE_LIMIT_AUTH_REQUESTS, Config.RATE_LIMIT_WINDOW_SECONDS),
+    "/api/upload/process": (Config.RATE_LIMIT_STREAM_REQUESTS, Config.RATE_LIMIT_WINDOW_SECONDS),
+    "/api/catalog-stock": (Config.RATE_LIMIT_STREAM_REQUESTS, Config.RATE_LIMIT_WINDOW_SECONDS),
+    "/api/mcp/catalog-stock": (Config.RATE_LIMIT_STREAM_REQUESTS * 2, Config.RATE_LIMIT_WINDOW_SECONDS),
+    "/api/mcp/catalog-from-file": (Config.RATE_LIMIT_STREAM_REQUESTS * 2, Config.RATE_LIMIT_WINDOW_SECONDS),
+}
+_RATE_LIMIT_LOCK = threading.Lock()
+_rate_limit_state: dict[tuple[str, str], list[float]] = {}
 
 
 # ---------------------------------------------------------------------------
@@ -51,6 +78,121 @@ CORS(app, resources={r"/api/*": {"origins": Config.CORS_ORIGINS}},
 def _auth_bypass_enabled() -> bool:
     # Local-only bypass for faster TEST_MODE development.
     return Config.TEST_MODE and Config.DEV_AUTH_BYPASS
+
+
+def _get_csrf_token() -> str:
+    token = session.get("_csrf_token")
+    if not token:
+        token = secrets.token_urlsafe(32)
+        session["_csrf_token"] = token
+    return token
+
+
+def _same_origin_request() -> bool:
+    for header_name in ("Origin", "Referer"):
+        value = (request.headers.get(header_name) or "").strip()
+        if not value:
+            continue
+        parsed = urlparse(value)
+        if (parsed.netloc or "").lower() == (request.host or "").lower():
+            return True
+        return False
+    return False
+
+
+def _valid_csrf_token(candidate: str) -> bool:
+    session_token = str(session.get("_csrf_token", "") or "")
+    if not session_token or not candidate:
+        return False
+    return secrets.compare_digest(session_token, candidate)
+
+
+def _csrf_error(message: str) -> Response:
+    if request.path.startswith("/api/") or request.is_json:
+        return jsonify({"error": message}), 403
+    return Response(message, status=403)
+
+
+def _request_identity_key() -> str:
+    if request.path.startswith("/api/mcp/"):
+        return f"mcp:{request.remote_addr or 'unknown'}"
+
+    claims = session.get("user", {}) if isinstance(session.get("user", {}), dict) else {}
+    identity_values = _user_identity_values(claims)
+    if identity_values:
+        return f"user:{sorted(identity_values)[0]}"
+    return f"ip:{request.remote_addr or 'unknown'}"
+
+
+def _consume_rate_limit(path: str) -> Optional[int]:
+    rule = _RATE_LIMIT_RULES.get(path)
+    if rule is None:
+        return None
+
+    limit, window_seconds = rule
+    now = time.time()
+    key = (path, _request_identity_key())
+
+    with _RATE_LIMIT_LOCK:
+        timestamps = _rate_limit_state.get(key, [])
+        timestamps = [ts for ts in timestamps if now - ts < window_seconds]
+        if len(timestamps) >= limit:
+            _rate_limit_state[key] = timestamps
+            retry_after = max(1, int(window_seconds - (now - timestamps[0])))
+            return retry_after
+
+        timestamps.append(now)
+        _rate_limit_state[key] = timestamps
+
+        if len(_rate_limit_state) > 1024:
+            stale_before = now - (window_seconds * 2)
+            stale_keys = [
+                state_key
+                for state_key, state_timestamps in _rate_limit_state.items()
+                if not state_timestamps or state_timestamps[-1] < stale_before
+            ]
+            for state_key in stale_keys[:256]:
+                _rate_limit_state.pop(state_key, None)
+
+    return None
+
+
+@app.context_processor
+def inject_template_security_context():
+    return {"csrf_token": _get_csrf_token()}
+
+
+@app.after_request
+def apply_security_headers(response: Response) -> Response:
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+    response.headers.setdefault("Cross-Origin-Opener-Policy", "same-origin")
+    response.headers.setdefault(
+        "Content-Security-Policy",
+        "default-src 'self'; "
+        "img-src 'self' data: https:; "
+        "script-src 'self' 'unsafe-inline'; "
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+        "font-src 'self' data: https://fonts.gstatic.com; "
+        "connect-src 'self'; "
+        "object-src 'none'; "
+        "base-uri 'self'; "
+        "frame-ancestors 'none'; "
+        "form-action 'self'"
+    )
+    if request.is_secure or (request.headers.get("X-Forwarded-Proto", "") or "").lower() == "https":
+        response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+    return response
+
+
+@app.errorhandler(RequestEntityTooLarge)
+def handle_request_too_large(_exc):
+    message = f"Upload exceeds request size limit ({Config.MAX_REQUEST_BYTES // (1024 * 1024)} MB max)"
+    if request.path.startswith("/api/"):
+        return jsonify({"error": message}), 413
+    return Response(message, status=413)
 
 def _msal_app():
     return msal.ConfidentialClientApplication(
@@ -136,9 +278,46 @@ def clear_stale_bypass_session():
 
 
 @app.before_request
+def enforce_csrf_protection():
+    path = request.path or ""
+    if path.startswith("/api/mcp/"):
+        return None
+
+    if request.method in {"POST", "PUT", "PATCH", "DELETE"} and not _same_origin_request():
+        return _csrf_error("Invalid request origin")
+
+    if path in _CSRF_QUERY_REQUIRED_PATHS and "_csrf_token" in session:
+        token = (request.args.get("csrf_token", "") or "").strip()
+        if not _valid_csrf_token(token):
+            return _csrf_error("Missing or invalid CSRF token")
+
+    return None
+
+
+@app.before_request
+def enforce_rate_limits():
+    retry_after = _consume_rate_limit(request.path or "")
+    if retry_after is None:
+        return None
+
+    response = jsonify({
+        "error": "Rate limit exceeded",
+        "retry_after_seconds": retry_after,
+        "path": request.path,
+    })
+    response.status_code = 429
+    response.headers["Retry-After"] = str(retry_after)
+    return response
+
+
+@app.before_request
 def enforce_maintenance_admin_access():
     path = request.path or ""
-    if path != "/maintenance" and not path.startswith("/api/maintenance/"):
+    if (
+        path != "/maintenance"
+        and not path.startswith("/api/maintenance/")
+        and not path.startswith("/run/")
+    ):
         return None
 
     if _auth_bypass_enabled():
@@ -339,7 +518,7 @@ def _stream_command(cmd: list, env: dict = None):
     )
 
 
-@app.route("/run/scan-test")
+@app.route("/run/scan-test", methods=["POST"])
 @login_required
 def run_scan_test():
     return _stream_command(
@@ -348,16 +527,17 @@ def run_scan_test():
     )
 
 
-@app.route("/run/scan-live")
+@app.route("/run/scan-live", methods=["POST"])
 @login_required
 def run_scan_live():
     return _stream_command([sys.executable, "-u", "-m", "src.main"])
 
 
-@app.route("/run/clean")
+@app.route("/run/clean", methods=["POST"])
 @login_required
 def run_clean():
-    mode = request.args.get("mode", "test")
+    mode = request.get_json(silent=True) or {}
+    mode = str(mode.get("mode", "test")).strip() or "test"
     env = {"TEST_MODE": "true"} if mode == "test" else {}
     test_mode_value = "true" if mode == "test" else "false"
     script = (
@@ -465,6 +645,59 @@ def _normalized_formats() -> set[str]:
     return {fmt.lower() for fmt in formats}
 
 
+def _size_label(num_bytes: int) -> str:
+    if num_bytes >= 1_048_576:
+        return f"{num_bytes / 1_048_576:.1f} MB"
+    if num_bytes >= 1024:
+        return f"{num_bytes / 1024:.1f} KB"
+    return f"{num_bytes} B"
+
+
+def _validate_image_payload(data: bytes, filename: str) -> None:
+    if not data:
+        raise ValueError(f"{filename}: file is empty")
+    if len(data) > Config.MAX_UPLOAD_BYTES:
+        raise ValueError(
+            f"{filename}: file exceeds max upload size of {_size_label(Config.MAX_UPLOAD_BYTES)}"
+        )
+    try:
+        with PILImage.open(BytesIO(data)) as image:
+            image.verify()
+            image_format = (image.format or "").upper()
+    except Exception as exc:
+        raise ValueError(f"{filename}: invalid image file ({exc})") from exc
+
+    if image_format not in {"JPEG", "PNG", "GIF", "WEBP"}:
+        raise ValueError(f"{filename}: unsupported image content type {image_format or 'unknown'}")
+
+
+def _download_limited_bytes(download_url: str, timeout: int = 30) -> bytes:
+    with requests.get(download_url, timeout=timeout, stream=True) as resp:
+        resp.raise_for_status()
+
+        content_length = resp.headers.get("Content-Length", "").strip()
+        if content_length:
+            try:
+                if int(content_length) > Config.MAX_UPLOAD_BYTES:
+                    raise ValueError(
+                        f"Remote file exceeds max upload size of {_size_label(Config.MAX_UPLOAD_BYTES)}"
+                    )
+            except ValueError as exc:
+                if "Remote file exceeds" in str(exc):
+                    raise
+
+        chunks = bytearray()
+        for chunk in resp.iter_content(chunk_size=64 * 1024):
+            if not chunk:
+                continue
+            chunks.extend(chunk)
+            if len(chunks) > Config.MAX_UPLOAD_BYTES:
+                raise ValueError(
+                    f"Remote file exceeds max upload size of {_size_label(Config.MAX_UPLOAD_BYTES)}"
+                )
+        return bytes(chunks)
+
+
 @app.route("/api/catalog-stock")
 @login_required
 def api_catalog_stock():
@@ -511,9 +744,8 @@ def api_catalog_stock():
                                 pass
 
                 q.put(("progress", f"Downloading from {source or 'source'}…"))
-                resp = requests.get(download_url, timeout=30)
-                resp.raise_for_status()
-                file_bytes = resp.content
+                file_bytes = _download_limited_bytes(download_url, timeout=30)
+                _validate_image_payload(file_bytes, filename)
 
                 from src.ai_generator import AltTextGenerator
                 gen = AltTextGenerator()
@@ -607,9 +839,8 @@ def api_mcp_catalog_stock():
     source_context = _stock_source_context(source, title, tags, photographer)
 
     try:
-        resp = requests.get(download_url, timeout=30)
-        resp.raise_for_status()
-        file_bytes = resp.content
+        file_bytes = _download_limited_bytes(download_url, timeout=30)
+        _validate_image_payload(file_bytes, filename)
     except Exception as e:
         return jsonify({"error": f"Download failed: {e}"}), 502
 
@@ -671,7 +902,8 @@ def api_mcp_catalog_from_file():
         return jsonify({"error": f"Invalid category. Must be one of: {CATEGORIES}"}), 400
 
     try:
-        file_bytes = _base64.b64decode(image_data)
+        file_bytes = _base64.b64decode(image_data, validate=True)
+        _validate_image_payload(file_bytes, filename)
     except Exception as e:
         return jsonify({"error": f"Invalid base64 data: {e}"}), 400
 
@@ -4324,8 +4556,15 @@ def api_upload_stage():
             staged.append({"error": f"Unsupported format: {ext or '(none)'}", "filename": original_name})
             continue
 
+        file_bytes = f.read()
+        try:
+            _validate_image_payload(file_bytes, original_name)
+        except ValueError as exc:
+            staged.append({"error": str(exc), "filename": original_name})
+            continue
+
         file_id = uuid.uuid4().hex
-        _staged_save(file_id, original_name, f.read())
+        _staged_save(file_id, original_name, file_bytes)
         staged.append({"id": file_id, "filename": original_name})
 
     return jsonify({"staged": staged})
@@ -4341,9 +4580,25 @@ def api_upload_process():
     from src.image_processor import CATEGORIES, process_image
     staged = _staged_lookup(file_id)
     if staged is None:
-        return jsonify({"error": "Unknown or expired file ID"}), 404
+        def expired_stream():
+            yield "data: [START]\n\n"
+            yield "data: [ERROR] Unknown or expired file ID\n\n"
+
+        return Response(
+            stream_with_context(expired_stream()),
+            mimetype="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
     if category is not None and category not in CATEGORIES:
-        return jsonify({"error": f"Invalid category. Must be one of: {CATEGORIES}"}), 400
+        def invalid_category_stream():
+            yield "data: [START]\n\n"
+            yield f"data: [ERROR] Invalid category. Must be one of: {CATEGORIES}\n\n"
+
+        return Response(
+            stream_with_context(invalid_category_stream()),
+            mimetype="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
 
     def generate():
         yield "data: [START]\n\n"
