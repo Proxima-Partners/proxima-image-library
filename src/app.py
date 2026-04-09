@@ -4516,9 +4516,19 @@ def api_tag_library_promote():
 _UPLOAD_ALLOWED = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
 
 
+def _staged_root() -> Path:
+    """Return the directory used to stage uploaded files between requests."""
+    if Path("/home").exists() and os.getenv("WEBSITE_INSTANCE_ID"):
+        root = Path("/home/proxima_staged_uploads")
+    else:
+        root = Path(tempfile.gettempdir()) / "proxima_staged_uploads"
+    root.mkdir(parents=True, exist_ok=True)
+    return root
+
+
 def _staged_lookup(file_id: str) -> Optional[Dict[str, str]]:
     """Find a staged temp file by ID from the filesystem (worker-safe)."""
-    matches = list(Path(tempfile.gettempdir()).glob(f"proxima_{file_id}__*"))
+    matches = list(_staged_root().glob(f"proxima_{file_id}__*"))
     if not matches:
         return None
     path = matches[0]
@@ -4529,7 +4539,7 @@ def _staged_lookup(file_id: str) -> Optional[Dict[str, str]]:
 
 def _staged_save(file_id: str, original_name: str, data: bytes) -> str:
     """Write file bytes to a temp path encoding the original name in the filename."""
-    tmp_path = Path(tempfile.gettempdir()) / f"proxima_{file_id}__{original_name}"
+    tmp_path = _staged_root() / f"proxima_{file_id}__{original_name}"
     tmp_path.write_bytes(data)
     return str(tmp_path)
 
