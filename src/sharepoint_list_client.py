@@ -136,7 +136,14 @@ class SharePointListClient(SharePointClient):
             resp.raise_for_status()
             return self._to_app_record(resp.json())
         except requests.exceptions.RequestException as e:
-            print(f"Error creating SharePoint list item: {e}")
+            response_text = ""
+            if getattr(e, "response", None) is not None:
+                try:
+                    response_text = e.response.text.strip()
+                except Exception:
+                    response_text = ""
+            detail = f": {response_text}" if response_text else ""
+            print(f"Error creating SharePoint list item: {e}{detail}")
             return None
 
     def update_record(self, record_id: str, alt_text: str, status: str = "reviewed") -> bool:

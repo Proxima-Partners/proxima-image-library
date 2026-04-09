@@ -206,7 +206,7 @@ def process_image(
 
     # ── Step 6: Metadata record ────────────────────────────────────────────
     _log("Writing metadata record…")
-    list_client.create_record(
+    record = list_client.create_record(
         filename=webp_filename,
         alt_text=alt_text,
         tags=tags,
@@ -216,6 +216,8 @@ def process_image(
         high_res_location=high_res_location,
         source=source_name,
     )
+    if not record:
+        raise RuntimeError("Metadata record creation failed")
 
     _log("Done.")
     return {
