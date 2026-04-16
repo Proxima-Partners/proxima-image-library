@@ -63,19 +63,35 @@ Expected result:
 
 ## 6) Current project checkpoint
 
-- T1 local validation is complete.
-- Production app is live at `https://library.liveproxima.org`.
-- Microsoft login on the custom domain is working.
-- Health endpoints have already been validated live.
-- Latest production fix pushed: `767ac1d` (`Use shared staging dir for uploads`).
-- Deployment run to watch next: GitHub Actions run `24216649585`.
-- Immediate validation target after that deploy finishes:
-  - Retry upload from `/upload`
-  - Confirm `Unknown or expired file ID` is gone
-  - Confirm uploaded item appears in the library with metadata persisted
+- Automated tests pass: `29 passed` via `pytest -v`.
+- Automated T1 regression suite passes (`overall_ok: true`).
+- Manual auth checks completed locally:
+  - Valid user session can call `/api/images` (200).
+  - Non-admin access to `/api/maintenance/health-snapshot` is blocked (403).
+  - Forced expiry (`/auth/test-expire-session`) returns expected 401 behavior.
+  - Natural token/session expiry also observed (401 `Session expired`).
+- Production app remains live at `https://library.liveproxima.org`.
+- Shutterstock quota counter file currently: `proxima_ss_counter.json` -> `{"month":"2026-04","count":1}`.
+- **T1 CLOSED** (2026-04-15): live Azure + SharePoint upload validated end-to-end.
+  - Health endpoints 200, auth redirect chain correct, security headers present.
+  - SharePoint list schema 8/8 columns matched (Source column added).
+  - Upload pipeline: test JPEG → Claude AI metadata → SP file upload → SP list record — all verified.
+  - SharePoint list record count: 3 (2 prior + 1 test upload).
+- **T2 CLOSED** (2026-04-15): security audit complete.
+  - pip-audit: 0 vulnerabilities (cryptography, pytest, python-multipart, pip all upgraded).
+  - Error detail suppression: all API/SSE responses return generic messages.
+  - Secrets, CORS, XSS, logging all verified clean.
+- **T3 CLOSED** (2026-04-15): comprehensive code audit complete.
+  - 13 `json.dumps` calls fixed with `ensure_ascii=False`.
+  - 11 unused imports removed, 3 f-string fixes, 4 import-line splits.
+  - MCP error handling hardened (structured errors, no `str(e)` leaks).
+  - 6 env var reads centralized into Config class.
+  - specification.md and development.md updated.
+  - Ruff pyflakes: 0 errors.
 
 ## 7) Next logical step
 
-- Check whether deployment run `24216649585` completed successfully.
-- If successful, run one live upload on `library.liveproxima.org` and verify the record appears in the library.
-- If upload still fails, capture the exact UI error text and inspect Azure logs before changing code.
+- **T2 CLOSED** (2026-04-15): dependency CVEs fixed (0 remaining), error detail suppression applied, secrets/CORS/XSS all verified.
+- **T3 CLOSED** (2026-04-15): code audit complete, lint clean, docs updated.
+- All three pre-production gates (T1, T2, T3) are now closed.
+- Clean up test upload record from SharePoint list if desired.

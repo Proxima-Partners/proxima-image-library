@@ -22,8 +22,8 @@ Register in Claude Desktop (~/Library/Application Support/Claude/claude_desktop_
 
 import base64
 import concurrent.futures
+import json
 import re
-import sys
 from pathlib import Path
 from typing import Any
 
@@ -278,7 +278,7 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextCont
         return await _catalog_stock_image(arguments)
     if name == "catalog_image_from_file":
         return await _catalog_image_from_file(arguments)
-    raise ValueError(f"Unknown tool: {name}")
+    return [types.TextContent(type="text", text=json.dumps({"error": f"Unknown tool: {name}"}))]
 
 
 # ---------------------------------------------------------------------------
@@ -344,7 +344,6 @@ async def _search_image_library(args: dict) -> list[types.TextContent]:
             except Exception:
                 pass
 
-    import json
     contents: list = []
 
     for idx, item in enumerate(results):
@@ -362,11 +361,6 @@ async def _search_image_library(args: dict) -> list[types.TextContent]:
 
 
 async def _search_stock_photos(args: dict) -> list[types.TextContent]:
-    import json
-    from src.stock_client import (
-        search_pexels, search_shutterstock, search_unsplash,
-        search_pixabay, search_all_libraries,
-    )
 
     phrases = args.get("phrases", [])[:20]
     limit = max(1, min(int(args.get("limit", 6)), 12))
@@ -411,7 +405,9 @@ async def _search_stock_photos(args: dict) -> list[types.TextContent]:
             return {"results": [], "error": str(e)}
 
     def _shutterstock(phrase, lim):
-        import os, base64, requests
+        import os
+        import base64
+        import requests
         cid = os.getenv("SHUTTERSTOCK_CLIENT_ID", "")
         csec = os.getenv("SHUTTERSTOCK_CLIENT_SECRET", "")
         if not cid or not csec:
@@ -457,7 +453,8 @@ async def _search_stock_photos(args: dict) -> list[types.TextContent]:
             return {"results": [], "error": str(e)}
 
     def _unsplash(phrase, lim):
-        import os, requests
+        import os
+        import requests
         key = os.getenv("UNSPLASH_ACCESS_KEY", "")
         if not key:
             return {"results": [], "error": "UNSPLASH_ACCESS_KEY not configured"}
@@ -491,7 +488,8 @@ async def _search_stock_photos(args: dict) -> list[types.TextContent]:
             return {"results": [], "error": str(e)}
 
     def _pixabay(phrase, lim):
-        import os, requests
+        import os
+        import requests
         key = os.getenv("PIXABAY_API_KEY", "")
         if not key:
             return {"results": [], "error": "PIXABAY_API_KEY not configured"}
@@ -597,15 +595,15 @@ async def _catalog_stock_image(args: dict) -> list[types.TextContent]:
     source = args.get("source", "").strip()
 
     if not download_url:
-        return [types.TextContent(type="text", text=json.dumps({"error": "download_url is required"}))]
+        return [types.TextContent(type="text", text=json.dumps({"error": "download_url is required"}, ensure_ascii=False))]
 
     # Download the image
     try:
         resp = req.get(download_url, timeout=30)
         resp.raise_for_status()
         file_bytes = resp.content
-    except Exception as e:
-        return [types.TextContent(type="text", text=json.dumps({"error": f"Download failed: {e}"}))]
+    except Exception:
+        return [types.TextContent(type="text", text=json.dumps({"error": "Download failed"}, ensure_ascii=False))]
 
     # Run full pipeline
     from src.ai_generator import AltTextGenerator
@@ -638,9 +636,9 @@ async def _catalog_stock_image(args: dict) -> list[types.TextContent]:
             source=source or None,
         )
         result["webp_url"] = _webp_url(result.get("location", ""))
-        return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
-    except Exception as e:
-        return [types.TextContent(type="text", text=json.dumps({"error": str(e)}))]
+        return [types.TextContent(type="text", text=json.dumps(result, indent=2, ensure_ascii=False))]
+    except Exception:
+        return [types.TextContent(type="text", text=json.dumps({"error": "Cataloging failed"}, ensure_ascii=False))]
 
 
 async def _catalog_image_from_file(args: dict) -> list[types.TextContent]:
@@ -651,12 +649,12 @@ async def _catalog_image_from_file(args: dict) -> list[types.TextContent]:
     category = args.get("category", "")
 
     if not image_data:
-        return [types.TextContent(type="text", text=json.dumps({"error": "image_data is required"}))]
+        return [types.TextContent(type="text", text=json.dumps({"error": "image_data is required"}, ensure_ascii=False))]
 
     try:
         file_bytes = base64.b64decode(image_data)
-    except Exception as e:
-        return [types.TextContent(type="text", text=json.dumps({"error": f"Invalid base64 data: {e}"}))]
+    except Exception:
+        return [types.TextContent(type="text", text=json.dumps({"error": "Invalid base64 data"}, ensure_ascii=False))]
 
     from src.ai_generator import AltTextGenerator
     from src.image_processor import process_image
@@ -688,9 +686,9 @@ async def _catalog_image_from_file(args: dict) -> list[types.TextContent]:
             source="Internal",
         )
         result["webp_url"] = _webp_url(result.get("location", ""))
-        return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
-    except Exception as e:
-        return [types.TextContent(type="text", text=json.dumps({"error": str(e)}))]
+        return [types.TextContent(type="text", text=json.dumps(result, indent=2, ensure_ascii=False))]
+    except Exception:
+        return [types.TextContent(type="text", text=json.dumps({"error": "Cataloging failed"}, ensure_ascii=False))]
 
 
 # ---------------------------------------------------------------------------

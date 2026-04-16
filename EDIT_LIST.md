@@ -6,9 +6,88 @@ Pending changes — rebuild only on approval.
 
 ## Pending
 
-- T1. Comprehensive pre-production testing protocol — in progress (local validation complete; Azure configuration and live production validation pending)
-- T2. Security protocol audit & penetration checklist — local hardening complete; production verification pending Azure rollout
-- T3. Comprehensive pre-production code audit — not started
+- T1. Comprehensive pre-production testing protocol — **CLOSED** (all checks pass including live Azure + SharePoint validation)
+- T2. Security protocol audit & penetration checklist — **CLOSED** (all checks pass: dependency audit clean, error detail suppression applied, no secrets in code/git, CORS restricted, XSS safe)
+- T3. Comprehensive pre-production code audit — **CLOSED** (dead code clean, conventions aligned, lint clean, docs updated)
+
+---
+
+## Applied
+
+### T3.A — Comprehensive code audit (T3 closure) — applied 2026-04-15
+
+**Audit scope:** Dead code, redundancy, performance, error handling, conventions, config, docs, linting.
+
+**Fixes applied:**
+
+- **`ensure_ascii=False`** added to 13 `json.dumps` calls (5 in app.py SSE streams + counter, 8 in mcp_server.py)
+- **Unused imports removed** (11 total): `Config` in ai_generator.py, `List` in main.py, `sys`/`json`/stock imports in mcp_server.py, `BytesIO` in sharepoint_client.py
+- **f-strings without placeholders** fixed (3 in main.py)
+- **Multiple imports on one line** split (4 locations: app.py, mcp_server.py)
+- **MCP `call_tool` ValueError** replaced with structured JSON error response
+- **MCP `str(e)` leaks** replaced with generic error messages (4 locations)
+- **Environment vars centralized**: `MCP_INTERNAL_SECRET` and `UNSPLASH_ACCESS_KEY` added to Config class; direct `os.getenv` calls in app.py replaced with `Config.*` (6 locations)
+- **`_serve_image` `str(e)` leak** replaced with generic "Internal server error"
+- **specification.md** removed unimplemented `Image` (Attachment) field from schema table
+- **development.md** added 11 missing env vars to reference table
+
+**Audit findings — no action required (by design):**
+
+- Route/client/stock-client redundancy: minimal, not worth abstracting
+- `/api/images` Python-side filtering: acceptable for current record count
+- `_records_cache` invalidation: verified correct on all 7 write paths
+- `_sp_url_cache` TTL-only (45 min): correct for SharePoint CDN URLs
+- No dead code, orphaned templates, or unused static assets
+- Conventions consistent: hyphens for status, single Claude model, no PII in logs
+- E501 (line-too-long) and E402 (import order): cosmetic only
+
+**Ruff:** `F`/`E401`/`F541` = 0 errors | **Tests:** 29/29 passed | **T3 status: CLOSED**
+
+### T1.I — Live Azure + SharePoint production validation (T1 closure) — applied 2026-04-15
+
+- Automated test suite: 29/29 pytest passed
+- T1 regression harness: `overall_ok: true` (3 environment-dependent items now resolved below)
+- **Azure App Service health:**
+  - `GET /health` → 200
+  - `GET /healthz` → 200
+- **Production auth flow:**
+  - `/` → 302 → `/login` → 302 → Microsoft authorize URL
+  - `redirect_uri` in live auth URL: `https://library.liveproxima.org/auth/callback` (correct custom domain)
+  - Unauthenticated `/api/images` → 401 JSON
+  - `POST /auth/test-expire-session` unreachable without auth (secure — `@login_required` gates before `TEST_MODE` check)
+- **Production security headers verified:**
+  - `Strict-Transport-Security: max-age=31536000; includeSubDomains`
+  - `X-Content-Type-Options: nosniff`
+  - `X-Frame-Options: DENY`
+  - `Referrer-Policy: strict-origin-when-cross-origin`
+  - `Permissions-Policy: camera=(), microphone=(), geolocation=()`
+  - `Content-Security-Policy` with restrictive `default-src 'self'`
+- **SharePoint list schema:**
+  - 8/8 required columns matched: `Title`, `AltText`, `Tags`, `Status`, `Slug`, `Location`, `HighResLocation`, `Source`
+  - `Source` column was missing — manually created during this session
+- **SharePoint drive structure:**
+  - `Images/` folder: 200
+  - `Images/WebP/`: 200
+  - `Images/High-Res/`: 200
+- **Live upload end-to-end (process_image via Graph API):**
+  - Test image: 800×600 JPEG (8229 bytes)
+  - Pipeline completed in 6.3s
+  - Claude generated alt text: `Solid blue background in a medium-bright shade of azure blue` (60 chars, ≤ 125)
+  - Claude generated tags: `background, graphic, ?solid-color, ?blue`
+  - Category: `Situations`; Source: `Internal`
+  - Record count: 2 → 3 (diff: +1)
+  - Metadata record verified in SP list (id=3):
+    - ✓ alt_text_present
+    - ✓ alt_text_length_ok (≤ 125 chars)
+    - ✓ tags_present
+    - ✓ status_is_pending (`pending-review`)
+    - ✓ location_present (`Situations/solid-blue-background-in-a-medium-bright-shade-of-azure-blue.webp`)
+    - ✓ high_res_location_present (`Internal/solid-blue-background-in-a-medium-bright-shade-of-azure-blue-original.jpg`)
+    - ✓ source_present (`Internal`)
+  - Files verified in SharePoint drive:
+    - ✓ WebP: 200 (948 bytes)
+    - ✓ High-Res: 200 (8229 bytes)
+- **T1 status: CLOSED** — all automated, manual, and production validation items pass
 
 ---
 
@@ -257,6 +336,29 @@ Systematic review of the entire codebase before Azure production deployment. Goa
 - MCP checks passed:
   - `search_image_library` returned text + thumbnail results for known phrase
   - `catalog_image_from_file` accepted base64 image and created pending-review record
+
+### T2.C — Production security verification & CVE remediation (T2 closure) — applied 2026-04-15
+
+- **Dependency audit (pip-audit):**
+  - Initial scan: 7 CVEs in 4 packages (cryptography, pip, pytest, python-multipart)
+  - Upgraded: cryptography 46.0.6→46.0.7, pytest 9.0.2→9.0.3, python-multipart 0.0.22→0.0.26, pip 25.2→26.0.1
+  - Re-audit: 0 known vulnerabilities
+  - requirements.txt updated with pytest==9.0.3
+- **Error detail suppression:**
+  - Replaced all `str(e)` / `str(exc)` in API JSON responses with generic messages ("Internal server error")
+  - Replaced all `str(exc)` in SSE error queue pushes with generic messages ("Processing failed", "Bulk operation failed", "Maintenance sync failed")
+  - Replaced PIL exception details in `_validate_image_payload` with generic "invalid or corrupt image file"
+  - Replaced base64 decode error detail in MCP catalog endpoint with "Invalid image data"
+  - Replaced auth callback exception with generic "Authentication failed"
+  - Updated test assertion to match new validation message
+- **Secrets audit:**
+  - All secrets loaded via `os.getenv()` — no hardcoded values in source
+  - `.env` in `.gitignore` — confirmed zero git history for `.env` files
+- **Logging safety:** No `logging.*`, `app.logger.*`, or `print()` calls in app — no PII leak risk
+- **CORS:** Origins from `CORS_ORIGINS` env var (default `http://localhost:5000`), no wildcard `*`
+- **XSS:** Jinja2 autoescaping active, no `|safe` on user data, JSON responses auto-escaped
+- **Test suite:** 29/29 pytest passed after all changes
+- **T2 status: CLOSED**
 
 ### T2.A — App-layer security hardening — applied 2026-04-09
 

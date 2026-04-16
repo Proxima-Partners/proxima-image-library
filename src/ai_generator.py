@@ -4,7 +4,6 @@ import base64
 from pathlib import Path
 from typing import Optional, Union
 from anthropic import Anthropic
-from src.config import Config
 
 # Maps file extensions to MIME types for the Claude API
 _MEDIA_TYPES = {

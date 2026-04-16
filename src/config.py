@@ -80,6 +80,12 @@ class Config:
     SHAREPOINT_LIST_NAME = os.getenv("SHAREPOINT_LIST_NAME", "Assets")
     SHAREPOINT_IMAGE_FOLDER = os.getenv("SHAREPOINT_IMAGE_FOLDER", "Images")
 
+    # MCP internal API secret
+    MCP_INTERNAL_SECRET = os.getenv("MCP_INTERNAL_SECRET", "")
+
+    # Stock photo API keys
+    UNSPLASH_ACCESS_KEY = os.getenv("UNSPLASH_ACCESS_KEY", "")
+
     @staticmethod
     def validate_runtime() -> None:
         """Validate runtime safety constraints that must hold in every mode."""

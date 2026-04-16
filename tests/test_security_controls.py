@@ -85,7 +85,7 @@ def test_invalid_upload_rejected(client):
     )
     assert response.status_code == 200
     payload = response.get_json()
-    assert "invalid image file" in payload["staged"][0]["error"]
+    assert "invalid or corrupt image file" in payload["staged"][0]["error"]
 
 
 def test_stock_search_rate_limited(client):

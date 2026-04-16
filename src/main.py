@@ -2,7 +2,6 @@
 
 import sys
 from pathlib import Path, PurePosixPath
-from typing import List
 
 from src.config import Config
 from src.image_scanner import ImageScanner
@@ -88,7 +87,7 @@ class AssetLibrary:
             alt_text = self.generator.generate_alt_text(image_source, filename=filename)
 
             if not alt_text:
-                print(f"  ❌ Failed to generate alt text")
+                print("  ❌ Failed to generate alt text")
                 continue
 
             print(f"  ✍️  Alt text: {alt_text}")
@@ -126,7 +125,7 @@ class AssetLibrary:
                     print(f"  ✅ Record created: {record.get('id')}")
                     processed_count += 1
                 else:
-                    print(f"  ❌ Failed to create record")
+                    print("  ❌ Failed to create record")
             else:
                 print("  🔍 [DRY RUN] Would create record")
                 processed_count += 1
@@ -211,7 +210,7 @@ class AssetLibrary:
                 if alt_text:
                     print(f"     Alt: {alt_text}...")
 
-        print(f"\n📊 Summary:")
+        print("\n📊 Summary:")
         print(f"   Total images: {len(all_images)}")
         print(f"   Processed: {len(processed_filenames)}")
         print(f"   Pending: {len(new_images)}")

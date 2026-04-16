@@ -3,7 +3,6 @@
 import concurrent.futures
 import os
 import time
-from io import BytesIO
 from pathlib import Path, PurePosixPath
 from typing import List, Tuple
 

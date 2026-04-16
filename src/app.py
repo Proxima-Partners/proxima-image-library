@@ -396,8 +396,8 @@ def auth_callback():
         if "error" in result:
             return render_template("login_error.html", error=result.get("error_description", "Authentication failed")), 401
         session["user"] = result.get("id_token_claims", {})
-    except Exception as e:
-        return render_template("login_error.html", error=str(e)), 401
+    except Exception:
+        return render_template("login_error.html", error="Authentication failed"), 401
 
     next_url = session.pop("next", url_for("index"))
     return redirect(next_url)
@@ -575,8 +575,8 @@ def api_preview():
             if Path(rel).name not in existing
         )
         return jsonify({"total": total, "existing": len(existing), "new": new_count})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    except Exception:
+        return jsonify({"error": "Internal server error"}), 500
 
 
 @app.route("/stock-search")
@@ -664,8 +664,8 @@ def _validate_image_payload(data: bytes, filename: str) -> None:
         with PILImage.open(BytesIO(data)) as image:
             image.verify()
             image_format = (image.format or "").upper()
-    except Exception as exc:
-        raise ValueError(f"{filename}: invalid image file ({exc})") from exc
+    except Exception:
+        raise ValueError(f"{filename}: invalid or corrupt image file")
 
     if image_format not in {"JPEG", "PNG", "GIF", "WEBP"}:
         raise ValueError(f"{filename}: unsupported image content type {image_format or 'unknown'}")
@@ -736,7 +736,7 @@ def api_catalog_stock():
                 if dl_location:
                     dl_domain = urlparse(dl_location).netloc.lower()
                     if "unsplash.com" in dl_domain:
-                        access_key = os.getenv("UNSPLASH_ACCESS_KEY", "")
+                        access_key = Config.UNSPLASH_ACCESS_KEY
                         if access_key:
                             try:
                                 requests.get(dl_location, headers={"Authorization": f"Client-ID {access_key}"}, timeout=5)
@@ -775,8 +775,8 @@ def api_catalog_stock():
                     source=source or None,
                 )
                 q.put(("done", result))
-            except Exception as exc:
-                q.put(("error", str(exc)))
+            except Exception:
+                q.put(("error", "Processing failed"))
 
         t = threading.Thread(target=worker, daemon=True)
         t.start()
@@ -792,7 +792,7 @@ def api_catalog_stock():
                 yield f"data: {value}\n\n"
             elif kind == "done":
                 import json as _json
-                yield f"data: [RESULT] {_json.dumps(value)}\n\n"
+                yield f"data: [RESULT] {_json.dumps(value, ensure_ascii=False)}\n\n"
                 yield "data: [DONE]\n\n"
                 break
             elif kind == "error":
@@ -809,7 +809,7 @@ def api_mcp_catalog_stock():
     Protected by X-MCP-Secret header instead of MSAL session auth.
     Returns JSON directly (no SSE streaming).
     """
-    secret = os.getenv("MCP_INTERNAL_SECRET", "")
+    secret = Config.MCP_INTERNAL_SECRET
     if not secret or request.headers.get("X-MCP-Secret") != secret:
         return jsonify({"error": "Unauthorized"}), 401
 
@@ -872,8 +872,8 @@ def api_mcp_catalog_stock():
             source=source or None,
         )
         return jsonify(result)
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    except Exception:
+        return jsonify({"error": "Internal server error"}), 500
 
 
 @app.route("/api/mcp/catalog-from-file", methods=["POST"])
@@ -884,7 +884,7 @@ def api_mcp_catalog_from_file():
     """
     import base64 as _base64
 
-    secret = os.getenv("MCP_INTERNAL_SECRET", "")
+    secret = Config.MCP_INTERNAL_SECRET
     if not secret or request.headers.get("X-MCP-Secret") != secret:
         return jsonify({"error": "Unauthorized"}), 401
 
@@ -904,8 +904,8 @@ def api_mcp_catalog_from_file():
     try:
         file_bytes = _base64.b64decode(image_data, validate=True)
         _validate_image_payload(file_bytes, filename)
-    except Exception as e:
-        return jsonify({"error": f"Invalid base64 data: {e}"}), 400
+    except Exception:
+        return jsonify({"error": "Invalid image data"}), 400
 
     try:
         from src.ai_generator import AltTextGenerator
@@ -934,8 +934,8 @@ def api_mcp_catalog_from_file():
             source="Internal",
         )
         return jsonify(result)
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    except Exception:
+        return jsonify({"error": "Internal server error"}), 500
 
 
 @app.route("/api/download-image")
@@ -958,7 +958,7 @@ def api_download_image():
     if download_location:
         dl_domain = urlparse(download_location).netloc.lower()
         if "unsplash.com" in dl_domain:
-            access_key = os.getenv("UNSPLASH_ACCESS_KEY", "")
+            access_key = Config.UNSPLASH_ACCESS_KEY
             if access_key:
                 try:
                     requests.get(
@@ -992,7 +992,9 @@ def run_start_server():
 @login_required
 def run_stop():
     """Shut the server down gracefully after sending the response."""
-    import threading, os, signal
+    import threading
+    import os
+    import signal
     def _shutdown():
         import time
         time.sleep(0.5)
@@ -1141,10 +1143,10 @@ def api_image_info():
             width = image_facet.get("width", 0)
             height = image_facet.get("height", 0)
             return jsonify({"width": width, "height": height, "file_size": file_size})
-        except Exception as e:
-            return jsonify({"error": str(e)}), 500
+        except Exception:
+            return jsonify({"error": "Internal server error"}), 500
 
-    image_folder = Path(os.getenv("IMAGE_FOLDER", "./assets")).resolve()
+    image_folder = Path(Config.IMAGE_FOLDER).resolve()
     full_path = (image_folder / location).resolve()
 
     if not str(full_path).startswith(str(image_folder)):
@@ -1166,8 +1168,8 @@ def api_image_info():
             width, height = img.size
 
         return jsonify({"width": width, "height": height, "file_size": file_size})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    except Exception:
+        return jsonify({"error": "Internal server error"}), 500
 
 
 @app.route("/thumbnail")
@@ -1210,10 +1212,10 @@ def _serve_image(thumb: bool) -> Response:
             sp_path = f"{root}/WebP/{location}" if root else f"WebP/{location}"
             url = _get_sp_url(sp_path, thumb)
             return redirect(url)
-        except Exception as e:
-            return Response(f"Error: {e}", status=500)
+        except Exception:
+            return Response("Internal server error", status=500)
 
-    image_folder = Path(os.getenv("IMAGE_FOLDER", "./assets")).resolve()
+    image_folder = Path(Config.IMAGE_FOLDER).resolve()
 
     # Prefer WebP/ subdirectory (aligned with SharePoint convention); fall back to
     # direct path for legacy records that pre-date this convention.
@@ -3209,8 +3211,8 @@ def api_maintenance_retag_run():
                         "regenerate_tags": regenerate_tags,
                     },
                 }))
-            except Exception as exc:
-                q.put(("error", str(exc)))
+            except Exception:
+                q.put(("error", "Bulk operation failed"))
 
         t = threading.Thread(target=worker, daemon=True)
         t.start()
@@ -3227,7 +3229,7 @@ def api_maintenance_retag_run():
             elif kind == "done":
                 global _records_cache
                 _records_cache = None
-                yield f"data: [RESULT] {json.dumps(value)}\n\n"
+                yield f"data: [RESULT] {json.dumps(value, ensure_ascii=False)}\n\n"
                 yield "data: [DONE]\n\n"
                 break
             elif kind == "error":
@@ -3747,8 +3749,8 @@ def api_maintenance_sync_highres():
                 }
                 q.put(("done", summary))
 
-            except Exception as exc:
-                q.put(("error", str(exc)))
+            except Exception:
+                q.put(("error", "Maintenance sync failed"))
 
         t = threading.Thread(target=worker, daemon=True)
         t.start()
@@ -3765,7 +3767,7 @@ def api_maintenance_sync_highres():
             elif kind == "done":
                 global _records_cache
                 _records_cache = None
-                yield f"data: [RESULT] {json.dumps(value)}\n\n"
+                yield f"data: [RESULT] {json.dumps(value, ensure_ascii=False)}\n\n"
                 yield "data: [DONE]\n\n"
                 break
             elif kind == "error":
@@ -4649,8 +4651,8 @@ def api_upload_process():
                     source="Internal",
                 )
                 q.put(("done", result))
-            except Exception as exc:
-                q.put(("error", str(exc)))
+            except Exception:
+                q.put(("error", "Processing failed"))
 
         t = threading.Thread(target=worker, daemon=True)
         t.start()
@@ -4665,7 +4667,7 @@ def api_upload_process():
             if kind == "progress":
                 yield f"data: {value}\n\n"
             elif kind == "done":
-                yield f"data: [RESULT] {json.dumps(value)}\n\n"
+                yield f"data: [RESULT] {json.dumps(value, ensure_ascii=False)}\n\n"
                 yield "data: [DONE]\n\n"
                 # Invalidate records cache so library reflects new image
                 global _records_cache
@@ -4709,7 +4711,7 @@ def _ss_read() -> dict:
 
 
 def _ss_write(data: dict) -> None:
-    _SS_COUNTER_PATH.write_text(json.dumps(data))
+    _SS_COUNTER_PATH.write_text(json.dumps(data, ensure_ascii=False))
 
 
 @app.route("/api/shutterstock/quota")

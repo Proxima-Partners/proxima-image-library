@@ -316,6 +316,15 @@ Keep the model pinned to `claude-sonnet-4-6`. Do not change it without discussio
 | `SHAREPOINT_IMAGE_FOLDER` | Live mode | `Images` | SharePoint folder root for image files |
 | `SUPPORTED_FORMATS` | No | `.jpg,.jpeg,.png,.gif,.webp` | Comma-separated extensions |
 | `CORS_ORIGINS` | No | `http://localhost:5000` | Comma-separated allowed CORS origins |
+| `TAG_LIBRARY_PATH` | No | `~/Applications/Image-Library/Config/tag_library.json` | Path to tag vocabulary JSON file |
+| `SESSION_COOKIE_SECURE` | No | `true` (non-test) | Set `false` for local HTTP dev |
+| `SESSION_COOKIE_SAMESITE` | No | `Lax` | Cookie SameSite attribute |
+| `MAX_UPLOAD_BYTES` | No | `20971520` (20 MB) | Maximum single file upload size |
+| `MAX_REQUEST_BYTES` | No | `4 × MAX_UPLOAD_BYTES` | Maximum total request body size |
+| `RATE_LIMIT_WINDOW_SECONDS` | No | `60` | Rate-limit sliding window duration |
+| `RATE_LIMIT_AUTH_REQUESTS` | No | `20` | Max auth-sensitive requests per window |
+| `RATE_LIMIT_STREAM_REQUESTS` | No | `8` | Max SSE streaming requests per window |
+| `MCP_INTERNAL_SECRET` | MCP mode | — | Shared secret for MCP internal API endpoints |
 | `PEXELS_API_KEY` | Stock search | — | Pexels API key |
 | `SHUTTERSTOCK_CLIENT_ID` | Stock search | — | Shutterstock app client ID |
 | `SHUTTERSTOCK_CLIENT_SECRET` | Stock search | — | Shutterstock app client secret |
