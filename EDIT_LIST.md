@@ -10,9 +10,26 @@ Pending changes — rebuild only on approval.
 - T2. Security protocol audit & penetration checklist — **CLOSED** (all checks pass: dependency audit clean, error detail suppression applied, no secrets in code/git, CORS restricted, XSS safe)
 - T3. Comprehensive pre-production code audit — **CLOSED** (dead code clean, conventions aligned, lint clean, docs updated)
 
+- F1. **Rework M10–M19 operations** — Review the entire diagnostic/cleanup operation set (M10 Health Snapshot through M19). Goals: consolidate overlapping tools, improve output formatting and actionability, add per-operation undo/preview where missing, and align button labeling and workstream placement consistently.
+
+- F2. **Remove Tag Manager redundancy** — `templates/tag_manager.html` is a standalone page that duplicates the Tag Manager panel now embedded in the Maintenance Console (`maintenance.html`). Audit whether the standalone route/template is still reachable or referenced; remove it and its route if unused, or redirect to `/maintenance#tag-manager`.
+
 ---
 
 ## Applied
+
+### Maintenance Console UX fixes — applied 2026-04-30
+
+**Changes applied:**
+
+- **Hub-metric hover styles** — CSS selector updated from `[data-href]` to `a.hub-metric` after metric blocks were converted to native `<a>` tags. Added teal background tint (`#eef6f8`) and stronger box-shadow on hover.
+- **Tag Manager always visible** — `data-workstream="always"` sentinel added to `#tm-panel`; `applyToolVisibility()` exception prevents it being hidden when switching workstream tabs.
+- **Tag Manager starts collapsed** — `is-collapsed` class + `▶` icon set in HTML; panel expands on click or via `openTagManager()` CTA.
+- **Tags Pending Review CTA** — metric block uses `onclick="openTagManager(); return false;"` (bypasses hash-change edge cases); `openTagManager()` defined globally; `history.replaceState()` clears hash after activation.
+- **Approve All Recommended now clears records** — `/api/tag-library/promote-bulk` now sweeps all records after promotion, replacing `?tag` → `tag` via `bulk_patch_fields`, then invalidates `_records_cache`. Previously, approved tags stayed as `?tag` in records so the suggestions list never cleared.
+- **M14 Apply button gated on preview** — button starts `disabled` with "Run preview first to enable" hint; `onSuccess` callback of M14 Category Preview enables the button and updates hint to show candidate count in green.
+
+---
 
 ### T3.A — Comprehensive code audit (T3 closure) — applied 2026-04-15
 

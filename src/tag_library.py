@@ -166,6 +166,46 @@ class TagLibrary:
         clean = suggested_tag.lstrip("?").strip().lower()
         self.add_tag(clean, category)
 
+    def suggest_category(self, suggested_tag: str) -> str:
+        """Return the best-matching category for a suggested tag using token overlap.
+
+        Scoring is based on the best single approved-tag match within each category
+        (not cumulative) to avoid categories with many short tags winning by volume.
+        """
+        self._ensure_loaded()
+        clean = suggested_tag.lstrip("?").strip().lower()
+        tokens = set(clean.replace("-", " ").replace("_", " ").split())
+        if not tokens:
+            return "Custom"
+
+        best_category = "Custom"
+        best_score = 0
+
+        for category, approved_tags in self._data.items():
+            category_best = 0
+            for approved in approved_tags:
+                approved_tokens = set(approved.replace("-", " ").replace("_", " ").split())
+                # Exact match — return immediately
+                if clean == approved:
+                    return category
+                # Token intersection (Jaccard-weighted)
+                intersection = tokens & approved_tokens
+                union = tokens | approved_tokens
+                if not intersection:
+                    continue
+                # Jaccard similarity scaled to avoid penalising short tags
+                score = len(intersection) / len(union)
+                # Bonus only when there's already token overlap and one contains the other
+                if clean in approved or approved in clean:
+                    score += 0.25
+                if score > category_best:
+                    category_best = score
+            if category_best > best_score:
+                best_score = category_best
+                best_category = category
+
+        return best_category
+
     def invalidate_cache(self) -> None:
         """Force a reload from SharePoint on next access."""
         self._loaded_at = 0.0

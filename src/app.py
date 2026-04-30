@@ -44,7 +44,7 @@ app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SECURE=Config.SESSION_COOKIE_SECURE,
     SESSION_COOKIE_SAMESITE=Config.SESSION_COOKIE_SAMESITE,
-    MAX_CONTENT_LENGTH=Config.MAX_REQUEST_BYTES,
+    MAX_CONTENT_LENGTH=Config.ADMIN_MAX_UPLOAD_BYTES,  # Per-file limits enforced in route handler
 )
 
 # Allow configured origins to call the API (Webflow frontend + localhost dev)
@@ -296,6 +296,10 @@ def enforce_csrf_protection():
 
 @app.before_request
 def enforce_rate_limits():
+    # Admin users are exempt from rate limits on batch upload processing.
+    if _is_maintenance_admin_user(session.get("user", {})):
+        return None
+
     retry_after = _consume_rate_limit(request.path or "")
     if retry_after is None:
         return None
@@ -315,7 +319,9 @@ def enforce_maintenance_admin_access():
     path = request.path or ""
     if (
         path != "/maintenance"
+        and path != "/tag-manager"
         and not path.startswith("/api/maintenance/")
+        and not path.startswith("/api/tag-library/")
         and not path.startswith("/run/")
     ):
         return None
@@ -476,7 +482,9 @@ def health():
 @app.route("/library")
 @login_required
 def index():
-    return render_template("index.html", user=session.get("user", {}))
+    user = session.get("user", {})
+    is_admin = _is_maintenance_admin_user(user)
+    return render_template("index.html", user=user, is_admin=is_admin)
 
 
 # ------------------------------------------------------------------
@@ -653,12 +661,13 @@ def _size_label(num_bytes: int) -> str:
     return f"{num_bytes} B"
 
 
-def _validate_image_payload(data: bytes, filename: str) -> None:
+def _validate_image_payload(data: bytes, filename: str, max_bytes: int | None = None) -> None:
     if not data:
         raise ValueError(f"{filename}: file is empty")
-    if len(data) > Config.MAX_UPLOAD_BYTES:
+    limit = max_bytes or Config.MAX_UPLOAD_BYTES
+    if len(data) > limit:
         raise ValueError(
-            f"{filename}: file exceeds max upload size of {_size_label(Config.MAX_UPLOAD_BYTES)}"
+            f"{filename}: file exceeds max upload size of {_size_label(limit)}"
         )
     try:
         with PILImage.open(BytesIO(data)) as image:
@@ -671,16 +680,17 @@ def _validate_image_payload(data: bytes, filename: str) -> None:
         raise ValueError(f"{filename}: unsupported image content type {image_format or 'unknown'}")
 
 
-def _download_limited_bytes(download_url: str, timeout: int = 30) -> bytes:
+def _download_limited_bytes(download_url: str, timeout: int = 30, max_bytes: int | None = None) -> bytes:
+    limit = max_bytes or Config.MAX_UPLOAD_BYTES
     with requests.get(download_url, timeout=timeout, stream=True) as resp:
         resp.raise_for_status()
 
         content_length = resp.headers.get("Content-Length", "").strip()
         if content_length:
             try:
-                if int(content_length) > Config.MAX_UPLOAD_BYTES:
+                if int(content_length) > limit:
                     raise ValueError(
-                        f"Remote file exceeds max upload size of {_size_label(Config.MAX_UPLOAD_BYTES)}"
+                        f"Remote file exceeds max upload size of {_size_label(limit)}"
                     )
             except ValueError as exc:
                 if "Remote file exceeds" in str(exc):
@@ -691,9 +701,9 @@ def _download_limited_bytes(download_url: str, timeout: int = 30) -> bytes:
             if not chunk:
                 continue
             chunks.extend(chunk)
-            if len(chunks) > Config.MAX_UPLOAD_BYTES:
+            if len(chunks) > limit:
                 raise ValueError(
-                    f"Remote file exceeds max upload size of {_size_label(Config.MAX_UPLOAD_BYTES)}"
+                    f"Remote file exceeds max upload size of {_size_label(limit)}"
                 )
         return bytes(chunks)
 
@@ -1248,7 +1258,7 @@ def _serve_image(thumb: bool) -> Response:
 @app.route("/tag-manager")
 @login_required
 def tag_manager():
-    return render_template("tag_manager.html")
+    return redirect("/maintenance#tag-manager")
 
 
 @app.route("/maintenance")
@@ -2505,6 +2515,116 @@ def api_maintenance_orphans_flag_missing():
         "marker": marker,
         "set_pending_review": set_pending_review,
     })
+
+
+@app.route("/api/maintenance/orphans/delete-files", methods=["POST"])
+@login_required
+def api_maintenance_orphans_delete_files():
+    data = request.get_json(force=True) or {}
+    file_paths = data.get("file_paths", [])
+    file_type = str(data.get("type", "")).strip().lower()
+
+    if file_type not in ("webp", "highres"):
+        return jsonify({"error": "type must be 'webp' or 'highres'"}), 400
+    if not isinstance(file_paths, list) or not file_paths:
+        return jsonify({"error": "file_paths must be a non-empty list"}), 400
+
+    # Validate paths — reject any containing traversal sequences
+    for p in file_paths:
+        if not isinstance(p, str) or ".." in p or p.startswith("/"):
+            return jsonify({"error": f"Invalid file path: {p!r}"}), 400
+
+    subfolder = "WebP" if file_type == "webp" else "High-Res"
+    deleted = 0
+    failed = []
+
+    if Config.TEST_MODE:
+        base = Path(Config.IMAGE_FOLDER)
+        for rel in file_paths:
+            target = (base / subfolder / rel).resolve()
+            # Safety: confirm resolved path is inside the expected folder
+            allowed_base = (base / subfolder).resolve()
+            try:
+                target.relative_to(allowed_base)
+            except ValueError:
+                failed.append({"path": rel, "error": "path outside allowed folder"})
+                continue
+            if target.is_file():
+                try:
+                    target.unlink()
+                    deleted += 1
+                except Exception as exc:
+                    failed.append({"path": rel, "error": str(exc)})
+            else:
+                failed.append({"path": rel, "error": "file not found"})
+    else:
+        sp_client = get_sp_client()
+        root = Config.SHAREPOINT_IMAGE_FOLDER.strip("/")
+        for rel in file_paths:
+            sp_path = f"{root}/{subfolder}/{rel}" if root else f"{subfolder}/{rel}"
+            try:
+                ok = sp_client.delete_file(sp_path)
+                if ok:
+                    deleted += 1
+                else:
+                    failed.append({"path": rel, "error": "not found"})
+            except Exception as exc:
+                failed.append({"path": rel, "error": str(exc)})
+
+    _maintenance_append_audit(
+        action="orphans-delete-files",
+        outcome="ok",
+        details={"type": file_type, "deleted": deleted, "failed": len(failed)},
+    )
+
+    return jsonify({"deleted": deleted, "failed": len(failed), "failures": failed})
+
+
+@app.route("/api/maintenance/orphans/register-files", methods=["POST"])
+@login_required
+def api_maintenance_orphans_register_files():
+    data = request.get_json(force=True) or {}
+    file_type = str(data.get("type", "")).strip().lower()
+    file_paths = data.get("file_paths", [])
+
+    if file_type not in ("webp", "highres"):
+        return jsonify({"error": "type must be 'webp' or 'highres'"}), 400
+    if not isinstance(file_paths, list) or not file_paths:
+        return jsonify({"error": "file_paths must be a non-empty list"}), 400
+
+    for p in file_paths:
+        if not isinstance(p, str) or ".." in p or p.startswith("/"):
+            return jsonify({"error": f"Invalid file path: {p!r}"}), 400
+
+    client = get_client()
+    registered = 0
+    skipped = 0
+    failed = []
+
+    for rel_path in file_paths:
+        filename = Path(rel_path).name
+        try:
+            if client.record_exists(filename):
+                skipped += 1
+                continue
+            if file_type == "webp":
+                client.create_record(filename=filename, location=rel_path, status="pending-review")
+            else:
+                client.create_record(filename=filename, high_res_location=rel_path, status="pending-review")
+            registered += 1
+        except Exception as exc:
+            failed.append({"path": rel_path, "error": str(exc)})
+
+    global _records_cache
+    _records_cache = None
+
+    _maintenance_append_audit(
+        action="orphans-register-files",
+        outcome="ok",
+        details={"type": file_type, "registered": registered, "skipped": skipped, "failed": len(failed)},
+    )
+
+    return jsonify({"registered": registered, "skipped": skipped, "failed": len(failed), "failures": failed})
 
 
 @app.route("/api/maintenance/duplicates")
@@ -4459,6 +4579,7 @@ def api_tag_library_get():
 @login_required
 def api_tag_library_suggestions():
     """Return all ?suggested tags found across existing records."""
+    from src.tag_library import TagLibrary
     records = get_all_records()
     suggestions: dict = {}  # tag → count
     for rec in records:
@@ -4466,8 +4587,10 @@ def api_tag_library_suggestions():
             tag = tag.strip()
             if tag.startswith("?"):
                 suggestions[tag] = suggestions.get(tag, 0) + 1
+    lib = TagLibrary.instance()
     return jsonify({"suggestions": [
-        {"tag": t, "count": c} for t, c in sorted(suggestions.items())
+        {"tag": t, "count": c, "suggested_category": lib.suggest_category(t)}
+        for t, c in sorted(suggestions.items())
     ]})
 
 
@@ -4511,6 +4634,55 @@ def api_tag_library_promote():
     return jsonify({"ok": True})
 
 
+@app.route("/api/tag-library/promote-bulk", methods=["POST"])
+@login_required
+def api_tag_library_promote_bulk():
+    """Promote multiple ?suggested tags to approved tags (admin bulk action)."""
+    if not _is_maintenance_admin_user(session.get("user", {})):
+        return jsonify({"error": "Admin access required"}), 403
+    data = request.get_json(force=True)
+    tags = data.get("tags", [])  # list of {tag, category}
+    if not tags or not isinstance(tags, list):
+        return jsonify({"error": "tags list required"}), 400
+    from src.tag_library import TagLibrary
+    lib = TagLibrary.instance()
+    promoted_tags: list[str] = []  # clean tag names (no ?)
+    for item in tags:
+        tag = (item.get("tag") or "").strip()
+        category = (item.get("category") or "Custom").strip()
+        if tag:
+            lib.promote_suggestion(tag, category)
+            promoted_tags.append(tag.lstrip("?").strip().lower())
+    lib.invalidate_cache()
+
+    # Strip the ? prefix from records so the suggestions endpoint no longer surfaces them
+    if promoted_tags:
+        client = get_client()
+        records = client.get_all_records()
+        patches: list[tuple[str, dict]] = []
+        for rec in records:
+            rec_id = str(rec.get("id", "")).strip()
+            raw_tags = rec.get("fields", {}).get("Tags", "") or ""
+            tag_list = [t.strip() for t in raw_tags.split(",") if t.strip()]
+            new_tags = []
+            changed = False
+            for t in tag_list:
+                clean = t.lstrip("?").strip().lower()
+                if t.startswith("?") and clean in promoted_tags:
+                    new_tags.append(clean)
+                    changed = True
+                else:
+                    new_tags.append(t)
+            if changed and rec_id:
+                patches.append((rec_id, {"Tags": ", ".join(new_tags)}))
+        if patches:
+            client.bulk_patch_fields(patches)
+            global _records_cache
+            _records_cache = None
+
+    return jsonify({"ok": True, "promoted": len(promoted_tags)})
+
+
 # ------------------------------------------------------------------
 # Feature 2: Catalog external images via upload
 # ------------------------------------------------------------------
@@ -4549,7 +4721,30 @@ def _staged_save(file_id: str, original_name: str, data: bytes) -> str:
 @app.route("/upload")
 @login_required
 def upload():
-    return render_template("upload.html")
+    is_admin = _is_maintenance_admin_user(session.get("user", {}))
+    return render_template(
+        "upload.html",
+        is_admin=is_admin,
+        admin_max_request_mb=Config.ADMIN_MAX_UPLOAD_BYTES // (1024 * 1024),
+        max_request_mb=Config.MAX_REQUEST_BYTES // (1024 * 1024),
+    )
+
+
+@app.route("/debug/config", methods=["GET"])
+def debug_config():
+    """DEBUG ONLY: Return current config values."""
+    if not (Config.TEST_MODE and Config.DEV_AUTH_BYPASS):
+        return jsonify({"error": "Not in bypass mode"}), 403
+    return jsonify({
+        "TEST_MODE": Config.TEST_MODE,
+        "DEV_AUTH_BYPASS": Config.DEV_AUTH_BYPASS,
+        "_auth_bypass_enabled": _auth_bypass_enabled(),
+        "MAX_UPLOAD_BYTES_MB": Config.MAX_UPLOAD_BYTES / (1024*1024),
+        "ADMIN_MAX_UPLOAD_BYTES_MB": Config.ADMIN_MAX_UPLOAD_BYTES / (1024*1024),
+        "session_user": session.get("user"),
+        "is_admin": _is_maintenance_admin_user(session.get("user", {})),
+    })
+
 
 
 @app.route("/api/upload/stage", methods=["POST"])
@@ -4559,6 +4754,11 @@ def api_upload_stage():
     files = request.files.getlist("files")
     if not files or all(f.filename == "" for f in files):
         return jsonify({"error": "No files provided"}), 400
+
+    # Check if user is admin for higher upload limit
+    user_claims = session.get("user", {})
+    is_admin = _is_maintenance_admin_user(user_claims)
+    max_file_size = Config.ADMIN_MAX_UPLOAD_BYTES if is_admin else Config.MAX_UPLOAD_BYTES
 
     staged = []
     for f in files:
@@ -4570,7 +4770,7 @@ def api_upload_stage():
 
         file_bytes = f.read()
         try:
-            _validate_image_payload(file_bytes, original_name)
+            _validate_image_payload(file_bytes, original_name, max_bytes=max_file_size)
         except ValueError as exc:
             staged.append({"error": str(exc), "filename": original_name})
             continue

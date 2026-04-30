@@ -95,3 +95,11 @@ Expected result:
 - **T3 CLOSED** (2026-04-15): code audit complete, lint clean, docs updated.
 - All three pre-production gates (T1, T2, T3) are now closed.
 - Clean up test upload record from SharePoint list if desired.
+
+## 8) Recent changes (2026-04-30)
+
+- Tag Manager embedded in Maintenance Console (`maintenance.html`), always visible across all workstream tabs (`data-workstream="always"`), starts collapsed.
+- Tags Pending Review hub-metric CTA uses `openTagManager()` onclick — opens and scrolls to Tag Manager panel.
+- **Approve All Recommended** in Tag Manager now also strips `?` prefix from matching records (via `bulk_patch_fields`), so the suggestions list correctly clears after bulk approval.
+- M14 Apply Normalization button starts disabled; only enables after a successful M14 Category Preview run (shows candidate count in green).
+- Hub-metric hover styles restored with teal background tint + shadow.

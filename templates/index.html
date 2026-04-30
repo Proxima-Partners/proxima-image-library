@@ -513,7 +513,9 @@
     <a href="/" class="header-link">Home</a>
     <a href="/upload" class="header-link">Upload</a>
     <a href="/stock-search" class="header-link">Stock</a>
+    {% if is_admin %}
     <a href="/maintenance" class="header-link">Maintenance</a>
+    {% endif %}
     <a href="/review" class="header-link" id="review-link">Review<span id="review-badge" style="display:none;margin-left:6px;background:#EEB11E;color:#fff;font-size:11px;font-weight:700;padding:1px 6px;border-radius:20px;vertical-align:middle;"></span></a>
     <button class="help-btn" id="help-btn" title="Help">?</button>
     <div class="user-chip">
@@ -657,7 +659,6 @@
       <div id="detail-actions">
         <button class="btn btn-primary" id="btn-copy">Copy path</button>
         <button class="btn btn-ghost" id="btn-open">Open full image</button>
-        <button class="btn btn-ghost" id="btn-close-detail">Close</button>
       </div>
     </div>
   </div>
@@ -1029,7 +1030,6 @@
   }
 
   document.getElementById('detail-close').addEventListener('click', closeDetail);
-  document.getElementById('btn-close-detail').addEventListener('click', closeDetail);
   document.getElementById('detail-overlay').addEventListener('click', e => {
     if (e.target === document.getElementById('detail-overlay')) closeDetail();
   });

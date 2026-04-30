@@ -43,6 +43,11 @@ def search_pexels(phrase: str, limit: int = 8) -> dict:
             title = item.get("alt", "") or phrase
             results.append({
                 "thumb": item.get("src", {}).get("medium", ""),
+                "preview_url": (
+                    item.get("src", {}).get("large2x")
+                    or item.get("src", {}).get("large")
+                    or item.get("src", {}).get("original", "")
+                ),
                 "download_url": item.get("src", {}).get("original", ""),
                 "title": title,
                 "link": item.get("url", ""),
@@ -90,8 +95,14 @@ def search_shutterstock(phrase: str, limit: int = 8) -> dict:
                 assets.get("large_thumb", {}).get("url")
                 or assets.get("preview", {}).get("url", "")
             )
+            preview_url = (
+                assets.get("preview_1000", {}).get("url")
+                or assets.get("huge_thumb", {}).get("url")
+                or thumb
+            )
             results.append({
                 "thumb": thumb,
+                "preview_url": preview_url,
                 "title": desc,
                 "link": f"https://www.shutterstock.com/image-photo/{_slug(desc) or 'photo'}-{item_id}",
                 "categories": [c.get("name", "") for c in item.get("categories", [])],
@@ -131,6 +142,7 @@ def search_pixabay(phrase: str, limit: int = 8) -> dict:
             tags = item.get("tags", "")
             results.append({
                 "thumb": item.get("webformatURL", ""),
+                "preview_url": item.get("largeImageURL", "") or item.get("webformatURL", ""),
                 "download_url": item.get("largeImageURL", ""),
                 "title": tags,
                 "link": item.get("pageURL", ""),
@@ -180,6 +192,11 @@ def search_unsplash(phrase: str, limit: int = 8) -> dict:
             )
             results.append({
                 "thumb": item.get("urls", {}).get("small", ""),
+                "preview_url": (
+                    item.get("urls", {}).get("regular")
+                    or item.get("urls", {}).get("full")
+                    or item.get("urls", {}).get("small", "")
+                ),
                 "download_url": item.get("urls", {}).get("full", ""),
                 "download_location": item.get("links", {}).get("download_location", ""),
                 "title": item.get("alt_description") or item.get("description") or "",

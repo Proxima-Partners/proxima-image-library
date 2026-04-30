@@ -275,7 +275,11 @@
     <!-- Process button -->
     <div class="action-row">
       <button class="btn" id="process-btn" disabled>Process Images</button>
-      <span id="file-count-label" style="font-size:13px;color:var(--muted);"></span>
+      <div style="display:flex;flex-direction:column;gap:4px;flex:1;">
+        <span id="file-count-label" style="font-size:13px;color:var(--muted);"></span>
+        <span id="file-size-label" style="font-size:12px;color:var(--muted);"></span>
+        <span id="file-size-warning" style="font-size:12px;color:var(--error);display:none;"></span>
+      </div>
     </div>
   </div>
 
@@ -294,10 +298,19 @@
   const fileListEl  = document.getElementById('file-list');
   const processBtn  = document.getElementById('process-btn');
   const countLabel  = document.getElementById('file-count-label');
+  const sizeLabel   = document.getElementById('file-size-label');
+  const sizeWarning = document.getElementById('file-size-warning');
   const resultsPane = document.getElementById('results-panel');
   const resultsEl   = document.getElementById('results');
 
   let selectedFiles = []; // Array of File objects
+  {% if is_admin %}
+  const IS_ADMIN = true;
+  const SIZE_LIMIT_BYTES = {{ admin_max_request_mb }} * 1024 * 1024; // {{ admin_max_request_mb }} MB (admin)
+  {% else %}
+  const IS_ADMIN = false;
+  const SIZE_LIMIT_BYTES = {{ max_request_mb }} * 1024 * 1024; // {{ max_request_mb }} MB
+  {% endif %}
 
   // ── Drag & drop ──────────────────────────────────────────────────────────
   dropZone.addEventListener('click', () => fileInput.click());
@@ -362,11 +375,32 @@
 
     const n = selectedFiles.length;
     countLabel.textContent = n === 0 ? '' : `${n} file${n > 1 ? 's' : ''} selected`;
+    
+    // Calculate and display total size
+    const totalBytes = selectedFiles.reduce((sum, f) => sum + f.size, 0);
+    const totalMB = (totalBytes / 1048576).toFixed(1);
+    const exceedsLimit = totalBytes > SIZE_LIMIT_BYTES;
+    
+    if (n === 0) {
+      sizeLabel.textContent = '';
+      sizeWarning.style.display = 'none';
+    } else {
+      sizeLabel.textContent = `Total: ${totalMB} MB / ${(SIZE_LIMIT_BYTES / 1048576).toFixed(0)} MB limit${IS_ADMIN ? ' (admin)' : ''}`;
+      if (exceedsLimit) {
+        const limitMB = (SIZE_LIMIT_BYTES / 1048576).toFixed(0);
+        sizeWarning.textContent = `⚠️ Exceeds ${limitMB} MB limit by ${((totalBytes - SIZE_LIMIT_BYTES) / 1048576).toFixed(1)} MB`;
+        sizeWarning.style.display = '';
+      } else {
+        sizeWarning.style.display = 'none';
+      }
+    }
+    
     updateProcessBtn();
   }
 
   function updateProcessBtn() {
-    processBtn.disabled = selectedFiles.length === 0;
+    const totalBytes = selectedFiles.reduce((sum, f) => sum + f.size, 0);
+    processBtn.disabled = selectedFiles.length === 0 || totalBytes > SIZE_LIMIT_BYTES;
   }
 
   // ── Processing ────────────────────────────────────────────────────────────
@@ -464,11 +498,25 @@
           card.appendLog(msg);
         };
 
+        let retryCount = 0;
         es.onerror = () => {
           if (finished) return;
-          card.setStatus('error');
-          card.appendLog('Connection lost', 'error');
-          finish();
+          es.close();
+          if (retryCount < 3) {
+            retryCount++;
+            const delay = retryCount * 5000;
+            card.appendLog(`Connection lost — retrying in ${delay / 1000}s…`, 'error');
+            setTimeout(() => {
+              if (finished) return;
+              const es2 = new EventSource(url);
+              es2.onmessage = es.onmessage;
+              es2.onerror = es.onerror;
+            }, delay);
+          } else {
+            card.setStatus('error');
+            card.appendLog('Connection lost', 'error');
+            finish();
+          }
         };
       });
     }

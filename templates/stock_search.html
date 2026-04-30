@@ -289,6 +289,9 @@
       grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
       gap: 10px;
     }
+    .thumb-tile {
+      position: relative;
+    }
     .thumb-card {
       display: flex;
       flex-direction: column;
@@ -298,6 +301,7 @@
       text-decoration: none;
       transition: box-shadow 0.15s, border-color 0.15s;
       background: #f9fafb;
+      height: 100%;
     }
     .thumb-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.10); border-color: var(--accent); }
     .thumb-card img {
@@ -338,6 +342,7 @@
     }
     #ss-overlay.active { display: flex; }
     #ss-modal {
+      position: relative;
       background: #fff; border-radius: 10px; padding: 28px 28px 24px;
       max-width: 420px; width: 100%;
       box-shadow: 0 8px 32px rgba(0,0,0,0.18);
@@ -371,6 +376,7 @@
     }
     #dl-overlay.active { display: flex; }
     #dl-modal {
+      position: relative;
       background: #fff; border-radius: 10px; overflow: hidden;
       max-width: 500px; width: 100%;
       box-shadow: 0 8px 32px rgba(0,0,0,0.18);
@@ -427,6 +433,85 @@
     .dl-download:hover { border-color: #9ca3af; }
     .dl-confirm { padding: 8px 20px; border-radius: 20px; border: none; background: var(--accent); color: #fff; font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit; }
     .dl-confirm:hover { background: var(--accent-hover); }
+    .modal-close-x {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      z-index: 10;
+      width: 30px; height: 30px;
+      display: flex; align-items: center; justify-content: center;
+      border-radius: 50%;
+      border: 1px solid #e5e7eb;
+      background: #fff;
+      color: #6b7280;
+      font-size: 16px;
+      line-height: 1;
+      cursor: pointer;
+      font-family: inherit;
+      transition: background 0.15s, border-color 0.15s, color 0.15s;
+    }
+    .modal-close-x:hover { background: #f3f4f6; border-color: #9ca3af; color: #111; }
+
+    /* ── Large preview overlay ── */
+    #preview-overlay {
+      position: fixed; inset: 0; background: rgba(17,24,39,0.82);
+      z-index: 1200; display: none; align-items: center; justify-content: center;
+      padding: 24px;
+    }
+    #preview-modal { position: relative; }
+    #preview-overlay.active { display: flex; }
+    #preview-modal {
+      max-width: min(1100px, 100%); width: 100%;
+      background: #111827; border-radius: 14px; overflow: visible;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.35);
+    }
+    #preview-stage {
+      display: flex; align-items: center; justify-content: center;
+      min-height: 320px; max-height: calc(100vh - 140px);
+      background: linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0));
+      padding: 16px;
+    }
+    #preview-image {
+      max-width: 100%; max-height: calc(100vh - 180px);
+      width: auto; height: auto; display: block; object-fit: contain;
+      border-radius: 10px; background: #0b1220;
+    }
+    .preview-modal-actions {
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      padding: 14px 18px; background: #0f172a; border-top: 1px solid rgba(255,255,255,0.08);
+    }
+    #preview-caption {
+      color: #e5e7eb; font-size: 13px; line-height: 1.5; min-width: 0;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .modal-preview-btn {
+      padding: 8px 16px; border-radius: 20px; border: 1.5px solid #d1d5db;
+      background: #fff; color: #374151; font-size: 13px; font-weight: 500;
+      cursor: pointer; font-family: inherit;
+    }
+    .modal-preview-btn:hover { border-color: #9ca3af; }
+    .preview-close {
+      position: absolute;
+      top: 14px;
+      right: 14px;
+      z-index: 10;
+      width: 36px; height: 36px;
+      display: flex; align-items: center; justify-content: center;
+      border-radius: 50%;
+      border: 1px solid rgba(255,255,255,0.22);
+      background: rgba(15,23,42,0.72);
+      color: #fff;
+      font-size: 18px;
+      line-height: 1;
+      cursor: pointer;
+      font-family: inherit;
+      backdrop-filter: blur(4px);
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .preview-close:hover {
+      background: rgba(255,255,255,0.15);
+      border-color: rgba(255,255,255,0.5);
+    }
 
     /* ── Catalog progress overlay ── */
     #cat-overlay {
@@ -467,9 +552,22 @@
 </head>
 <body>
 
+<div id="preview-overlay">
+  <div id="preview-modal">
+    <button class="preview-close" id="preview-close" type="button" aria-label="Close preview">&#x2715;</button>
+    <div id="preview-stage">
+      <img id="preview-image" src="" alt="" />
+    </div>
+    <div class="preview-modal-actions">
+      <div id="preview-caption"></div>
+    </div>
+  </div>
+</div>
+
 <!-- Download confirmation modal -->
 <div id="dl-overlay">
   <div id="dl-modal">
+    <button class="modal-close-x" id="dl-close-x" type="button" aria-label="Close">&#x2715;</button>
     <div id="dl-color-strip"></div>
     <img id="dl-preview" src="" alt="" />
     <div id="dl-body">
@@ -483,9 +581,10 @@
       <div id="dl-tags"></div>
     </div>
     <div class="dl-modal-actions">
-      <button class="dl-cancel" id="dl-cancel">Cancel</button>
-      <button class="dl-download" id="dl-download">Download</button>
-      <button class="dl-confirm" id="dl-confirm">Add to Library</button>
+      <button class="dl-cancel" id="dl-cancel" type="button">Cancel</button>
+      <button class="modal-preview-btn" id="dl-large-preview" type="button">Preview Larger</button>
+      <button class="dl-download" id="dl-download" type="button">Download</button>
+      <button class="dl-confirm" id="dl-confirm" type="button">Add to Library</button>
     </div>
   </div>
 </div>
@@ -505,6 +604,7 @@
 <!-- Shutterstock quota modal -->
 <div id="ss-overlay">
   <div id="ss-modal">
+    <button class="modal-close-x" id="ss-close-x" type="button" aria-label="Close">&#x2715;</button>
     <div id="ss-img-section" class="hidden">
       <img id="ss-preview" src="" alt="" />
       <div id="ss-img-meta">
@@ -519,8 +619,9 @@
     <div class="ss-quota-bar"><div class="ss-quota-fill" id="ss-quota-fill"></div></div>
     <div class="ss-quota-label" id="ss-quota-label"></div>
     <div class="ss-modal-actions">
-      <button class="ss-cancel" id="ss-cancel">Cancel</button>
-      <button class="ss-confirm" id="ss-confirm">Open Shutterstock</button>
+      <button class="ss-cancel" id="ss-cancel" type="button">Cancel</button>
+      <button class="modal-preview-btn" id="ss-large-preview" type="button">Preview Larger</button>
+      <button class="ss-confirm" id="ss-confirm" type="button">Open Shutterstock</button>
     </div>
   </div>
 </div>
@@ -767,35 +868,44 @@
             const grid = document.createElement('div');
             grid.className = 'thumb-grid';
             libData.results.forEach(img => {
+              const tile = document.createElement('div');
+              tile.className = 'thumb-tile';
+
               const a = document.createElement('a');
               a.href   = img.link || '#';
               a.target = '_blank';
               a.rel    = 'noopener noreferrer';
               a.className = 'thumb-card';
+              const previewUrl = img.preview_url || img.download_url || img.thumb || '';
+              const previewCaption = img.title || img.photographer || `${label} preview`;
+              if (previewUrl) {
+                tile.dataset.previewUrl = previewUrl;
+                tile.dataset.previewCaption = previewCaption;
+              }
               if (key === 'shutterstock') {
-                a.dataset.ssLink       = img.link || '#';
-                a.dataset.ssThumb      = img.thumb || '';
-                a.dataset.ssTitle      = img.title || '';
-                a.dataset.ssCategories = JSON.stringify(img.categories || []);
-                a.dataset.ssKeywords   = JSON.stringify(img.keywords || []);
-                a.dataset.ssEditorial  = img.is_editorial ? '1' : '';
+                tile.dataset.ssLink       = img.link || '#';
+                tile.dataset.ssThumb      = img.thumb || '';
+                tile.dataset.ssTitle      = img.title || '';
+                tile.dataset.ssCategories = JSON.stringify(img.categories || []);
+                tile.dataset.ssKeywords   = JSON.stringify(img.keywords || []);
+                tile.dataset.ssEditorial  = img.is_editorial ? '1' : '';
               } else if (img.download_url) {
-                a.dataset.downloadUrl           = img.download_url;
-                a.dataset.downloadTitle         = img.title || img.photographer || key;
-                a.dataset.downloadSource        = key;
-                a.dataset.downloadPhotographer  = img.photographer || '';
-                a.dataset.downloadPhotographerUrl = img.photographer_url || '';
-                a.dataset.downloadWidth         = img.width || '';
-                a.dataset.downloadHeight        = img.height || '';
-                a.dataset.downloadColor         = img.color || '';
-                a.dataset.downloadLikes         = img.likes != null ? img.likes : '';
-                a.dataset.downloadViews         = img.views != null ? img.views : '';
-                a.dataset.downloadDownloads     = img.downloads != null ? img.downloads : '';
-                a.dataset.downloadImageSize     = img.image_size || '';
-                a.dataset.downloadUser          = img.user || '';
-                a.dataset.downloadType          = img.type || '';
-                a.dataset.downloadTags          = JSON.stringify(img.tags || []);
-                if (img.download_location) a.dataset.downloadLocation = img.download_location;
+                tile.dataset.downloadUrl           = img.download_url;
+                tile.dataset.downloadTitle         = img.title || img.photographer || key;
+                tile.dataset.downloadSource        = key;
+                tile.dataset.downloadPhotographer  = img.photographer || '';
+                tile.dataset.downloadPhotographerUrl = img.photographer_url || '';
+                tile.dataset.downloadWidth         = img.width || '';
+                tile.dataset.downloadHeight        = img.height || '';
+                tile.dataset.downloadColor         = img.color || '';
+                tile.dataset.downloadLikes         = img.likes != null ? img.likes : '';
+                tile.dataset.downloadViews         = img.views != null ? img.views : '';
+                tile.dataset.downloadDownloads     = img.downloads != null ? img.downloads : '';
+                tile.dataset.downloadImageSize     = img.image_size || '';
+                tile.dataset.downloadUser          = img.user || '';
+                tile.dataset.downloadType          = img.type || '';
+                tile.dataset.downloadTags          = JSON.stringify(img.tags || []);
+                if (img.download_location) tile.dataset.downloadLocation = img.download_location;
               }
 
               const imgEl = document.createElement('img');
@@ -817,7 +927,10 @@
                 attr.innerHTML = `Photo by <a href="${escHtml(img.photographer_url)}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">${escHtml(img.photographer)}</a> on <a href="https://unsplash.com?utm_source=proxima_image_library&utm_medium=referral" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">Unsplash</a>`;
                 a.appendChild(attr);
               }
-              grid.appendChild(a);
+
+              tile.appendChild(a);
+
+              grid.appendChild(tile);
             });
             panel.appendChild(grid);
           }
@@ -859,11 +972,42 @@
     const ssOverlay = document.getElementById('ss-overlay');
     const ssConfirm = document.getElementById('ss-confirm');
     const ssCancel  = document.getElementById('ss-cancel');
+    const ssLargePreview = document.getElementById('ss-large-preview');
     const ssLabel   = document.getElementById('ss-quota-label');
     const ssFill    = document.getElementById('ss-quota-fill');
     let pendingSsUrl = null;
     let ssUsed = 0;
     const SS_LIMIT = 10;
+
+    const previewOverlay = document.getElementById('preview-overlay');
+    const previewImage = document.getElementById('preview-image');
+    const previewCaption = document.getElementById('preview-caption');
+    const previewClose = document.getElementById('preview-close');
+
+    function openPreviewOverlay(url, caption) {
+      if (!url) return;
+      previewImage.src = url;
+      previewImage.alt = caption || 'Large stock preview';
+      previewCaption.textContent = caption || 'Large stock preview';
+      previewOverlay.classList.add('active');
+    }
+
+    function closePreviewOverlay() {
+      previewOverlay.classList.remove('active');
+      previewImage.src = '';
+      previewImage.alt = '';
+      previewCaption.textContent = '';
+    }
+
+    previewClose.addEventListener('click', closePreviewOverlay);
+    previewOverlay.addEventListener('click', e => {
+      if (e.target === previewOverlay) closePreviewOverlay();
+    });
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape' && previewOverlay.classList.contains('active')) {
+        closePreviewOverlay();
+      }
+    });
 
     // Fetch current quota on page load
     fetch('/api/shutterstock/quota')
@@ -880,6 +1024,7 @@
       pendingSsUrl  = card.dataset.ssLink;
       pendingSsMeta = {
         thumb:      card.dataset.ssThumb || '',
+        preview:    card.dataset.previewUrl || card.dataset.ssThumb || '',
         title:      card.dataset.ssTitle || '',
         categories: JSON.parse(card.dataset.ssCategories || '[]'),
         keywords:   JSON.parse(card.dataset.ssKeywords   || '[]'),
@@ -899,8 +1044,9 @@
     const dlMetaGrid     = document.getElementById('dl-meta-grid');
     const dlTags         = document.getElementById('dl-tags');
     const dlCancel       = document.getElementById('dl-cancel');
+    const dlLargePreview = document.getElementById('dl-large-preview');
     const dlConfirm      = document.getElementById('dl-confirm');
-    let pendingDownload  = null;  // { url, filename, dl, source, title, tags, photographer }
+    let pendingDownload  = null;  // { url, filename, dl, source, title, tags, photographer, previewUrl }
 
     function fmtNum(n) { return Number(n).toLocaleString(); }
     function fmtBytes(b) {
@@ -933,6 +1079,7 @@
       const type            = card.dataset.downloadType;
       const tags            = JSON.parse(card.dataset.downloadTags || '[]');
       const thumbEl         = card.querySelector('img');
+      const previewUrl      = card.dataset.previewUrl || url || (thumbEl ? thumbEl.src : '');
       const raw     = titleRaw.replace(/[^\w\s-]/g, '').trim().replace(/\s+/g, '-').slice(0, 60) || 'image';
       const ext     = url.split('?')[0].match(/\.(jpe?g|png|gif|webp)$/i)?.[1] || 'jpg';
       const filename = `${raw}.${ext}`;
@@ -944,6 +1091,7 @@
       // Image
       dlPreview.src = thumbEl ? thumbEl.src : '';
       dlPreview.alt = titleRaw;
+      dlLargePreview.classList.toggle('hidden', !previewUrl);
 
       // Badges
       dlSourceBadge.textContent = source.charAt(0).toUpperCase() + source.slice(1);
@@ -985,11 +1133,16 @@
       // Tags
       dlTags.innerHTML = tags.map(t => `<span class="dl-tag">${escHtml(t)}</span>`).join('');
 
-      pendingDownload = { url, filename, dl: dlLocation, source, title: titleRaw, tags, photographer };
+      pendingDownload = { url, filename, dl: dlLocation, source, title: titleRaw, tags, photographer, previewUrl };
       dlOverlay.classList.add('active');
     });
 
     dlCancel.addEventListener('click', () => {
+      dlOverlay.classList.remove('active');
+      pendingDownload = null;
+    });
+
+    document.getElementById('dl-close-x').addEventListener('click', () => {
       dlOverlay.classList.remove('active');
       pendingDownload = null;
     });
@@ -1014,6 +1167,11 @@
       document.body.removeChild(a);
       dlOverlay.classList.remove('active');
       pendingDownload = null;
+    });
+
+    dlLargePreview.addEventListener('click', () => {
+      if (!pendingDownload?.previewUrl) return;
+      openPreviewOverlay(pendingDownload.previewUrl, pendingDownload.title || pendingDownload.filename);
     });
 
     const catOverlay = document.getElementById('cat-overlay');
@@ -1119,6 +1277,7 @@
       } else {
         ssImgSection.classList.add('hidden');
       }
+      ssLargePreview.classList.toggle('hidden', !pendingSsMeta.preview);
 
       // Quota bar
       const remaining = Math.max(0, SS_LIMIT - ssUsed);
@@ -1142,6 +1301,11 @@
       pendingSsUrl = null;
     });
 
+    document.getElementById('ss-close-x').addEventListener('click', () => {
+      ssOverlay.classList.remove('active');
+      pendingSsUrl = null;
+    });
+
     ssOverlay.addEventListener('click', e => {
       if (e.target === ssOverlay) {
         ssOverlay.classList.remove('active');
@@ -1159,6 +1323,11 @@
         .catch(() => { ssUsed++; });
       window.open(pendingSsUrl, '_blank', 'noopener,noreferrer');
       pendingSsUrl = null;
+    });
+
+    ssLargePreview.addEventListener('click', () => {
+      if (!pendingSsMeta.preview) return;
+      openPreviewOverlay(pendingSsMeta.preview, pendingSsMeta.title || 'Shutterstock preview');
     });
   </script>
 

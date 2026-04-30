@@ -147,6 +147,16 @@
     .btn-danger:hover {
       background: #991b1b;
     }
+    .btn-fix {
+      background: var(--success, #16a34a);
+    }
+    .btn-fix:hover {
+      background: #15803d;
+    }
+    .btn-fix:disabled {
+      background: #86efac;
+      cursor: not-allowed;
+    }
     .log {
       border: 1px solid var(--border);
       border-radius: 8px;
@@ -161,6 +171,8 @@
       white-space: pre-wrap;
     }
     .line-err { color: var(--danger); }
+    .line-warn { color: #b45309; }
+    .line-ok { color: #16a34a; }
     .summary {
       margin-top: 12px;
       border: 1px solid var(--border);
@@ -203,6 +215,21 @@
       margin-top: 10px;
       display: none;
       background: #fff;
+    }
+    .workflow-help {
+      margin-top: 8px;
+      border: 1px solid #f6d7a1;
+      border-radius: 8px;
+      background: #fff8e8;
+      padding: 10px 12px;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    .workflow-help strong {
+      color: #92400e;
+    }
+    .workflow-help .btn {
+      margin-top: 8px;
     }
     .danger-note {
       color: var(--danger);
@@ -271,6 +298,35 @@
       margin: 0 0 8px;
       font-size: 13px;
       font-family: 'Montserrat', sans-serif;
+    }
+    .orphan-block-footer {
+      margin-top: 8px;
+      padding-top: 8px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .orphan-block-footer .check-row {
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .orphan-block-footer .btn-row {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .orphan-guidance {
+      font-size: 12px;
+      line-height: 1.5;
+      color: var(--muted);
+      padding: 6px 8px;
+      background: #f9f5ec;
+      border-left: 3px solid #b45309;
+      border-radius: 4px;
+    }
+    .orphan-guidance strong {
+      color: #92400e;
     }
     .orphan-scroll {
       max-height: 220px;
@@ -371,6 +427,22 @@
       background: #fafafa;
       padding: 10px;
     }
+    .hub-metric[data-href],
+    a.hub-metric {
+      cursor: pointer;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    .hub-metric[data-href]:hover,
+    a.hub-metric:hover {
+      border-color: var(--accent);
+      background: #eef6f8;
+      box-shadow: 0 2px 10px rgba(5,113,141,0.15);
+    }
+    a.hub-metric {
+      display: block;
+      text-decoration: none;
+      color: inherit;
+    }
     .hub-metric-label {
       font-size: 11px;
       text-transform: uppercase;
@@ -468,6 +540,82 @@
       background: #fee2e2;
       border-color: #fecaca;
     }
+
+    /* ── Tag Manager ─────────────────────────────────────────────────── */
+    #tm-panel { margin-top: 18px; }
+    #tm-panel .tool-body { padding-top: 4px; }
+    .tm-hidden { display: none !important; }
+    #tm-suggestions-section {
+      background: #fff8e7; border: 1px solid #f0d060;
+      border-radius: 8px; padding: 14px 16px; margin-bottom: 18px;
+    }
+    .tm-section-label {
+      font-size: 0.72rem; font-weight: 600; letter-spacing: 0.06em;
+      text-transform: uppercase; color: #a07000; margin-bottom: 10px;
+    }
+    .tm-suggestion-item {
+      display: flex; align-items: center; gap: 8px;
+      padding: 5px 0; border-bottom: 1px solid #f0e8c0;
+    }
+    .tm-suggestion-item:last-child { border-bottom: none; }
+    .tm-suggestion-tag { flex: 1; font-size: 0.875rem; font-weight: 500; color: #7a5000; }
+    .tm-suggestion-count {
+      font-size: 0.72rem; color: #a07000;
+      background: #f5e28a; padding: 2px 7px; border-radius: 99px;
+    }
+    .tm-suggestion-category {
+      font-size: 0.78rem; border: 1px solid #d4b060;
+      border-radius: 6px; padding: 3px 7px; background: #fff; color: #555;
+    }
+    .tm-category-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 14px; margin-bottom: 18px;
+    }
+    .tm-category-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 8px; padding: 14px;
+    }
+    .tm-category-name { font-size: 0.78rem; font-weight: 600; color: #555; margin-bottom: 8px; }
+    .tm-tag-list { display: flex; flex-wrap: wrap; gap: 6px; }
+    .tm-tag {
+      display: inline-flex; align-items: center; gap: 4px;
+      background: #e6f4f8; color: #045f77;
+      font-size: 0.78rem; padding: 3px 9px; border-radius: 99px;
+    }
+    .tm-remove-btn {
+      cursor: pointer; font-size: 0.68rem; color: #7ab8c8;
+      background: none; border: none; padding: 0; line-height: 1;
+    }
+    .tm-remove-btn:hover { color: #c0392b; }
+    .tm-add-form {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 8px; padding: 16px;
+      display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap;
+    }
+    .tm-form-group { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 150px; }
+    .tm-form-group label { font-size: 0.72rem; font-weight: 600; color: var(--muted); }
+    .tm-form-group input, .tm-form-group select {
+      border: 1px solid var(--border); border-radius: 6px;
+      padding: 7px 9px; font-size: 0.875rem; outline: none;
+    }
+    .tm-form-group input:focus, .tm-form-group select:focus { border-color: var(--accent); }
+    .tm-btn-sm {
+      padding: 4px 11px; border-radius: 6px; font-size: 0.75rem;
+      font-weight: 600; border: none; cursor: pointer;
+    }
+    .tm-btn-promote { background: #34c759; color: #fff; }
+    .tm-btn-promote:hover { background: #28a745; }
+    .tm-btn-discard { background: #f5f5f7; color: #555; border: 1px solid var(--border); }
+    .tm-btn-discard:hover { background: #e8e8ed; }
+    #tm-toast {
+      position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+      background: #1d1d1f; color: #fff; padding: 10px 20px;
+      border-radius: 8px; font-size: 0.875rem; opacity: 0;
+      transition: opacity 0.3s; pointer-events: none; z-index: 9999;
+    }
+    #tm-toast.show { opacity: 1; }
+    .tm-empty { color: #aaa; font-size: 0.82rem; font-style: italic; }
   </style>
 </head>
 <body>
@@ -494,22 +642,22 @@
       </p>
 
       <div class="hub-metrics">
-        <div class="hub-metric">
-          <div class="hub-metric-label">Pending Review</div>
+        <a class="hub-metric" href="/review">
+          <div class="hub-metric-label">Images Pending Review</div>
           <div id="metric-pending" class="hub-metric-value">--</div>
-        </div>
-        <div class="hub-metric">
+        </a>
+        <a class="hub-metric" href="/maintenance#correct">
           <div class="hub-metric-label">Rejected Candidates</div>
           <div id="metric-rejected" class="hub-metric-value">--</div>
-        </div>
-        <div class="hub-metric">
+        </a>
+        <a class="hub-metric" href="/maintenance#cleanup">
           <div class="hub-metric-label">Archived Candidates</div>
           <div id="metric-archived" class="hub-metric-value">--</div>
-        </div>
-        <div class="hub-metric">
-          <div class="hub-metric-label">Visible Tools</div>
-          <div id="metric-visible-tools" class="hub-metric-value">0</div>
-        </div>
+        </a>
+        <a class="hub-metric" href="#" onclick="openTagManager(); return false;">
+          <div class="hub-metric-label">Tags Pending Review</div>
+          <div id="metric-tags-pending" class="hub-metric-value">--</div>
+        </a>
       </div>
 
       <div class="hub-controls">
@@ -601,13 +749,7 @@
           <option value="200">200</option>
           <option value="500">500</option>
         </select>
-        <label class="check-row">
-          <input id="orphans-set-pending" type="checkbox" checked />
-          Set status to pending-review when flagging
-        </label>
         <button id="orphans-scan-btn" class="btn">Run Scan</button>
-        <button id="orphans-flag-btn" class="btn" disabled>Flag Missing Files</button>
-        <button id="orphans-delete-btn" class="btn btn-danger" disabled>Delete Orphaned Records</button>
       </div>
 
       <div id="orphans-summary" class="purge-preview">
@@ -622,14 +764,39 @@
         <div class="orphan-block">
           <h3>Records Missing Files</h3>
           <div id="orphans-missing-records" class="orphan-scroll"></div>
+          <div class="orphan-block-footer" id="orphans-missing-footer" style="display:none;">
+            <p class="orphan-guidance"><strong>Recommended fix:</strong> Flag first — this marks records for review without deleting anything. Only delete if you are certain the files are permanently gone and the records are no longer needed.</p>
+            <label class="check-row">
+              <input id="orphans-set-pending" type="checkbox" checked />
+              Set status to pending-review when flagging
+            </label>
+            <div class="btn-row">
+              <button id="orphans-flag-btn" class="btn btn-fix" disabled>&#10003; Fix: Flag for Review</button>
+              <button id="orphans-delete-btn" class="btn btn-danger" disabled>Delete Orphaned Records</button>
+            </div>
+          </div>
         </div>
         <div class="orphan-block">
           <h3>WebP Files With No Record</h3>
           <div id="orphans-webp" class="orphan-scroll"></div>
+          <div class="orphan-block-footer" id="orphans-webp-footer" style="display:none;">
+            <p class="orphan-guidance"><strong>These files exist in storage but have no library record.</strong> Register creates a stub record (pending-review) so you can add metadata. Delete removes the file permanently.</p>
+            <div class="btn-row">
+              <button id="orphans-register-webp-btn" class="btn btn-fix" disabled>&#10003; Fix: Register All as Records</button>
+              <button id="orphans-delete-webp-btn" class="btn btn-danger" disabled>Delete All Orphan WebP Files</button>
+            </div>
+          </div>
         </div>
         <div class="orphan-block">
           <h3>High-Res Files With No Record</h3>
           <div id="orphans-highres" class="orphan-scroll"></div>
+          <div class="orphan-block-footer" id="orphans-highres-footer" style="display:none;">
+            <p class="orphan-guidance"><strong>These files exist in storage but have no library record.</strong> Register creates a stub record (pending-review) so you can add metadata. Delete removes the file permanently.</p>
+            <div class="btn-row">
+              <button id="orphans-register-highres-btn" class="btn btn-fix" disabled>&#10003; Fix: Register All as Records</button>
+              <button id="orphans-delete-highres-btn" class="btn btn-danger" disabled>Delete All Orphan High-Res Files</button>
+            </div>
+          </div>
         </div>
       </div>
     </section>
@@ -639,6 +806,13 @@
       <p class="sub">
         Re-runs Claude metadata generation for filtered records. Updated records are moved to <strong>pending-review</strong> for human sign-off.
       </p>
+      <div class="workflow-help">
+        <strong>Bulk Re-Tag is metadata-only.</strong> It does not fix orphan mismatches.
+        If your issue is "record missing file" or "file with no record", use Orphan File Finder.
+        <div>
+          <button id="retag-open-orphans-btn" type="button" class="btn">Open Orphan File Finder</button>
+        </div>
+      </div>
 
       <div class="controls">
         <label for="retag-category">Category</label>
@@ -908,7 +1082,8 @@
           <input id="m14-set-pending" type="checkbox" checked />
           Set pending-review on M14 apply
         </label>
-        <button id="m14-apply-btn" class="btn btn-danger">M14 Apply Normalization</button>
+        <button id="m14-apply-btn" class="btn btn-danger" disabled title="Run M14 Category Preview first">M14 Apply Normalization</button>
+        <span id="m14-apply-hint" style="font-size:0.78rem;color:#888;">Run preview first to enable</span>
       </div>
 
       <div class="controls">
@@ -966,17 +1141,83 @@
       <div id="m-advanced-result" class="purge-preview">Run any M10-M19 action to view output.</div>
       <div id="m-advanced-output" class="duplicate-list" style="margin-top: 10px;"></div>
     </section>
+
+    <!-- Tag Manager ──────────────────────────────────────────────── -->
+    <section class="panel tool-panel is-collapsed" id="tm-panel" data-workstream="always">
+      <button type="button" class="tool-toggle" id="tm-toggle">
+        Tag Manager
+        <span class="tool-toggle-icon" id="tm-toggle-icon">▶</span>
+      </button>
+      <div class="tool-body">
+        <p class="sub" style="margin-bottom:14px;">Manage the tag vocabulary used by Claude when cataloguing images.</p>
+
+        <!-- Suggestions -->
+        <div id="tm-suggestions-section" class="tm-hidden">
+          <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
+            <div class="tm-section-label" style="margin-bottom:0;">Suggested tags — pending review</div>
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+              <button class="btn" id="tm-bulk-approve-btn" onclick="tmApproveAll()" style="font-size:0.82rem;padding:5px 13px;">✓ Approve All Recommended</button>
+            </div>
+          </div>
+          <div id="tm-suggestions-list"><span class="tm-empty">Loading…</span></div>
+        </div>
+
+        <!-- Approved library -->
+        <div style="margin-bottom:6px;">
+          <div class="tm-section-label">Approved tag vocabulary</div>
+          <div class="tm-category-grid" id="tm-category-grid"><span class="tm-empty">Loading…</span></div>
+        </div>
+
+        <!-- Add tag -->
+        <div class="tm-section-label" style="margin-bottom:8px;">Add a new tag</div>
+        <div class="tm-add-form">
+          <div class="tm-form-group">
+            <label for="tm-new-tag">Tag</label>
+            <input id="tm-new-tag" type="text" placeholder="e.g. rooftop-garden">
+          </div>
+          <div class="tm-form-group">
+            <label for="tm-new-category">Category</label>
+            <select id="tm-new-category"></select>
+          </div>
+          <button class="btn" onclick="tmAddTag()">Add tag</button>
+        </div>
+      </div>
+    </section>
+
   </div>
+
+  <div id="tm-toast"></div>
 
   <div id="purge-modal" class="modal-backdrop" aria-hidden="true">
     <div class="modal" role="dialog" aria-modal="true" aria-labelledby="purge-modal-title">
       <h2 id="purge-modal-title">Confirm purge</h2>
       <p id="purge-modal-copy" class="sub" style="margin-bottom: 10px;"></p>
-      <label for="purge-confirm-input" class="danger-note">Type PURGE to continue</label>
+      <label for="purge-confirm-input" class="danger-note" id="purge-confirm-label">Type PURGE to continue</label>
       <input id="purge-confirm-input" type="text" placeholder="PURGE" autocomplete="off" />
+      <p id="purge-modal-status" style="display:none; margin-top:10px; font-size:13px; font-weight:500;"></p>
       <div class="modal-actions">
         <button id="purge-cancel-btn" class="btn-ghost">Cancel</button>
         <button id="purge-confirm-btn" class="btn btn-danger" disabled>Purge now</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="retag-response-modal" class="modal-backdrop" aria-hidden="true">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="retag-response-title">
+      <h2 id="retag-response-title">Bulk Re-Tag Response</h2>
+      <p id="retag-response-copy" class="sub" style="margin-bottom: 10px; white-space: pre-line;"></p>
+      <div class="modal-actions">
+        <button id="retag-response-close-btn" class="btn">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="orphan-response-modal" class="modal-backdrop" aria-hidden="true">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="orphan-response-title">
+      <h2 id="orphan-response-title">Orphan Finder</h2>
+      <p id="orphan-response-copy" class="sub" style="margin-bottom: 10px; white-space: pre-line;"></p>
+      <div class="modal-actions">
+        <button id="orphan-response-close-btn" class="btn">Close</button>
       </div>
     </div>
   </div>
@@ -1002,8 +1243,17 @@
     const purgeModal = document.getElementById('purge-modal');
     const purgeModalCopy = document.getElementById('purge-modal-copy');
     const purgeConfirmInput = document.getElementById('purge-confirm-input');
+    const purgeConfirmLabel = document.getElementById('purge-confirm-label');
+    const purgeModalStatus = document.getElementById('purge-modal-status');
     const purgeCancelBtn = document.getElementById('purge-cancel-btn');
     const purgeConfirmBtn = document.getElementById('purge-confirm-btn');
+    const retagResponseModal = document.getElementById('retag-response-modal');
+    const retagResponseCopy = document.getElementById('retag-response-copy');
+    const retagResponseCloseBtn = document.getElementById('retag-response-close-btn');
+    const orphanResponseModal = document.getElementById('orphan-response-modal');
+    const orphanResponseTitle = document.getElementById('orphan-response-title');
+    const orphanResponseCopy = document.getElementById('orphan-response-copy');
+    const orphanResponseCloseBtn = document.getElementById('orphan-response-close-btn');
 
     const orphansLimitSelect = document.getElementById('orphans-limit');
     const orphansSetPendingInput = document.getElementById('orphans-set-pending');
@@ -1024,6 +1274,7 @@
     const retagTagsInput = document.getElementById('retag-tags');
     const retagPreviewBtn = document.getElementById('retag-preview-btn');
     const retagRunBtn = document.getElementById('retag-run-btn');
+    const retagOpenOrphansBtn = document.getElementById('retag-open-orphans-btn');
     const retagPreviewEl = document.getElementById('retag-preview');
     const retagLogEl = document.getElementById('retag-log');
     const retagResultEl = document.getElementById('retag-result');
@@ -1114,14 +1365,16 @@
     const metricPendingEl = document.getElementById('metric-pending');
     const metricRejectedEl = document.getElementById('metric-rejected');
     const metricArchivedEl = document.getElementById('metric-archived');
-    const metricVisibleToolsEl = document.getElementById('metric-visible-tools');
+    const metricTagsPendingEl = document.getElementById('metric-tags-pending');
 
     let activeEs = null;
     let purgePreviewState = null;
     let purgeModalPayload = null;
+    let purgeConfirmResolver = null;
     let orphanScanState = null;
     let retagPreviewState = null;
     let retagEs = null;
+    let retagPopupShown = false;
     let brokenScanState = { records: [], recordIds: [] };
     let statusResetPreviewState = null;
     let duplicateScanState = { groups: [] };
@@ -1224,15 +1477,14 @@
       toolPanels.forEach((panel) => {
         const panelWorkstream = panel.dataset.workstream || 'diagnose';
         const panelTitle = (panel.dataset.title || panel.querySelector('h1')?.textContent || '').toLowerCase();
-        const matchesWorkstream = panelWorkstream === activeWorkstream;
+        const always = panelWorkstream === 'always';
+        const matchesWorkstream = always || panelWorkstream === activeWorkstream;
         const matchesQuery = !query || panelTitle.includes(query);
         const show = matchesWorkstream && matchesQuery;
 
         panel.classList.toggle('is-hidden', !show);
         if (show) visibleCount += 1;
       });
-
-      metricVisibleToolsEl.textContent = String(visibleCount);
     }
 
     function setActiveWorkstream(workstream) {
@@ -1245,27 +1497,44 @@
       applyToolVisibility();
     }
 
+    function openToolPanel(workstream, title) {
+      setActiveWorkstream(workstream);
+      const target = toolPanels.find((panel) => {
+        return (panel.dataset.workstream || '') === workstream && (panel.dataset.title || '') === title;
+      });
+      if (!target) return;
+
+      visiblePanelsForWorkstream(workstream).forEach((panel) => {
+        setPanelExpanded(panel, panel === target);
+      });
+      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
     async function refreshHubMetrics() {
       if (refreshMetricsBtn) refreshMetricsBtn.disabled = true;
 
       try {
-        const [pendingResp, rejectedResp, archivedResp] = await Promise.all([
+        const [pendingResp, rejectedResp, archivedResp, tagSugResp] = await Promise.all([
           fetch('/api/pending-count'),
           fetch('/api/maintenance/purge-preview?status=rejected'),
           fetch('/api/maintenance/purge-preview?status=archived'),
+          fetch('/api/tag-library/suggestions'),
         ]);
 
         const pendingData = pendingResp.ok ? await pendingResp.json() : {};
         const rejectedData = rejectedResp.ok ? await rejectedResp.json() : {};
         const archivedData = archivedResp.ok ? await archivedResp.json() : {};
+        const tagSugData = tagSugResp.ok ? await tagSugResp.json() : {};
 
         metricPendingEl.textContent = String(pendingData.count ?? '--');
         metricRejectedEl.textContent = String(rejectedData.count ?? '--');
         metricArchivedEl.textContent = String(archivedData.count ?? '--');
+        metricTagsPendingEl.textContent = String(tagSugData.suggestions?.length ?? '--');
       } catch (_) {
         metricPendingEl.textContent = '--';
         metricRejectedEl.textContent = '--';
         metricArchivedEl.textContent = '--';
+        metricTagsPendingEl.textContent = '--';
       } finally {
         if (refreshMetricsBtn) refreshMetricsBtn.disabled = false;
       }
@@ -1371,18 +1640,29 @@
       orphanScanState = {
         missingRecordIds: Array.isArray(data.missing_file_record_ids) ? data.missing_file_record_ids : [],
         missingCount: data.missing_file_records_count || 0,
+        orphanWebpFiles: Array.isArray(data.orphaned_webp_files) ? data.orphaned_webp_files : [],
+        orphanHighresFiles: Array.isArray(data.orphaned_high_res_files) ? data.orphaned_high_res_files : [],
       };
 
-      const summary =
-        `Mode: ${data.storage_mode}. ` +
-        `Records: ${data.record_count}. ` +
-        `WebP files: ${data.webp_file_count}. ` +
-        `High-Res files: ${data.high_res_file_count}. ` +
-        `Missing-file records: ${data.missing_file_records_count}. ` +
-        `Orphan WebP files: ${data.orphaned_webp_files_count}. ` +
-        `Orphan High-Res files: ${data.orphaned_high_res_files_count}.`;
+      const missingRec = data.missing_file_records_count || 0;
+      const orphanWebp = data.orphaned_webp_files_count || 0;
+      const orphanHires = data.orphaned_high_res_files_count || 0;
+      const totalIssues = missingRec + orphanWebp + orphanHires;
+      let summary;
+      if (totalIssues === 0) {
+        summary = `✔ No issues found — ${data.record_count} record(s) and all storage files are in sync.`;
+      } else {
+        const parts = [];
+        if (missingRec > 0) parts.push(`${missingRec} record(s) with missing files`);
+        if (orphanWebp > 0) parts.push(`${orphanWebp} orphan WebP file(s)`);
+        if (orphanHires > 0) parts.push(`${orphanHires} orphan High-Res file(s)`);
+        summary = `Found ${totalIssues} issue(s): ${parts.join(', ')}. See the columns below for details and available actions.`;
+      }
+      orphansSummaryEl.style.whiteSpace = '';
       orphansSummaryEl.textContent = summary;
       orphansSummaryEl.classList.remove('line-err');
+      orphansSummaryEl.classList.toggle('line-ok', totalIssues === 0);
+      orphansSummaryEl.classList.toggle('line-warn', totalIssues > 0);
 
       const missingLines = (data.missing_file_records || []).map((rec) => {
         const flags = [];
@@ -1410,27 +1690,45 @@
 
       const trunc = data.truncated || {};
       const truncMsgs = [];
-      if (trunc.missing_file_records) truncMsgs.push('Missing-file records list truncated.');
-      if (trunc.orphaned_webp_files) truncMsgs.push('Orphan WebP list truncated.');
-      if (trunc.orphaned_high_res_files) truncMsgs.push('Orphan High-Res list truncated.');
+      if (trunc.missing_file_records) truncMsgs.push(`Showing ${data.display_limit} of ${data.missing_file_records_count} missing-file records.`);
+      if (trunc.orphaned_webp_files) truncMsgs.push(`Orphan WebP list truncated at ${data.display_limit}.`);
+      if (trunc.orphaned_high_res_files) truncMsgs.push(`Orphan High-Res list truncated at ${data.display_limit}.`);
 
       if (truncMsgs.length) {
-        orphansResultEl.classList.add('line-err');
-        orphansResultEl.textContent = truncMsgs.join(' ');
-      } else {
         orphansResultEl.classList.remove('line-err');
+        orphansResultEl.classList.add('line-warn');
+        orphansResultEl.textContent = truncMsgs.join(' ') + ' Increase display limit for full output.';
+      } else {
+        orphansResultEl.classList.remove('line-err', 'line-warn');
         orphansResultEl.textContent = `Showing up to ${data.display_limit} rows per list.`;
       }
 
       const hasMissingRecords = orphanScanState.missingRecordIds.length > 0;
       orphansFlagBtn.disabled = !hasMissingRecords;
       orphansDeleteBtn.disabled = !hasMissingRecords;
+      document.getElementById('orphans-missing-footer').style.display = hasMissingRecords ? '' : 'none';
+
+      const hasOrphanWebp = orphanWebp > 0;
+      const hasOrphanHighres = orphanHires > 0;
+      document.getElementById('orphans-webp-footer').style.display = hasOrphanWebp ? '' : 'none';
+      document.getElementById('orphans-highres-footer').style.display = hasOrphanHighres ? '' : 'none';
+      document.getElementById('orphans-delete-webp-btn').disabled = !hasOrphanWebp;
+      document.getElementById('orphans-delete-highres-btn').disabled = !hasOrphanHighres;
+      document.getElementById('orphans-register-webp-btn').disabled = !hasOrphanWebp;
+      document.getElementById('orphans-register-highres-btn').disabled = !hasOrphanHighres;
     }
 
     function resetOrphanActions(message, isError = false) {
       orphanScanState = null;
       orphansFlagBtn.disabled = true;
       orphansDeleteBtn.disabled = true;
+      document.getElementById('orphans-missing-footer').style.display = 'none';
+      document.getElementById('orphans-webp-footer').style.display = 'none';
+      document.getElementById('orphans-highres-footer').style.display = 'none';
+      document.getElementById('orphans-delete-webp-btn').disabled = true;
+      document.getElementById('orphans-delete-highres-btn').disabled = true;
+      document.getElementById('orphans-register-webp-btn').disabled = true;
+      document.getElementById('orphans-register-highres-btn').disabled = true;
       orphansSummaryEl.textContent = message;
       orphansSummaryEl.classList.toggle('line-err', isError);
       renderSimpleList(orphansMissingEl, [], 'No scan yet.');
@@ -1609,18 +1907,25 @@
       retagResultEl.classList.remove('line-err');
       retagResultEl.innerHTML = lines.map((line) => `<div>${line}</div>`).join('');
 
+      const popupLines = [...lines];
+
       if (Array.isArray(result.failures) && result.failures.length) {
         const title = document.createElement('div');
         title.style.marginTop = '8px';
         title.textContent = 'Sample failures:';
         retagResultEl.appendChild(title);
+        popupLines.push('');
+        popupLines.push('Sample failures:');
         result.failures.forEach((entry) => {
           const row = document.createElement('div');
           row.className = 'line-err';
           row.textContent = `- ${entry}`;
           retagResultEl.appendChild(row);
+          popupLines.push(`- ${entry}`);
         });
       }
+
+      showRetagResponsePopup(popupLines.join('\n'));
     }
 
     function populateDuplicateSelectors() {
@@ -1750,11 +2055,81 @@
       purgeModalPayload = null;
       purgeConfirmInput.value = '';
       purgeConfirmBtn.disabled = true;
+      purgeConfirmLabel.style.display = '';
+      purgeConfirmInput.style.display = '';
+      purgeModalStatus.style.display = 'none';
+      purgeModalStatus.textContent = '';
+      purgeCancelBtn.textContent = 'Cancel';
+      if (purgeConfirmResolver) {
+        const res = purgeConfirmResolver;
+        purgeConfirmResolver = null;
+        res(false);
+      }
     }
 
-    function isPurgeConfirmed(message) {
-      const typed = window.prompt(message);
-      return (typed || '').trim().toUpperCase() === 'PURGE';
+    function confirmPurge(message) {
+      return new Promise((resolve) => {
+        purgeConfirmResolver = resolve;
+        purgeModalCopy.textContent = message;
+        purgeConfirmInput.value = '';
+        purgeConfirmBtn.disabled = true;
+        purgeConfirmLabel.style.display = '';
+        purgeConfirmInput.style.display = '';
+        purgeModalStatus.style.display = 'none';
+        purgeCancelBtn.textContent = 'Cancel';
+        purgeModal.style.display = 'flex';
+        purgeModal.setAttribute('aria-hidden', 'false');
+        purgeConfirmInput.focus();
+      });
+    }
+
+    function setPurgeModalWorking(msg) {
+      purgeConfirmLabel.style.display = 'none';
+      purgeConfirmInput.style.display = 'none';
+      purgeConfirmBtn.disabled = true;
+      purgeCancelBtn.disabled = true;
+      purgeModalStatus.style.display = 'block';
+      purgeModalStatus.style.color = 'var(--muted)';
+      purgeModalStatus.textContent = msg;
+    }
+
+    function setPurgeModalResult(msg, isError) {
+      purgeModalStatus.style.color = isError ? 'var(--danger)' : 'var(--success, #16a34a)';
+      purgeModalStatus.textContent = msg;
+      purgeCancelBtn.disabled = false;
+      purgeCancelBtn.textContent = 'Close';
+    }
+
+    function showRetagResponsePopup(message, isError = false) {
+      retagPopupShown = true;
+      retagResponseCopy.textContent = message;
+      retagResponseCopy.style.color = isError ? 'var(--danger)' : 'inherit';
+      retagResponseModal.style.display = 'flex';
+      retagResponseModal.setAttribute('aria-hidden', 'false');
+      retagResponseCloseBtn.focus();
+    }
+
+    function closeRetagResponsePopup() {
+      retagResponseModal.style.display = 'none';
+      retagResponseModal.setAttribute('aria-hidden', 'true');
+      retagResponseCopy.textContent = '';
+      retagResponseCopy.style.color = 'inherit';
+    }
+
+    function showOrphanResponsePopup(title, message, isError = false) {
+      orphanResponseTitle.textContent = title;
+      orphanResponseCopy.textContent = message;
+      orphanResponseCopy.style.color = isError ? 'var(--danger)' : 'inherit';
+      orphanResponseModal.style.display = 'flex';
+      orphanResponseModal.setAttribute('aria-hidden', 'false');
+      orphanResponseCloseBtn.focus();
+    }
+
+    function closeOrphanResponsePopup() {
+      orphanResponseModal.style.display = 'none';
+      orphanResponseModal.setAttribute('aria-hidden', 'true');
+      orphanResponseCopy.textContent = '';
+      orphanResponseCopy.style.color = 'inherit';
     }
 
     async function runMaintenanceScan({
@@ -2107,11 +2482,33 @@
       }
     });
 
+    retagResponseCloseBtn.addEventListener('click', closeRetagResponsePopup);
+
+    retagResponseModal.addEventListener('click', (e) => {
+      if (e.target === retagResponseModal) {
+        closeRetagResponsePopup();
+      }
+    });
+
+    orphanResponseCloseBtn.addEventListener('click', closeOrphanResponsePopup);
+
+    orphanResponseModal.addEventListener('click', (e) => {
+      if (e.target === orphanResponseModal) {
+        closeOrphanResponsePopup();
+      }
+    });
+
     purgeConfirmInput.addEventListener('input', () => {
       purgeConfirmBtn.disabled = purgeConfirmInput.value.trim().toUpperCase() !== 'PURGE';
     });
 
     purgeConfirmBtn.addEventListener('click', async () => {
+      if (purgeConfirmResolver) {
+        const res = purgeConfirmResolver;
+        purgeConfirmResolver = null;
+        res(true);
+        return;
+      }
       if (!purgeModalPayload) return;
       purgeConfirmBtn.disabled = true;
 
@@ -2173,15 +2570,16 @@
         if (!resp.ok) {
           throw new Error(data.error || 'Flag action failed.');
         }
+        const msg = `Flagged: ${data.updated}. Unchanged: ${data.unchanged}. Missing IDs: ${data.missing}. Failed: ${data.failed}.`;
         orphansResultEl.classList.remove('line-err');
-        orphansResultEl.textContent =
-          `Flagged: ${data.updated}. Unchanged: ${data.unchanged}. ` +
-          `Missing IDs: ${data.missing}. Failed: ${data.failed}.`;
+        orphansResultEl.textContent = msg;
+        showOrphanResponsePopup('Flag for Review — Complete', msg, false);
         await runOrphanScan();
         refreshHubMetrics();
       } catch (err) {
         orphansResultEl.classList.add('line-err');
         orphansResultEl.textContent = err.message || 'Flag action failed.';
+        showOrphanResponsePopup('Flag for Review — Error', err.message || 'Flag action failed.', true);
         orphansFlagBtn.disabled = false;
         orphansDeleteBtn.disabled = !orphanScanState || !orphanScanState.missingRecordIds.length;
       }
@@ -2189,12 +2587,13 @@
 
     orphansDeleteBtn.addEventListener('click', async () => {
       if (!orphanScanState || !orphanScanState.missingRecordIds.length) return;
-      if (!isPurgeConfirmed(`Type PURGE to delete ${orphanScanState.missingRecordIds.length} orphaned record(s).`)) {
+      if (!(await confirmPurge(`Delete will permanently remove ${orphanScanState.missingRecordIds.length} record(s) with missing files from the library. Are you sure?`))) {
         return;
       }
 
       orphansFlagBtn.disabled = true;
       orphansDeleteBtn.disabled = true;
+      setPurgeModalWorking('Deleting records…');
 
       try {
         const resp = await fetch('/api/maintenance/orphans/delete-records', {
@@ -2211,16 +2610,90 @@
         if (!resp.ok) {
           throw new Error(data.error || 'Delete action failed.');
         }
-        orphansResultEl.classList.remove('line-err');
+        setPurgeModalResult(`Deleted: ${data.deleted}. Failed: ${data.failed}.`, false);
+        orphansResultEl.classList.remove('line-err', 'line-warn');
         orphansResultEl.textContent = `Deleted: ${data.deleted}. Failed: ${data.failed}.`;
         await runOrphanScan();
         refreshHubMetrics();
+        closePurgeModal();
       } catch (err) {
+        setPurgeModalResult(err.message || 'Delete action failed.', true);
         orphansResultEl.classList.add('line-err');
         orphansResultEl.textContent = err.message || 'Delete action failed.';
         orphansFlagBtn.disabled = !orphanScanState || !orphanScanState.missingRecordIds.length;
         orphansDeleteBtn.disabled = !orphanScanState || !orphanScanState.missingRecordIds.length;
       }
+    });
+
+    async function deleteOrphanFiles(type, filePaths, btn) {
+      if (!filePaths || !filePaths.length) return;
+      const label = type === 'webp' ? 'WebP' : 'High-Res';
+      if (!(await confirmPurge(`Delete will permanently remove ${filePaths.length} ${label} file(s) with no record from the library. Are you sure?`))) {
+        return;
+      }
+      btn.disabled = true;
+      setPurgeModalWorking(`Deleting ${filePaths.length} ${label} file(s)…`);
+      try {
+        const resp = await fetch('/api/maintenance/orphans/delete-files', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ file_paths: filePaths, type }),
+        });
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.error || 'Delete failed.');
+        setPurgeModalResult(`Deleted: ${data.deleted}. Failed: ${data.failed}.`, false);
+        orphansResultEl.classList.remove('line-err', 'line-warn');
+        orphansResultEl.textContent = `${label} files deleted: ${data.deleted}. Failed: ${data.failed}.`;
+        await runOrphanScan();
+        closePurgeModal();
+      } catch (err) {
+        setPurgeModalResult(err.message || 'Delete failed.', true);
+        orphansResultEl.classList.add('line-err');
+        orphansResultEl.textContent = err.message || 'Delete failed.';
+        btn.disabled = false;
+      }
+    }
+
+    async function registerOrphanFiles(type, filePaths, btn) {
+      if (!filePaths || !filePaths.length) return;
+      const label = type === 'webp' ? 'WebP' : 'High-Res';
+      btn.disabled = true;
+      orphansResultEl.classList.remove('line-err', 'line-warn');
+      orphansResultEl.textContent = `Registering ${filePaths.length} ${label} file(s) as stub records…`;
+      try {
+        const resp = await fetch('/api/maintenance/orphans/register-files', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ file_paths: filePaths, type }),
+        });
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.error || 'Registration failed.');
+        const msg = `Registered: ${data.registered}. Skipped (already exists): ${data.skipped}. Failed: ${data.failed}.\n\nNew records are in pending-review and ready for metadata.`;
+        orphansResultEl.textContent = msg;
+        showOrphanResponsePopup(`Register ${label} Files — Complete`, msg, false);
+        await runOrphanScan();
+      } catch (err) {
+        orphansResultEl.classList.add('line-err');
+        orphansResultEl.textContent = err.message || 'Registration failed.';
+        showOrphanResponsePopup(`Register ${label} Files — Error`, err.message || 'Registration failed.', true);
+        btn.disabled = false;
+      }
+    }
+
+    document.getElementById('orphans-delete-webp-btn').addEventListener('click', () => {
+      deleteOrphanFiles('webp', orphanScanState?.orphanWebpFiles || [], document.getElementById('orphans-delete-webp-btn'));
+    });
+
+    document.getElementById('orphans-delete-highres-btn').addEventListener('click', () => {
+      deleteOrphanFiles('highres', orphanScanState?.orphanHighresFiles || [], document.getElementById('orphans-delete-highres-btn'));
+    });
+
+    document.getElementById('orphans-register-webp-btn').addEventListener('click', () => {
+      registerOrphanFiles('webp', orphanScanState?.orphanWebpFiles || [], document.getElementById('orphans-register-webp-btn'));
+    });
+
+    document.getElementById('orphans-register-highres-btn').addEventListener('click', () => {
+      registerOrphanFiles('highres', orphanScanState?.orphanHighresFiles || [], document.getElementById('orphans-register-highres-btn'));
     });
 
     brokenRecordSelect.addEventListener('change', () => {
@@ -2235,12 +2708,13 @@
     brokenDeleteBtn.addEventListener('click', async () => {
       if (!brokenScanState || !brokenScanState.recordIds.length) return;
 
-      if (!isPurgeConfirmed(`Type PURGE to delete ${brokenScanState.recordIds.length} broken record(s).`)) {
+      if (!(await confirmPurge(`Delete ${brokenScanState.recordIds.length} broken record(s). This cannot be undone.`))) {
         return;
       }
 
       brokenDeleteBtn.disabled = true;
       brokenRelinkBtn.disabled = true;
+      setPurgeModalWorking('Deleting records…');
 
       try {
         const resp = await fetch('/api/maintenance/broken-thumbnails/delete-records', {
@@ -2258,11 +2732,14 @@
           throw new Error(data.error || 'Delete action failed.');
         }
 
+        setPurgeModalResult(`Deleted: ${data.deleted}. Failed: ${data.failed}.`, false);
         brokenResultEl.classList.remove('line-err');
         brokenResultEl.textContent = `Deleted: ${data.deleted}. Failed: ${data.failed}.`;
         await runBrokenScan();
         refreshHubMetrics();
+        closePurgeModal();
       } catch (err) {
+        setPurgeModalResult(err.message || 'Delete action failed.', true);
         brokenResultEl.classList.add('line-err');
         brokenResultEl.textContent = err.message || 'Delete action failed.';
         updateBrokenActionState();
@@ -2367,11 +2844,12 @@
         return;
       }
 
-      if (!isPurgeConfirmed(`Type PURGE to reset ${statusResetPreviewState.expectedCount} record(s) to pending-review.`)) {
+      if (!(await confirmPurge(`Reset ${statusResetPreviewState.expectedCount} record(s) to pending-review.`))) {
         return;
       }
 
       statusResetRunBtn.disabled = true;
+      setPurgeModalWorking('Resetting records…');
 
       try {
         const resp = await fetch('/api/maintenance/status-reset', {
@@ -2400,7 +2878,10 @@
         statusResetRunBtn.disabled = true;
         statusResetPreviewState = null;
         refreshHubMetrics();
+        setPurgeModalResult(`Reset complete. Updated: ${data.updated_count}. Failed: ${data.failed_count}.`, false);
+        closePurgeModal();
       } catch (err) {
+        setPurgeModalResult(err.message || 'Status reset failed.', true);
         statusResetResultEl.classList.add('line-err');
         statusResetResultEl.textContent = err.message || 'Status reset failed.';
         statusResetRunBtn.disabled = false;
@@ -2424,6 +2905,12 @@
           resetRetagUi();
         });
       });
+
+    if (retagOpenOrphansBtn) {
+      retagOpenOrphansBtn.addEventListener('click', () => {
+        openToolPanel('diagnose', 'Orphan File Finder');
+      });
+    }
 
     retagTagInput.addEventListener('input', () => {
       resetRetagUi();
@@ -2488,6 +2975,7 @@
 
       retagPreviewBtn.disabled = true;
       retagRunBtn.disabled = true;
+      retagPopupShown = false;
       retagLogEl.innerHTML = '';
       retagResultEl.classList.remove('line-err');
       retagResultEl.textContent = 'Running bulk re-tag...';
@@ -2503,6 +2991,10 @@
         if (msg === '[START]') return;
         if (msg === '[DONE]') {
           appendRetagLine('Completed bulk re-tag run.');
+          if (!retagPopupShown) {
+            const fallback = (retagResultEl.innerText || '').trim() || 'Completed bulk re-tag run.';
+            showRetagResponsePopup(fallback);
+          }
           retagPreviewBtn.disabled = false;
           retagRunBtn.disabled = true;
           retagPreviewState = null;
@@ -2524,6 +3016,7 @@
           appendRetagLine(msg, true);
           retagResultEl.classList.add('line-err');
           retagResultEl.textContent = msg;
+          showRetagResponsePopup(msg, true);
           retagPreviewBtn.disabled = false;
           retagRunBtn.disabled = false;
           es.close();
@@ -2537,6 +3030,7 @@
         appendRetagLine('Bulk re-tag stream connection lost.', true);
         retagResultEl.classList.add('line-err');
         retagResultEl.textContent = 'Bulk re-tag stream connection lost.';
+        showRetagResponsePopup('Bulk re-tag stream connection lost.', true);
         retagPreviewBtn.disabled = false;
         retagRunBtn.disabled = false;
         es.close();
@@ -2555,11 +3049,12 @@
         return;
       }
 
-      if (!isPurgeConfirmed(`Type PURGE to ${duplicatesActionSelect.value} this duplicate group of ${group.records.length} records.`)) {
+      if (!(await confirmPurge(`${duplicatesActionSelect.value} this duplicate group of ${group.records.length} records. This cannot be undone.`))) {
         return;
       }
 
       duplicatesResolveBtn.disabled = true;
+      setPurgeModalWorking('Resolving duplicates…');
 
       try {
         const resp = await fetch('/api/maintenance/duplicates/resolve', {
@@ -2579,13 +3074,16 @@
           throw new Error(data.error || 'Duplicate resolve failed.');
         }
 
+        setPurgeModalResult(`Resolved. Deleted: ${data.deleted}. Kept: ${data.keep_id}.`, false);
         duplicatesResultEl.classList.remove('line-err');
         duplicatesResultEl.textContent =
           `Resolved with action=${data.action}. Deleted=${data.deleted}. Failed=${data.failed}. ` +
           `Kept=${data.keep_id}.`;
         await runDuplicateScan();
         refreshHubMetrics();
+        closePurgeModal();
       } catch (err) {
+        setPurgeModalResult(err.message || 'Duplicate resolve failed.', true);
         duplicatesResultEl.classList.add('line-err');
         duplicatesResultEl.textContent = err.message || 'Duplicate resolve failed.';
         duplicatesResolveBtn.disabled = false;
@@ -2655,6 +3153,11 @@
         button: m14PreviewBtn,
         onSuccess: (data) => {
           normalizationPreviewState = { candidates: Array.isArray(data.candidates) ? data.candidates : [] };
+          const count = normalizationPreviewState.candidates.length;
+          m14ApplyBtn.disabled = count === 0;
+          const hint = document.getElementById('m14-apply-hint');
+          hint.textContent = count ? `${count} candidate${count !== 1 ? 's' : ''} loaded — ready to apply` : 'No candidates found';
+          hint.style.color = count ? '#28a745' : '#888';
         },
       });
     });
@@ -2708,10 +3211,11 @@
         renderAdvancedOutput('M15 restore failed', 'Select a checkpoint first.', true);
         return;
       }
-      if (!isPurgeConfirmed(`Type PURGE to restore checkpoint ${checkpointId}.`)) {
+      if (!(await confirmPurge(`Restore checkpoint ${checkpointId}. This cannot be undone.`))) {
         return;
       }
 
+      setPurgeModalWorking('Restoring checkpoint…');
       await runAdvancedRequest({
         title: 'M15 Restore Checkpoint',
         url: '/api/maintenance/checkpoints/restore',
@@ -2722,6 +3226,7 @@
           confirm_token: 'PURGE',
         },
       });
+      closePurgeModal();
       refreshHubMetrics();
       refreshCheckpointOptions(false);
     });
@@ -2834,10 +3339,200 @@
     resetDuplicateUi('Run duplicate scan to review candidate groups.');
     initializeToolAccordions();
     setActiveWorkstream('diagnose');
+    // Activate workstream from URL hash (e.g. /maintenance#cleanup)
+    const hashWorkstream = window.location.hash.replace('#', '');
+    if (['diagnose','correct','cleanup','reporting'].includes(hashWorkstream)) {
+      setActiveWorkstream(hashWorkstream);
+      history.replaceState(null, '', window.location.pathname);
+    }
     refreshHubMetrics();
     refreshCheckpointOptions(false);
     refreshJobOptions(false);
     refreshGuardrails(false);
+
+    // ── Tag Manager ──────────────────────────────────────────────────────────
+    let _tmLibrary = {};
+
+    async function tmLoadLibrary() {
+      const res = await fetch('/api/tag-library');
+      _tmLibrary = await res.json();
+      tmRenderLibrary();
+      tmPopulateCategorySelect();
+    }
+
+    async function tmLoadSuggestionsAfterApproveAll(count) {
+      const res = await fetch('/api/tag-library/suggestions');
+      const { suggestions } = await res.json();
+      const el = document.getElementById('tm-suggestions-list');
+      const section = document.getElementById('tm-suggestions-section');
+      if (!suggestions.length) {
+        el.innerHTML = `<div style="padding:12px 0;color:#28a745;font-weight:600;font-size:0.88rem;">
+          ✓ All done — ${count} tag${count !== 1 ? 's' : ''} approved into their recommended categories.
+        </div>`;
+        section.classList.remove('tm-hidden');
+        setTimeout(() => { section.classList.add('tm-hidden'); el.innerHTML = ''; }, 4000);
+        return;
+      }
+      section.classList.remove('tm-hidden');
+      const categories = Object.keys(_tmLibrary).concat(['Custom']);
+      el.innerHTML = suggestions.map(s => {
+        const sugCat = s.suggested_category || 'Custom';
+        const isMatched = sugCat !== 'Custom';
+        const matchBadge = isMatched
+          ? `<span title="Matched to vocabulary" style="font-size:0.68rem;color:#28a745;font-weight:600;white-space:nowrap;">↳ ${sugCat}</span>`
+          : `<span style="font-size:0.68rem;color:#aaa;white-space:nowrap;">no match</span>`;
+        const opts = categories.map(c => `<option value="${c}"${c === sugCat ? ' selected' : ''}>${c}</option>`).join('');
+        return `
+          <div class="tm-suggestion-item" id="tm-sug-${s.tag.replace('?','')}">
+            <span class="tm-suggestion-tag">${s.tag}</span>
+            <span class="tm-suggestion-count">${s.count} image${s.count !== 1 ? 's' : ''}</span>
+            ${matchBadge}
+            <select class="tm-suggestion-category" id="tm-cat-${s.tag.replace('?','')}">${opts}</select>
+            <button class="tm-btn-sm tm-btn-promote" onclick="tmPromote('${s.tag}')">Approve</button>
+            <button class="tm-btn-sm tm-btn-discard" onclick="tmDiscard('${s.tag}')">Discard</button>
+          </div>`;
+      }).join('');
+    }
+
+    async function tmLoadSuggestions() {
+      const res = await fetch('/api/tag-library/suggestions');
+      const { suggestions } = await res.json();
+      const el = document.getElementById('tm-suggestions-list');
+      const section = document.getElementById('tm-suggestions-section');
+      if (!suggestions.length) { section.classList.add('tm-hidden'); return; }
+      section.classList.remove('tm-hidden');
+      const categories = Object.keys(_tmLibrary).concat(['Custom']);
+      el.innerHTML = suggestions.map(s => {
+        const sugCat = s.suggested_category || 'Custom';
+        const isMatched = sugCat !== 'Custom';
+        const matchBadge = isMatched
+          ? `<span title="Matched to vocabulary" style="font-size:0.68rem;color:#28a745;font-weight:600;white-space:nowrap;">↳ ${sugCat}</span>`
+          : `<span style="font-size:0.68rem;color:#aaa;white-space:nowrap;">no match</span>`;
+        const opts = categories.map(c => `<option value="${c}"${c === sugCat ? ' selected' : ''}>${c}</option>`).join('');
+        return `
+          <div class="tm-suggestion-item" id="tm-sug-${s.tag.replace('?','')}">
+            <span class="tm-suggestion-tag">${s.tag}</span>
+            <span class="tm-suggestion-count">${s.count} image${s.count !== 1 ? 's' : ''}</span>
+            ${matchBadge}
+            <select class="tm-suggestion-category" id="tm-cat-${s.tag.replace('?','')}">${opts}</select>
+            <button class="tm-btn-sm tm-btn-promote" onclick="tmPromote('${s.tag}')">Approve</button>
+            <button class="tm-btn-sm tm-btn-discard" onclick="tmDiscard('${s.tag}')">Discard</button>
+          </div>`;
+      }).join('');
+    }
+
+    function tmRenderLibrary() {
+      const grid = document.getElementById('tm-category-grid');
+      if (!Object.keys(_tmLibrary).length) { grid.innerHTML = '<span class="tm-empty">No tags yet.</span>'; return; }
+      grid.innerHTML = Object.entries(_tmLibrary).map(([cat, tags]) => `
+        <div class="tm-category-card">
+          <div class="tm-category-name">${cat}</div>
+          <div class="tm-tag-list">
+            ${tags.map(t => `<span class="tm-tag">${t}<button class="tm-remove-btn" onclick="tmRemoveTag('${t}')" title="Remove">✕</button></span>`).join('') || '<span class="tm-empty">Empty</span>'}
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function tmPopulateCategorySelect() {
+      const cats = Object.keys(_tmLibrary).concat(['Custom']);
+      const opts = cats.map(c => `<option value="${c}">${c}</option>`).join('');
+      const sel = document.getElementById('tm-new-category');
+      if (sel) sel.innerHTML = opts;
+    }
+
+    async function tmAddTag() {
+      const tag = document.getElementById('tm-new-tag').value.trim().toLowerCase().replace(/\s+/g, '-');
+      const category = document.getElementById('tm-new-category').value;
+      if (!tag) return;
+      await fetch('/api/tag-library/add', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ tag, category }) });
+      document.getElementById('tm-new-tag').value = '';
+      tmShowToast(`Added "${tag}" to ${category}`);
+      await tmLoadLibrary();
+    }
+
+    async function tmRemoveTag(tag) {
+      if (!confirm(`Remove tag "${tag}"?`)) return;
+      await fetch('/api/tag-library/remove', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ tag }) });
+      tmShowToast(`Removed "${tag}"`);
+      await tmLoadLibrary();
+    }
+
+    async function tmPromote(tag) {
+      const clean = tag.replace('?', '');
+      const category = document.getElementById(`tm-cat-${clean}`)?.value || 'Custom';
+      await fetch('/api/tag-library/promote', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ tag, category }) });
+      await tmLoadLibrary();
+      const remaining = document.querySelectorAll('.tm-suggestion-item').length - 1;
+      if (remaining <= 0) {
+        await tmLoadSuggestionsAfterApproveAll(1);
+      } else {
+        tmShowToast(`Approved "${clean}" → ${category}`);
+        await tmLoadSuggestions();
+      }
+    }
+
+    async function tmDiscard(tag) {
+      const clean = tag.replace('?', '');
+      document.getElementById(`tm-sug-${clean}`)?.remove();
+      tmShowToast(`Discarded "${tag}"`);
+    }
+
+    async function tmApproveAll() {
+      const btn = document.getElementById('tm-bulk-approve-btn');
+      const items = document.querySelectorAll('.tm-suggestion-item');
+      if (!items.length) return;
+      if (!confirm(`Approve all ${items.length} suggested tag(s) into their recommended categories?`)) return;
+      btn.disabled = true; btn.textContent = 'Approving…';
+      const tags = [...items].map(el => ({
+        tag: el.querySelector('.tm-suggestion-tag').textContent.trim(),
+        category: el.querySelector('.tm-suggestion-category')?.value || 'Custom'
+      }));
+      const res = await fetch('/api/tag-library/promote-bulk', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ tags }) });
+      const data = await res.json();
+      btn.disabled = false; btn.textContent = '✓ Approve All Recommended';
+      await tmLoadLibrary();
+      await tmLoadSuggestionsAfterApproveAll(data.promoted);
+    }
+
+    function tmShowToast(msg) {
+      const t = document.getElementById('tm-toast');
+      t.textContent = msg; t.classList.add('show');
+      setTimeout(() => t.classList.remove('show'), 2500);
+    }
+
+    // Load tag manager when its panel is first expanded
+    let _tmLoaded = false;
+    document.getElementById('tm-toggle').addEventListener('click', () => {
+      const panel = document.getElementById('tm-panel');
+      const isCollapsed = panel.classList.toggle('is-collapsed');
+      document.getElementById('tm-toggle-icon').textContent = isCollapsed ? '▶' : '▼';
+      if (!isCollapsed && !_tmLoaded) { _tmLoaded = true; tmLoadLibrary().then(tmLoadSuggestions); }
+    });
+
+    function openTagManager() {
+      const panel = document.getElementById('tm-panel');
+      panel.classList.remove('is-collapsed');
+      document.getElementById('tm-toggle-icon').textContent = '▼';
+      if (!_tmLoaded) { _tmLoaded = true; tmLoadLibrary().then(tmLoadSuggestions); }
+      setTimeout(() => panel.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+    }
+
+    // Auto-open if navigated via anchor (then clear hash so refresh doesn't re-open)
+    function handleTagManagerHash() {
+      if (window.location.hash === '#tag-manager') {
+        const panel = document.getElementById('tm-panel');
+        panel.classList.remove('is-collapsed');
+        document.getElementById('tm-toggle-icon').textContent = '▼';
+        if (!_tmLoaded) { _tmLoaded = true; tmLoadLibrary().then(tmLoadSuggestions); }
+        setTimeout(() => {
+          panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          history.replaceState(null, '', window.location.pathname);
+        }, 200);
+      }
+    }
+    window.addEventListener('hashchange', handleTagManagerHash);
+    handleTagManagerHash();
   </script>
 </body>
 </html>

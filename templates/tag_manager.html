@@ -171,8 +171,11 @@
 
   <!-- Suggestions -->
   <div class="section" id="suggestions-section">
-    <div class="section-title">Suggested tags — pending review</div>
-    <div id="suggestions-list"><span class="empty">Loading…</span></div>
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+      <div class="section-title" style="margin-bottom:0;">Suggested tags — pending review</div>
+      <button class="btn btn-primary" id="bulk-approve-btn" onclick="approveAll()" style="font-size:0.85rem;padding:6px 14px;">✓ Approve All as Custom</button>
+    </div>
+    <div id="suggestions-list" style="margin-top:10px;"><span class="empty">Loading…</span></div>
   </div>
 
   <!-- Tag library -->
@@ -306,6 +309,31 @@
     const clean = tag.replace('?', '');
     document.getElementById(`sug-${clean}`)?.remove();
     showToast(`Discarded "${tag}"`);
+  }
+
+  async function approveAll() {
+    const btn = document.getElementById('bulk-approve-btn');
+    const items = document.querySelectorAll('.suggestion-item');
+    if (!items.length) return;
+    if (!confirm(`Approve all ${items.length} suggested tag(s) as Custom?`)) return;
+    btn.disabled = true;
+    btn.textContent = 'Approving…';
+    const tags = [...items].map(el => {
+      const tagEl = el.querySelector('.suggestion-tag');
+      const catEl = el.querySelector('.suggestion-category');
+      return { tag: tagEl.textContent.trim(), category: catEl?.value || 'Custom' };
+    });
+    const res = await fetch('/api/tag-library/promote-bulk', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ tags })
+    });
+    const data = await res.json();
+    showToast(`Approved ${data.promoted} tag(s)`);
+    btn.disabled = false;
+    btn.textContent = '✓ Approve All as Custom';
+    await loadLibrary();
+    await loadSuggestions();
   }
 
   function showToast(msg) {
