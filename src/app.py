@@ -610,7 +610,7 @@ def api_parse_suggestions():
 def api_stock_search():
     data = request.get_json(force=True)
     phrases = data.get("phrases", [])
-    limit = max(1, min(int(data.get("limit", 12)), 20))
+    limit = max(1, min(int(data.get("limit", 25)), 25))
     if not phrases:
         return jsonify({"error": "No phrases provided"}), 400
     phrases = phrases[:20]
@@ -1258,6 +1258,7 @@ def _serve_image(thumb: bool) -> Response:
 @app.route("/tag-manager")
 @login_required
 def tag_manager():
+    """Legacy route kept for backwards compatibility; Tag Manager now lives in Maintenance."""
     return redirect("/maintenance#tag-manager")
 
 
@@ -4042,6 +4043,19 @@ def api_maintenance_quality_drift_queue_mark():
     if error_response:
         return error_response
 
+    expected_count_raw = data.get("expected_count")
+    if expected_count_raw is not None:
+        try:
+            expected_count = int(expected_count_raw)
+        except (TypeError, ValueError):
+            return jsonify({"error": "expected_count must be an integer"}), 400
+        if expected_count != len(record_ids):
+            return jsonify({
+                "error": "expected_count does not match record_ids length",
+                "expected_count": expected_count,
+                "record_count": len(record_ids),
+            }), 409
+
     marker = str(data.get("marker", "?retag-queue")).strip() or "?retag-queue"
     if not marker.startswith("?"):
         marker = f"?{marker}"
@@ -4619,6 +4633,46 @@ def api_tag_library_remove():
     return jsonify({"ok": found})
 
 
+def _clear_promoted_suggestions_from_records(promoted_tags: list[str]) -> int:
+    """Replace ?prefixed promoted tags in records with approved tag names."""
+    clean_promoted = {
+        str(tag or "").lstrip("?").strip().lower()
+        for tag in promoted_tags
+        if str(tag or "").strip()
+    }
+    if not clean_promoted:
+        return 0
+
+    client = get_client()
+    records = client.get_all_records()
+    patches: list[tuple[str, dict]] = []
+
+    for rec in records:
+        rec_id = str(rec.get("id", "")).strip()
+        raw_tags = rec.get("fields", {}).get("Tags", "") or ""
+        tag_list = [t.strip() for t in raw_tags.split(",") if t.strip()]
+        new_tags = []
+        changed = False
+
+        for t in tag_list:
+            clean = t.lstrip("?").strip().lower()
+            if t.startswith("?") and clean in clean_promoted:
+                new_tags.append(clean)
+                changed = True
+            else:
+                new_tags.append(t)
+
+        if changed and rec_id:
+            patches.append((rec_id, {"Tags": ", ".join(new_tags)}))
+
+    if patches:
+        client.bulk_patch_fields(patches)
+        global _records_cache
+        _records_cache = None
+
+    return len(patches)
+
+
 @app.route("/api/tag-library/promote", methods=["POST"])
 @login_required
 def api_tag_library_promote():
@@ -4631,6 +4685,9 @@ def api_tag_library_promote():
     from src.tag_library import TagLibrary
     TagLibrary.instance().promote_suggestion(tag, category)
     TagLibrary.instance().invalidate_cache()
+
+    _clear_promoted_suggestions_from_records([tag])
+
     return jsonify({"ok": True})
 
 
@@ -4655,30 +4712,7 @@ def api_tag_library_promote_bulk():
             promoted_tags.append(tag.lstrip("?").strip().lower())
     lib.invalidate_cache()
 
-    # Strip the ? prefix from records so the suggestions endpoint no longer surfaces them
-    if promoted_tags:
-        client = get_client()
-        records = client.get_all_records()
-        patches: list[tuple[str, dict]] = []
-        for rec in records:
-            rec_id = str(rec.get("id", "")).strip()
-            raw_tags = rec.get("fields", {}).get("Tags", "") or ""
-            tag_list = [t.strip() for t in raw_tags.split(",") if t.strip()]
-            new_tags = []
-            changed = False
-            for t in tag_list:
-                clean = t.lstrip("?").strip().lower()
-                if t.startswith("?") and clean in promoted_tags:
-                    new_tags.append(clean)
-                    changed = True
-                else:
-                    new_tags.append(t)
-            if changed and rec_id:
-                patches.append((rec_id, {"Tags": ", ".join(new_tags)}))
-        if patches:
-            client.bulk_patch_fields(patches)
-            global _records_cache
-            _records_cache = None
+    _clear_promoted_suggestions_from_records(promoted_tags)
 
     return jsonify({"ok": True, "promoted": len(promoted_tags)})
 

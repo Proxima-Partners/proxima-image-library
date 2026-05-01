@@ -2776,11 +2776,24 @@
     "fields": {
       "Filename": "two-smiling-older-men-wearing-blue-shirts-and-glasses-pose-t.webp",
       "Alt Text": "Two smiling older men wearing blue shirts and glasses pose together in stadium seats at a sporting event.",
-      "Tags": "joy, elderly, connection, indoor, ?sports-fans",
+      "Tags": "joy, elderly, connection, indoor, sports-fans",
       "Status": "approved",
       "Slug": "two-smiling-older-men-wearing-blue-shirts-and-glasses-pose-t",
       "Location": "Community/two-smiling-older-men-wearing-blue-shirts-and-glasses-pose-t.webp",
       "High-Res Location": "Community/two-smiling-older-men-wearing-blue-shirts-and-glasses-pose-t-original.jpeg"
+    }
+  },
+  {
+    "id": "loc_f64ab457c74e4e",
+    "fields": {
+      "Filename": "two-people-with-umbrellas-walking-along-a-rain-soaked-park-p.webp",
+      "Alt Text": "Two people with umbrellas walking along a rain-soaked park path at night, illuminated by glowing street lamps.",
+      "Tags": "nightscape, urban, partner, outdoor, ?rainy-night",
+      "Status": "pending-review",
+      "Slug": "two-people-with-umbrellas-walking-along-a-rain-soaked-park-p",
+      "Location": "Situations/two-people-with-umbrellas-walking-along-a-rain-soaked-park-p.webp",
+      "High-Res Location": "Unsplash/two-people-with-umbrellas-walking-along-a-rain-soaked-park-p-original.jpg",
+      "Source": "Unsplash"
     }
   }
 ]

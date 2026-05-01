@@ -541,6 +541,127 @@
       border-color: #fecaca;
     }
 
+    .ops-sequence {
+      border: 1px solid #c8e2ea;
+      border-radius: 10px;
+      background: #f4fbfd;
+      padding: 12px 14px;
+      margin-bottom: 14px;
+    }
+    .ops-sequence h3 {
+      margin: 0 0 6px;
+      font-size: 13px;
+      font-family: 'Montserrat', sans-serif;
+      color: #0f5f73;
+    }
+    .ops-sequence ol {
+      margin: 0;
+      padding-left: 20px;
+      color: #184552;
+      font-size: 12px;
+      line-height: 1.55;
+    }
+    .ops-sequence li + li {
+      margin-top: 2px;
+    }
+    .ops-step {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px;
+      background: #fff;
+      margin-bottom: 10px;
+    }
+    .ops-step:last-of-type {
+      margin-bottom: 0;
+    }
+    .ops-step-title {
+      margin: 0 0 4px;
+      font-size: 14px;
+      font-family: 'Montserrat', sans-serif;
+      color: #1f2937;
+    }
+    .ops-step-note {
+      margin: 0 0 10px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.5;
+    }
+    .ops-step .controls {
+      margin-bottom: 0;
+    }
+    .ops-inline-hint {
+      font-size: 11px;
+      color: #6b7280;
+      line-height: 1.45;
+    }
+    .ops-caution {
+      border-left: 3px solid #f59e0b;
+      padding-left: 8px;
+      color: #92400e;
+      font-size: 12px;
+      margin: 0 0 10px;
+      background: #fffbeb;
+      border-radius: 4px;
+    }
+    .ops-output-summary {
+      border: 1px solid #dbe8ef;
+      border-radius: 8px;
+      background: #f8fbfd;
+      padding: 10px 12px;
+      margin-bottom: 10px;
+    }
+    .ops-output-head {
+      font-size: 12px;
+      font-weight: 700;
+      color: #0f5f73;
+      margin-bottom: 8px;
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+    }
+    .ops-output-list {
+      margin: 0;
+      padding-left: 18px;
+      font-size: 12px;
+      color: #1f2937;
+      line-height: 1.5;
+    }
+    .ops-output-list li + li {
+      margin-top: 2px;
+    }
+    .ops-output-next {
+      margin-top: 8px;
+      font-size: 12px;
+      color: #065f46;
+      font-weight: 600;
+    }
+    .ops-output-safety {
+      margin-top: 6px;
+      font-size: 11px;
+      color: #4b5563;
+      line-height: 1.45;
+    }
+    .ops-output-raw {
+      margin: 0;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: #fff;
+      padding: 8px;
+    }
+    .ops-output-raw > summary {
+      cursor: pointer;
+      font-size: 12px;
+      color: #4b5563;
+      font-weight: 600;
+      user-select: none;
+      outline: none;
+    }
+    .ops-output-raw > pre {
+      margin: 8px 0 0;
+      font-size: 12px;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+
     /* ── Tag Manager ─────────────────────────────────────────────────── */
     #tm-panel { margin-top: 18px; }
     #tm-panel .tool-body { padding-top: 4px; }
@@ -1063,82 +1184,130 @@
     <section class="panel tool-panel" data-workstream="reporting" data-title="M10-M19 Operations">
       <h1>M10-M19 Operations</h1>
       <p class="sub">
-        Health, integrity, drift, normalization, checkpointing, scheduling, audit, guardrails, and approval workflows are available here.
+        New here? Follow these steps from top to bottom. Each step explains what to click and why.
       </p>
 
-      <div class="controls">
-        <button id="m10-health-btn" class="btn">M10 Health Snapshot</button>
-        <button id="m11-integrity-btn" class="btn">M11 Integrity Scorecard</button>
-        <button id="m12-drift-btn" class="btn">M12 Aging and Drift</button>
-        <button id="m13-queue-btn" class="btn">M13 Drift Queue</button>
-        <button id="m14-preview-btn" class="btn">M14 Category Preview</button>
+      <div class="ops-sequence">
+        <h3>Quick Start Order</h3>
+        <ol>
+          <li>Start with Step 1 to check system health. This is read-only.</li>
+          <li>Use Step 2 to build a work queue of records that may need fixes.</li>
+          <li>Use Step 3 preview first, then apply changes only after you review the count.</li>
+          <li>Use Step 4 to save a safety checkpoint before large edits.</li>
+          <li>Use Step 5 to run optional jobs and review audit output.</li>
+          <li>Use Step 6 to confirm safety settings (preview, approvals, checkpoint behavior).</li>
+          <li>Use Step 7 only when approval tokens are required.</li>
+        </ol>
       </div>
 
-      <div class="controls">
-        <label for="m13-marker-input">Queue marker</label>
-        <input id="m13-marker-input" class="control-input" type="text" value="?retag-queue" />
-        <button id="m13-mark-btn" class="btn">M13 Mark Queue Records</button>
-        <label class="check-row">
-          <input id="m14-set-pending" type="checkbox" checked />
-          Set pending-review on M14 apply
-        </label>
-        <button id="m14-apply-btn" class="btn btn-danger" disabled title="Run M14 Category Preview first">M14 Apply Normalization</button>
-        <span id="m14-apply-hint" style="font-size:0.78rem;color:#888;">Run preview first to enable</span>
+      <div class="ops-step">
+        <h3 class="ops-step-title">Step 1: Check System Health (M10-M12)</h3>
+        <p class="ops-step-note">Click these three buttons left to right. They only inspect data and do not change records.</p>
+        <div class="controls">
+          <button id="m10-m12-bundle-btn" class="btn">Run M10-M12 Baseline</button>
+          <button id="m10-health-btn" class="btn">Run M10 Health Snapshot</button>
+          <button id="m11-integrity-btn" class="btn">Run M11 Integrity Scorecard</button>
+          <button id="m12-drift-btn" class="btn">Run M12 Aging and Drift</button>
+        </div>
       </div>
 
-      <div class="controls">
-        <label for="m15-checkpoint-name">Checkpoint name</label>
-        <input id="m15-checkpoint-name" class="control-input" type="text" placeholder="manual-ops" />
-        <button id="m15-create-checkpoint-btn" class="btn">M15 Create Checkpoint</button>
-        <button id="m15-refresh-checkpoints-btn" class="btn">Refresh Checkpoints</button>
-        <label for="m15-checkpoint-select">Restore checkpoint</label>
-        <select id="m15-checkpoint-select" style="min-width: 260px;"></select>
-        <button id="m15-restore-btn" class="btn btn-danger">M15 Restore</button>
+      <div class="ops-step">
+        <h3 class="ops-step-title">Step 2: Find Records to Fix (M13)</h3>
+        <p class="ops-step-note">First run Drift Queue to load candidates, then mark those records with your queue marker.</p>
+        <div class="controls">
+          <button id="m13-queue-btn" class="btn">Load M13 Drift Queue</button>
+          <label for="m13-marker-input">Queue marker</label>
+          <input id="m13-marker-input" class="control-input" type="text" value="?retag-queue" />
+          <button id="m13-mark-btn" class="btn">Apply M13 Queue Marker</button>
+        </div>
+        <p class="ops-inline-hint">Preview source: M13 Drift Queue. Undo path: M15 Restore Checkpoint.</p>
+        <p class="ops-inline-hint">Tip: Keep one marker format for all runs so it is easy to search and audit later.</p>
       </div>
 
-      <div class="controls">
-        <button id="m16-refresh-jobs-btn" class="btn">M16 Load Jobs</button>
-        <label for="m16-job-select">Run job</label>
-        <select id="m16-job-select" style="min-width: 220px;"></select>
-        <button id="m16-run-job-btn" class="btn">M16 Run Job</button>
-        <button id="m17-audit-btn" class="btn">M17 Load Audit</button>
+      <div class="ops-step">
+        <h3 class="ops-step-title">Step 3: Preview, Then Apply Fixes (M14)</h3>
+        <p class="ops-step-note">Run Preview first to see how many records would change. Apply stays disabled until preview finds candidates.</p>
+        <p class="ops-caution">Only click Apply after you review the candidate count and confirm your safety settings in Step 6.</p>
+        <div class="controls">
+          <button id="m14-preview-btn" class="btn">Run M14 Category Preview</button>
+          <label class="check-row">
+            <input id="m14-set-pending" type="checkbox" checked />
+            Set pending-review on M14 apply
+          </label>
+          <button id="m14-apply-btn" class="btn btn-danger" disabled title="Run M14 Category Preview first">Apply M14 Normalization</button>
+          <span id="m14-apply-hint" style="font-size:0.78rem;color:#888;">Run preview first to enable</span>
+        </div>
+        <p class="ops-inline-hint">Preview source: M14 Category Preview. Undo path: M15 Restore Checkpoint.</p>
       </div>
 
-      <div class="controls">
-        <button id="m18-load-guardrails-btn" class="btn">M18 Load Guardrails</button>
-        <label for="m18-max-batch">Max batch</label>
-        <input id="m18-max-batch" class="control-input" type="number" min="1" value="500" />
-        <label class="check-row">
-          <input id="m18-require-preview" type="checkbox" checked />
-          Require preview for destructive
-        </label>
-        <label class="check-row">
-          <input id="m18-two-step" type="checkbox" />
-          Require two-step approval
-        </label>
-        <label class="check-row">
-          <input id="m18-checkpoint-before" type="checkbox" />
-          Auto-checkpoint before destructive
-        </label>
-        <button id="m18-save-guardrails-btn" class="btn">M18 Save Guardrails</button>
+      <div class="ops-step">
+        <h3 class="ops-step-title">Step 4: Save a Restore Point (M15)</h3>
+        <p class="ops-step-note">Create a checkpoint before large edits. Restore is for rollback if results are not what you expected.</p>
+        <div class="controls">
+          <label for="m15-checkpoint-name">Checkpoint name</label>
+          <input id="m15-checkpoint-name" class="control-input" type="text" placeholder="manual-ops" />
+          <button id="m15-create-checkpoint-btn" class="btn">Create M15 Checkpoint</button>
+          <button id="m15-refresh-checkpoints-btn" class="btn">Load Checkpoints</button>
+          <label for="m15-checkpoint-select">Restore checkpoint</label>
+          <select id="m15-checkpoint-select" style="min-width: 260px;"></select>
+          <button id="m15-restore-btn" class="btn btn-danger">Run M15 Restore</button>
+        </div>
       </div>
 
-      <div class="controls">
-        <label for="m19-action-input">Approval action</label>
-        <input id="m19-action-input" class="control-input" type="text" placeholder="purge-status" />
-        <label for="m19-record-ids">Record IDs (comma/new line)</label>
-        <textarea id="m19-record-ids" class="control-textarea" placeholder="rec_1, rec_2"></textarea>
-        <button id="m19-request-approval-btn" class="btn">M19 Request Approval</button>
+      <div class="ops-step">
+        <h3 class="ops-step-title">Step 5: Run Jobs and Check History (M16-M17)</h3>
+        <p class="ops-step-note">Load jobs, run the one you need, then load audit output to confirm what happened.</p>
+        <div class="controls">
+          <button id="m16-refresh-jobs-btn" class="btn">Load M16 Jobs</button>
+          <label for="m16-job-select">Run job</label>
+          <select id="m16-job-select" style="min-width: 220px;"></select>
+          <button id="m16-run-job-btn" class="btn">Run Selected M16 Job</button>
+          <button id="m17-audit-btn" class="btn">Load M17 Audit</button>
+        </div>
       </div>
 
-      <div class="controls">
-        <label for="approval-token">Active approval token</label>
-        <input id="approval-token" class="control-input" type="text" placeholder="apr_..." />
-        <button id="m19-approve-token-btn" class="btn">M19 Approve Token</button>
-        <button id="m19-list-approvals-btn" class="btn">M19 List Approvals</button>
+      <div class="ops-step">
+        <h3 class="ops-step-title">Step 6: Confirm Safety Rules (M18)</h3>
+        <p class="ops-step-note">These settings control risk. Review them before any broad or destructive action, then save.</p>
+        <div class="controls">
+          <button id="m18-load-guardrails-btn" class="btn">Load M18 Guardrails</button>
+          <label for="m18-max-batch">Max batch</label>
+          <input id="m18-max-batch" class="control-input" type="number" min="1" value="500" />
+          <label class="check-row">
+            <input id="m18-require-preview" type="checkbox" checked />
+            Require preview for destructive
+          </label>
+          <label class="check-row">
+            <input id="m18-two-step" type="checkbox" />
+            Require two-step approval
+          </label>
+          <label class="check-row">
+            <input id="m18-checkpoint-before" type="checkbox" />
+            Auto-checkpoint before destructive
+          </label>
+          <button id="m18-save-guardrails-btn" class="btn">Save M18 Guardrails</button>
+        </div>
       </div>
 
-      <div id="m-advanced-result" class="purge-preview">Run any M10-M19 action to view output.</div>
+      <div class="ops-step">
+        <h3 class="ops-step-title">Step 7: Handle Approval Tokens (M19)</h3>
+        <p class="ops-step-note">If two-step approval is enabled, request a token for your action, approve it, then verify in the list.</p>
+        <div class="controls">
+          <label for="m19-action-input">Action name</label>
+          <input id="m19-action-input" class="control-input" type="text" placeholder="purge-status" />
+          <label for="m19-record-ids">Record IDs (comma or new line)</label>
+          <textarea id="m19-record-ids" class="control-textarea" placeholder="rec_1, rec_2"></textarea>
+          <button id="m19-request-approval-btn" class="btn">Request M19 Approval</button>
+        </div>
+        <div class="controls">
+          <label for="approval-token">Active approval token</label>
+          <input id="approval-token" class="control-input" type="text" placeholder="apr_..." />
+          <button id="m19-approve-token-btn" class="btn">Approve M19 Token</button>
+          <button id="m19-list-approvals-btn" class="btn">List M19 Approvals</button>
+        </div>
+      </div>
+
+      <div id="m-advanced-result" class="purge-preview">Results from the last action appear here. If something fails, read the message and retry the previous step.</div>
       <div id="m-advanced-output" class="duplicate-list" style="margin-top: 10px;"></div>
     </section>
 
@@ -1320,6 +1489,7 @@
     const duplicatesResultEl = document.getElementById('duplicates-result');
     const duplicatesListEl = document.getElementById('duplicates-list');
 
+    const m10M12BundleBtn = document.getElementById('m10-m12-bundle-btn');
     const m10HealthBtn = document.getElementById('m10-health-btn');
     const m11IntegrityBtn = document.getElementById('m11-integrity-btn');
     const m12DriftBtn = document.getElementById('m12-drift-btn');
@@ -2233,18 +2403,266 @@
       ));
     }
 
-    function renderAdvancedOutput(title, payload, isError = false) {
+    function formatSmallNumber(value) {
+      const n = Number(value);
+      if (!Number.isFinite(n)) return '0';
+      return n.toLocaleString();
+    }
+
+    function topReasonSummary(reasonCounts) {
+      const entries = Object.entries(reasonCounts || {})
+        .sort((a, b) => Number(b[1] || 0) - Number(a[1] || 0))
+        .slice(0, 3);
+      if (!entries.length) return 'none';
+      return entries
+        .map(([name, count]) => `${name} (${formatSmallNumber(count)})`)
+        .join(', ');
+    }
+
+    function summarizeAdvancedPayload(operationId, payload) {
+      const summary = {
+        highlights: [],
+        nextStep: '',
+        safety: '',
+      };
+
+      if (!payload || typeof payload !== 'object') {
+        return summary;
+      }
+
+      if (operationId === 'm10_m12_bundle') {
+        const health = payload.health || {};
+        const integrity = payload.integrity || {};
+        const drift = payload.drift || {};
+        summary.highlights.push(`Records scanned: ${formatSmallNumber(health.record_count)}`);
+        summary.highlights.push(`Pending review: ${formatSmallNumber((health.status_counts || {})['pending-review'])}`);
+        summary.highlights.push(`Lowest integrity score: ${formatSmallNumber((integrity.categories || [])[0]?.integrity_score || health.integrity?.lowest_score || 0)}`);
+        summary.highlights.push(`Drift candidates: ${formatSmallNumber(drift.candidate_count)}`);
+        summary.nextStep = 'If drift is high, run Step 2 (M13) to load queue candidates.';
+        summary.safety = 'Read-only bundle: no records are modified.';
+        return summary;
+      }
+
+      if (operationId === 'm10') {
+        summary.highlights.push(`Records scanned: ${formatSmallNumber(payload.record_count)}`);
+        summary.highlights.push(`Pending review: ${formatSmallNumber((payload.status_counts || {})['pending-review'])}`);
+        summary.highlights.push(`Drift candidates: ${formatSmallNumber(payload.drift?.candidate_count)}`);
+        summary.highlights.push(`Duplicate groups: ${formatSmallNumber(payload.duplicates?.duplicate_group_count)}`);
+        summary.nextStep = 'Run M11 and M12 for deeper category and drift analysis.';
+        summary.safety = 'Read-only snapshot.';
+        return summary;
+      }
+
+      if (operationId === 'm11') {
+        summary.highlights.push(`Categories scored: ${formatSmallNumber((payload.categories || []).length)}`);
+        summary.highlights.push(`Unknown status count: ${formatSmallNumber(payload.unknown_status_count)}`);
+        if (Array.isArray(payload.categories) && payload.categories.length) {
+          const lowest = payload.categories[0];
+          summary.highlights.push(`Lowest category: ${lowest.category || 'n/a'} (${formatSmallNumber(lowest.integrity_score)})`);
+        }
+        summary.nextStep = 'Use M14 preview if low-scoring categories need normalization.';
+        summary.safety = 'Read-only scorecard.';
+        return summary;
+      }
+
+      if (operationId === 'm12') {
+        summary.highlights.push(`Drift candidates: ${formatSmallNumber(payload.candidate_count)}`);
+        summary.highlights.push(`Top reasons: ${topReasonSummary(payload.reason_counts)}`);
+        summary.nextStep = 'Run M13 queue to focus quality-related candidates.';
+        summary.safety = 'Read-only scan.';
+        return summary;
+      }
+
+      if (operationId === 'm13_queue') {
+        summary.highlights.push(`Queue candidates: ${formatSmallNumber(payload.queue_count)}`);
+        summary.highlights.push(`Reason filter: ${(payload.queue_reason_filter || []).join(', ') || 'n/a'}`);
+        summary.nextStep = 'Review candidate count, then run M13 marker apply.';
+        summary.safety = 'Preview source for M13 apply.';
+        return summary;
+      }
+
+      if (operationId === 'm13_mark') {
+        summary.highlights.push(`Requested: ${formatSmallNumber(payload.requested)}`);
+        summary.highlights.push(`Updated: ${formatSmallNumber(payload.updated)}`);
+        summary.highlights.push(`Unchanged: ${formatSmallNumber(payload.unchanged)}`);
+        summary.highlights.push(`Missing/failed: ${formatSmallNumber((payload.missing || 0) + (payload.failed || 0))}`);
+        summary.nextStep = 'Run M14 preview to review normalization candidates from the marked set.';
+        summary.safety = 'Preview dependency: M13 queue. Undo path: M15 restore checkpoint.';
+        return summary;
+      }
+
+      if (operationId === 'm14_preview') {
+        summary.highlights.push(`Normalization candidates: ${formatSmallNumber(payload.candidate_count)}`);
+        summary.highlights.push(`Proposed location groups: ${formatSmallNumber(Object.keys(payload.proposed_location_counts || {}).length)}`);
+        summary.nextStep = 'If counts look correct, run M14 apply.';
+        summary.safety = 'Preview source for M14 apply.';
+        return summary;
+      }
+
+      if (operationId === 'm14_apply') {
+        summary.highlights.push(`Requested: ${formatSmallNumber(payload.requested)}`);
+        summary.highlights.push(`Updated: ${formatSmallNumber(payload.updated)}`);
+        summary.highlights.push(`Missing/failed: ${formatSmallNumber((payload.missing || 0) + (payload.failed || 0))}`);
+        summary.nextStep = 'Load M17 audit or run M10 snapshot to verify outcome.';
+        summary.safety = 'Undo path: M15 restore checkpoint.';
+        return summary;
+      }
+
+      if (operationId === 'm15_load') {
+        summary.highlights.push(`Checkpoints available: ${formatSmallNumber((payload.checkpoints || []).length)}`);
+        summary.nextStep = 'Create a new checkpoint before broad edits, or restore one if rollback is needed.';
+        summary.safety = 'Checkpoint restore is TEST_MODE-only and requires PURGE confirmation.';
+        return summary;
+      }
+
+      if (operationId === 'm15_create') {
+        summary.highlights.push(`Checkpoint ID: ${payload.checkpoint_id || 'n/a'}`);
+        summary.highlights.push(`Record count captured: ${formatSmallNumber(payload.record_count)}`);
+        summary.nextStep = 'Proceed with M13/M14 actions now that rollback data is saved.';
+        summary.safety = 'Checkpoint created for rollback.';
+        return summary;
+      }
+
+      if (operationId === 'm15_restore') {
+        summary.highlights.push(`Restored checkpoint: ${payload.checkpoint_id || 'n/a'}`);
+        summary.highlights.push(`Records restored: ${formatSmallNumber(payload.restored_records)}`);
+        summary.nextStep = 'Run M10-M12 baseline to validate post-restore health.';
+        summary.safety = 'Destructive restore completed; verify data state immediately.';
+        return summary;
+      }
+
+      if (operationId === 'm16_load') {
+        summary.highlights.push(`Available jobs: ${formatSmallNumber((payload.available_jobs || []).length)}`);
+        summary.nextStep = 'Choose a job and run it, then inspect M17 audit results.';
+        summary.safety = 'Job run behavior depends on selected operation.';
+        return summary;
+      }
+
+      if (operationId === 'm16_run') {
+        const runResults = Array.isArray(payload.run_results) ? payload.run_results : [];
+        summary.highlights.push(`Jobs executed: ${formatSmallNumber(runResults.length)}`);
+        if (runResults.length) {
+          summary.highlights.push(`Jobs: ${runResults.map((row) => row.job).join(', ')}`);
+        }
+        summary.nextStep = 'Load M17 audit to capture and archive the run details.';
+        summary.safety = 'Run output is logged in maintenance audit trail.';
+        return summary;
+      }
+
+      if (operationId === 'm17') {
+        summary.highlights.push(`Audit events returned: ${formatSmallNumber(payload.count)}`);
+        const events = Array.isArray(payload.events) ? payload.events : [];
+        if (events.length) {
+          summary.highlights.push(`Latest action: ${events[0]?.action || 'n/a'} (${events[0]?.timestamp || 'n/a'})`);
+        }
+        summary.nextStep = 'Use this output as confirmation before closing the maintenance session.';
+        summary.safety = 'Read-only history view.';
+        return summary;
+      }
+
+      if (operationId === 'm18_load' || operationId === 'm18_save') {
+        summary.highlights.push(`Max batch size: ${formatSmallNumber(payload.max_batch_size)}`);
+        summary.highlights.push(`Require preview: ${payload.require_preview_for_destructive ? 'yes' : 'no'}`);
+        summary.highlights.push(`Two-step approval: ${payload.two_step_approval_required ? 'yes' : 'no'}`);
+        summary.highlights.push(`Checkpoint before destructive: ${payload.checkpoint_before_destructive ? 'yes' : 'no'}`);
+        summary.nextStep = 'If two-step approval is enabled, use M19 token flow before protected actions.';
+        summary.safety = 'Guardrails define risk policy for destructive operations.';
+        return summary;
+      }
+
+      if (operationId === 'm19_request') {
+        summary.highlights.push(`Approval token: ${payload.token || 'n/a'}`);
+        summary.highlights.push(`Action: ${payload.action || 'n/a'} (${formatSmallNumber(payload.record_count)} records)`);
+        summary.highlights.push(`Status: ${payload.status || 'n/a'} (expires ${payload.expires_at || 'n/a'})`);
+        summary.nextStep = 'Use Approve M19 Token, then run List M19 Approvals to confirm status.';
+        summary.safety = 'Token is scoped to action + record hash and expires automatically.';
+        return summary;
+      }
+
+      if (operationId === 'm19_approve') {
+        summary.highlights.push(`Token: ${payload.token || 'n/a'}`);
+        summary.highlights.push(`Decision status: ${payload.status || 'n/a'}`);
+        summary.highlights.push(`Approved by: ${payload.approved_by || 'n/a'}`);
+        summary.nextStep = 'Run List M19 Approvals to verify final token state.';
+        summary.safety = 'Approval decisions are audit-tracked.';
+        return summary;
+      }
+
+      if (operationId === 'm19_list') {
+        const approvals = Array.isArray(payload.approvals) ? payload.approvals : [];
+        const pending = approvals.filter((row) => row.status === 'pending').length;
+        const approved = approvals.filter((row) => row.status === 'approved').length;
+        summary.highlights.push(`Approvals returned: ${formatSmallNumber(payload.count)}`);
+        summary.highlights.push(`Pending: ${formatSmallNumber(pending)} | Approved: ${formatSmallNumber(approved)}`);
+        summary.nextStep = 'Approve or reject pending tokens based on policy.';
+        summary.safety = 'Read-only approval history view.';
+        return summary;
+      }
+
+      return summary;
+    }
+
+    function renderAdvancedOutput(title, payload, isError = false, operationId = '') {
       mAdvancedResultEl.textContent = title;
       mAdvancedResultEl.classList.toggle('line-err', isError);
-      const pretty = typeof payload === 'string'
-        ? payload
-        : JSON.stringify(payload ?? {}, null, 2);
       mAdvancedOutputEl.innerHTML = '';
+
+      if (isError || typeof payload === 'string') {
+        const pre = document.createElement('pre');
+        pre.style.margin = '0';
+        pre.textContent = typeof payload === 'string' ? payload : JSON.stringify(payload ?? {}, null, 2);
+        if (isError) pre.className = 'line-err';
+        mAdvancedOutputEl.appendChild(pre);
+        return;
+      }
+
+      const summary = summarizeAdvancedPayload(operationId, payload);
+      if (summary.highlights.length || summary.nextStep || summary.safety) {
+        const box = document.createElement('div');
+        box.className = 'ops-output-summary';
+
+        const head = document.createElement('div');
+        head.className = 'ops-output-head';
+        head.textContent = 'Action Summary';
+        box.appendChild(head);
+
+        if (summary.highlights.length) {
+          const list = document.createElement('ul');
+          list.className = 'ops-output-list';
+          summary.highlights.forEach((line) => {
+            const item = document.createElement('li');
+            item.textContent = line;
+            list.appendChild(item);
+          });
+          box.appendChild(list);
+        }
+
+        if (summary.nextStep) {
+          const next = document.createElement('div');
+          next.className = 'ops-output-next';
+          next.textContent = `Next: ${summary.nextStep}`;
+          box.appendChild(next);
+        }
+
+        if (summary.safety) {
+          const safety = document.createElement('div');
+          safety.className = 'ops-output-safety';
+          safety.textContent = `Safety: ${summary.safety}`;
+          box.appendChild(safety);
+        }
+
+        mAdvancedOutputEl.appendChild(box);
+      }
+
+      const details = document.createElement('details');
+      details.className = 'ops-output-raw';
+      const detailSummary = document.createElement('summary');
+      detailSummary.textContent = 'Raw response';
+      details.appendChild(detailSummary);
       const pre = document.createElement('pre');
-      pre.style.margin = '0';
-      pre.textContent = pretty;
-      if (isError) pre.className = 'line-err';
-      mAdvancedOutputEl.appendChild(pre);
+      pre.textContent = JSON.stringify(payload ?? {}, null, 2);
+      details.appendChild(pre);
+      mAdvancedOutputEl.appendChild(details);
     }
 
     async function runAdvancedRequest({
@@ -2254,9 +2672,14 @@
       body,
       button,
       onSuccess,
+      operationId = '',
+      renderProgress = true,
+      renderResult = true,
     }) {
       if (button) button.disabled = true;
-      renderAdvancedOutput(`${title}: running...`, {});
+      if (renderProgress) {
+        renderAdvancedOutput(`${title}: running...`, {}, false, operationId);
+      }
       try {
         const options = { method };
         if (method !== 'GET') {
@@ -2271,9 +2694,16 @@
         if (typeof onSuccess === 'function') {
           onSuccess(data);
         }
-        renderAdvancedOutput(`${title}: completed`, data);
+        if (renderResult) {
+          renderAdvancedOutput(`${title}: completed`, data, false, operationId);
+        }
+        return { ok: true, data };
       } catch (err) {
-        renderAdvancedOutput(`${title}: failed`, err.message || 'Request failed.', true);
+        const message = err.message || 'Request failed.';
+        if (renderResult) {
+          renderAdvancedOutput(`${title}: failed`, message, true, operationId);
+        }
+        return { ok: false, error: message };
       } finally {
         if (button) button.disabled = false;
       }
@@ -2301,11 +2731,11 @@
           });
         }
         if (showOutput) {
-          renderAdvancedOutput('M15 checkpoints loaded', data);
+          renderAdvancedOutput('M15 checkpoints loaded', data, false, 'm15_load');
         }
       } catch (err) {
         if (showOutput) {
-          renderAdvancedOutput('M15 checkpoints failed', err.message || 'Failed loading checkpoints', true);
+          renderAdvancedOutput('M15 checkpoints failed', err.message || 'Failed loading checkpoints', true, 'm15_load');
         }
       }
     }
@@ -2325,11 +2755,11 @@
           m16JobSelect.appendChild(option);
         });
         if (showOutput) {
-          renderAdvancedOutput('M16 jobs loaded', data);
+          renderAdvancedOutput('M16 jobs loaded', data, false, 'm16_load');
         }
       } catch (err) {
         if (showOutput) {
-          renderAdvancedOutput('M16 jobs failed', err.message || 'Failed loading jobs', true);
+          renderAdvancedOutput('M16 jobs failed', err.message || 'Failed loading jobs', true, 'm16_load');
         }
       }
     }
@@ -2346,11 +2776,11 @@
         m18CheckpointBeforeInput.checked = !!data.checkpoint_before_destructive;
 
         if (showOutput) {
-          renderAdvancedOutput('M18 guardrails loaded', data);
+          renderAdvancedOutput('M18 guardrails loaded', data, false, 'm18_load');
         }
       } catch (err) {
         if (showOutput) {
-          renderAdvancedOutput('M18 guardrails failed', err.message || 'Failed loading guardrails', true);
+          renderAdvancedOutput('M18 guardrails failed', err.message || 'Failed loading guardrails', true, 'm18_load');
         }
       }
     }
@@ -3090,11 +3520,63 @@
       }
     });
 
+    m10M12BundleBtn.addEventListener('click', async () => {
+      m10M12BundleBtn.disabled = true;
+      renderAdvancedOutput('M10-M12 baseline: running...', {}, false, 'm10_m12_bundle');
+
+      const health = await runAdvancedRequest({
+        title: 'M10 Health Snapshot',
+        url: '/api/maintenance/health-snapshot',
+        operationId: 'm10',
+        renderProgress: false,
+        renderResult: false,
+      });
+      if (!health.ok) {
+        renderAdvancedOutput('M10-M12 baseline: failed', `M10 failed: ${health.error}`, true, 'm10_m12_bundle');
+        m10M12BundleBtn.disabled = false;
+        return;
+      }
+
+      const integrity = await runAdvancedRequest({
+        title: 'M11 Integrity Scorecard',
+        url: '/api/maintenance/integrity-scorecard',
+        operationId: 'm11',
+        renderProgress: false,
+        renderResult: false,
+      });
+      if (!integrity.ok) {
+        renderAdvancedOutput('M10-M12 baseline: failed', `M11 failed: ${integrity.error}`, true, 'm10_m12_bundle');
+        m10M12BundleBtn.disabled = false;
+        return;
+      }
+
+      const drift = await runAdvancedRequest({
+        title: 'M12 Aging and Drift',
+        url: '/api/maintenance/aging-drift?limit=300',
+        operationId: 'm12',
+        renderProgress: false,
+        renderResult: false,
+      });
+      if (!drift.ok) {
+        renderAdvancedOutput('M10-M12 baseline: failed', `M12 failed: ${drift.error}`, true, 'm10_m12_bundle');
+        m10M12BundleBtn.disabled = false;
+        return;
+      }
+
+      renderAdvancedOutput('M10-M12 baseline: completed', {
+        health: health.data,
+        integrity: integrity.data,
+        drift: drift.data,
+      }, false, 'm10_m12_bundle');
+      m10M12BundleBtn.disabled = false;
+    });
+
     m10HealthBtn.addEventListener('click', async () => {
       await runAdvancedRequest({
         title: 'M10 Health Snapshot',
         url: '/api/maintenance/health-snapshot',
         button: m10HealthBtn,
+        operationId: 'm10',
       });
     });
 
@@ -3103,6 +3585,7 @@
         title: 'M11 Integrity Scorecard',
         url: '/api/maintenance/integrity-scorecard',
         button: m11IntegrityBtn,
+        operationId: 'm11',
       });
     });
 
@@ -3111,6 +3594,7 @@
         title: 'M12 Aging and Drift',
         url: '/api/maintenance/aging-drift?limit=300',
         button: m12DriftBtn,
+        operationId: 'm12',
       });
     });
 
@@ -3119,6 +3603,7 @@
         title: 'M13 Drift Queue',
         url: '/api/maintenance/quality-drift-queue?limit=300',
         button: m13QueueBtn,
+        operationId: 'm13_queue',
         onSuccess: (data) => {
           driftQueueState = { candidates: Array.isArray(data.candidates) ? data.candidates : [] };
         },
@@ -3128,7 +3613,11 @@
     m13MarkBtn.addEventListener('click', async () => {
       const recordIds = (driftQueueState.candidates || []).map((row) => row.id).filter(Boolean);
       if (!recordIds.length) {
-        renderAdvancedOutput('M13 mark failed', 'Run M13 Drift Queue first to populate candidates.', true);
+        renderAdvancedOutput('M13 mark failed', 'Run M13 Drift Queue first to populate candidates.', true, 'm13_mark');
+        return;
+      }
+
+      if (!window.confirm(`Apply marker to ${recordIds.length} queued record(s)?`)) {
         return;
       }
 
@@ -3137,8 +3626,10 @@
         url: '/api/maintenance/quality-drift-queue/mark',
         method: 'POST',
         button: m13MarkBtn,
+        operationId: 'm13_mark',
         body: {
           record_ids: recordIds,
+          expected_count: recordIds.length,
           marker: (m13MarkerInput.value || '').trim() || '?retag-queue',
           set_pending_review: true,
         },
@@ -3151,6 +3642,7 @@
         title: 'M14 Category Normalization Preview',
         url: '/api/maintenance/category-normalization/preview?limit=1000',
         button: m14PreviewBtn,
+        operationId: 'm14_preview',
         onSuccess: (data) => {
           normalizationPreviewState = { candidates: Array.isArray(data.candidates) ? data.candidates : [] };
           const count = normalizationPreviewState.candidates.length;
@@ -3165,7 +3657,7 @@
     m14ApplyBtn.addEventListener('click', async () => {
       const recordIds = (normalizationPreviewState.candidates || []).map((row) => row.id).filter(Boolean);
       if (!recordIds.length) {
-        renderAdvancedOutput('M14 apply failed', 'Run M14 Category Preview first to load candidates.', true);
+        renderAdvancedOutput('M14 apply failed', 'Run M14 Category Preview first to load candidates.', true, 'm14_apply');
         return;
       }
 
@@ -3178,6 +3670,7 @@
         url: '/api/maintenance/category-normalization/apply',
         method: 'POST',
         button: m14ApplyBtn,
+        operationId: 'm14_apply',
         body: {
           record_ids: recordIds,
           expected_count: recordIds.length,
@@ -3194,6 +3687,7 @@
         url: '/api/maintenance/checkpoints/create',
         method: 'POST',
         button: m15CreateCheckpointBtn,
+        operationId: 'm15_create',
         body: {
           name: (m15CheckpointNameInput.value || '').trim(),
         },
@@ -3208,7 +3702,7 @@
     m15RestoreBtn.addEventListener('click', async () => {
       const checkpointId = (m15CheckpointSelect.value || '').trim();
       if (!checkpointId) {
-        renderAdvancedOutput('M15 restore failed', 'Select a checkpoint first.', true);
+        renderAdvancedOutput('M15 restore failed', 'Select a checkpoint first.', true, 'm15_restore');
         return;
       }
       if (!(await confirmPurge(`Restore checkpoint ${checkpointId}. This cannot be undone.`))) {
@@ -3221,6 +3715,7 @@
         url: '/api/maintenance/checkpoints/restore',
         method: 'POST',
         button: m15RestoreBtn,
+        operationId: 'm15_restore',
         body: {
           checkpoint_id: checkpointId,
           confirm_token: 'PURGE',
@@ -3242,6 +3737,7 @@
         url: '/api/maintenance/scheduled-jobs/run',
         method: 'POST',
         button: m16RunJobBtn,
+        operationId: 'm16_run',
         body: {
           job_name: jobName || 'all',
         },
@@ -3253,6 +3749,7 @@
         title: 'M17 Audit Trail',
         url: '/api/maintenance/audit?limit=200',
         button: m17AuditBtn,
+        operationId: 'm17',
       });
     });
 
@@ -3266,6 +3763,7 @@
         url: '/api/maintenance/guardrails',
         method: 'POST',
         button: m18SaveGuardrailsBtn,
+        operationId: 'm18_save',
         body: {
           max_batch_size: Number(m18MaxBatchInput.value || 500),
           require_preview_for_destructive: !!m18RequirePreviewInput.checked,
@@ -3279,11 +3777,11 @@
       const action = (m19ActionInput.value || '').trim();
       const recordIds = parseRecordIdsInput(m19RecordIdsInput.value);
       if (!action) {
-        renderAdvancedOutput('M19 request failed', 'Approval action is required.', true);
+        renderAdvancedOutput('M19 request failed', 'Approval action is required.', true, 'm19_request');
         return;
       }
       if (!recordIds.length) {
-        renderAdvancedOutput('M19 request failed', 'Provide one or more record IDs.', true);
+        renderAdvancedOutput('M19 request failed', 'Provide one or more record IDs.', true, 'm19_request');
         return;
       }
 
@@ -3292,6 +3790,7 @@
         url: '/api/maintenance/approvals/request',
         method: 'POST',
         button: m19RequestApprovalBtn,
+        operationId: 'm19_request',
         body: {
           action,
           record_ids: recordIds,
@@ -3308,7 +3807,7 @@
     m19ApproveTokenBtn.addEventListener('click', async () => {
       const token = getActiveApprovalToken();
       if (!token) {
-        renderAdvancedOutput('M19 approve failed', 'Enter an approval token first.', true);
+        renderAdvancedOutput('M19 approve failed', 'Enter an approval token first.', true, 'm19_approve');
         return;
       }
 
@@ -3317,6 +3816,7 @@
         url: '/api/maintenance/approvals/approve',
         method: 'POST',
         button: m19ApproveTokenBtn,
+        operationId: 'm19_approve',
         body: {
           token,
           decision: 'approve',
@@ -3329,6 +3829,7 @@
         title: 'M19 List Approvals',
         url: '/api/maintenance/approvals?limit=200',
         button: m19ListApprovalsBtn,
+        operationId: 'm19_list',
       });
     });
 

@@ -68,6 +68,13 @@ def test_run_route_requires_admin(client):
     assert b"Admin access required" in response.data
 
 
+def test_tag_manager_route_redirects_to_maintenance_panel(client):
+    _login(client, email="admin@example.com")
+    response = client.get("/tag-manager")
+    assert response.status_code == 302
+    assert response.headers["Location"].endswith("/maintenance#tag-manager")
+
+
 def test_state_change_requires_same_origin_headers(client):
     _login(client)
     response = client.patch("/api/image-status", json={"id": "abc", "status": "approved"})
@@ -108,3 +115,19 @@ def test_stock_search_rate_limited(client):
     payload = limited.get_json()
     assert payload["error"] == "Rate limit exceeded"
     assert int(limited.headers["Retry-After"]) >= 1
+
+
+def test_m13_mark_rejects_expected_count_mismatch(client):
+    _login(client, email="admin@example.com")
+    response = client.post(
+        "/api/maintenance/quality-drift-queue/mark",
+        json={
+            "record_ids": ["rec_1"],
+            "expected_count": 2,
+            "marker": "?retag-queue",
+        },
+        headers={"Origin": "http://localhost", "Referer": "http://localhost/maintenance"},
+    )
+    assert response.status_code == 409
+    payload = response.get_json()
+    assert payload["error"] == "expected_count does not match record_ids length"

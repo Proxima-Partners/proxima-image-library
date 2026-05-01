@@ -198,8 +198,9 @@ templates/
 ├── index.html                Search-first library browser — hero, category tiles, browse grid
 ├── stock_search.html         Stock photo search — phrase chips → results grid → download modal
 ├── review.html               Review queue — approve/reject/archive pending images with badge count
-├── upload.html               Image upload and catalog pipeline with SSE progress
-└── tag_manager.html          Tag vocabulary editor
+└── upload.html               Image upload and catalog pipeline with SSE progress
+
+Tag Manager is embedded in `maintenance.html` and accessed via `/maintenance#tag-manager`.
 
 test_data/
 └── local_table.json          253 records for local dev/testing (mirrors SharePoint List schema)

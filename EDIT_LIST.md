@@ -10,13 +10,28 @@ Pending changes — rebuild only on approval.
 - T2. Security protocol audit & penetration checklist — **CLOSED** (all checks pass: dependency audit clean, error detail suppression applied, no secrets in code/git, CORS restricted, XSS safe)
 - T3. Comprehensive pre-production code audit — **CLOSED** (dead code clean, conventions aligned, lint clean, docs updated)
 
-- F1. **Rework M10–M19 operations** — Review the entire diagnostic/cleanup operation set (M10 Health Snapshot through M19). Goals: consolidate overlapping tools, improve output formatting and actionability, add per-operation undo/preview where missing, and align button labeling and workstream placement consistently.
+- F1. **Rework M10–M19 operations** — **CLOSED** (baseline bundle added, action summaries added, preview/undo cues added, labels aligned)
 
-- F2. **Remove Tag Manager redundancy** — `templates/tag_manager.html` is a standalone page that duplicates the Tag Manager panel now embedded in the Maintenance Console (`maintenance.html`). Audit whether the standalone route/template is still reachable or referenced; remove it and its route if unused, or redirect to `/maintenance#tag-manager`.
+- F2. **Remove Tag Manager redundancy** — **CLOSED** (standalone template removed; legacy route retained as redirect to `/maintenance#tag-manager`)
 
 ---
 
-## Applied
+## Applied (Recent)
+
+### F1 — M10-M19 operations rework — applied 2026-04-30
+
+- Added a consolidated baseline action in `maintenance.html`: `Run M10-M12 Baseline` executes health, integrity, and drift in sequence.
+- Reworked advanced output rendering to include operation-specific action summaries, next-step guidance, and safety notes, with raw JSON moved to a collapsible details block.
+- Standardized M10-M19 button labels around explicit verbs (`Run`, `Load`, `Apply`, `Save`, `List`) to improve consistency.
+- Added explicit preview/undo guidance in-step for M13 and M14, including checkpoint restore path reminders.
+- Hardened M13 mark endpoint (`/api/maintenance/quality-drift-queue/mark`) with optional `expected_count` mismatch protection.
+
+### F2 — Tag Manager redundancy removal — applied 2026-04-30
+
+- Removed deprecated standalone template: `templates/tag_manager.html`.
+- Kept compatibility route: `/tag-manager` now documented as legacy and redirects to `/maintenance#tag-manager`.
+- Updated documentation inventories (`README.md`, `development.md`) to show Tag Manager as embedded in `maintenance.html`.
+- Added regression test for redirect behavior (`test_tag_manager_route_redirects_to_maintenance_panel`).
 
 ### Maintenance Console UX fixes — applied 2026-04-30
 

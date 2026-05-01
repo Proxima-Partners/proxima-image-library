@@ -310,29 +310,6 @@
       object-fit: cover;
       display: block;
     }
-    .thumb-caption {
-      padding: 6px 8px;
-      font-size: 11px;
-      color: var(--muted);
-      line-height: 1.4;
-      display: -webkit-box;
-      -webkit-line-clamp: 2;
-      -webkit-box-orient: vertical;
-      overflow: hidden;
-    }
-    .thumb-attribution {
-      padding: 4px 8px 6px;
-      font-size: 10px;
-      color: var(--muted);
-      border-top: 1px solid var(--border);
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    .thumb-attribution a {
-      color: var(--muted);
-      text-decoration: underline;
-    }
 
     /* ── Shutterstock quota modal ── */
     #ss-overlay {
@@ -800,7 +777,7 @@
         const res  = await fetch('/api/stock-search', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ phrases, limit: 12 }),
+          body: JSON.stringify({ phrases, limit: 25 }),
         });
         const data = await res.json();
         if (data.error) throw new Error(data.error);
@@ -914,19 +891,6 @@
               imgEl.loading = 'lazy';
               imgEl.onerror = () => { a.style.display = 'none'; };
               a.appendChild(imgEl);
-
-              if (img.title) {
-                const cap = document.createElement('span');
-                cap.className = 'thumb-caption';
-                cap.textContent = img.title;
-                a.appendChild(cap);
-              }
-              if (key === 'unsplash' && img.photographer) {
-                const attr = document.createElement('span');
-                attr.className = 'thumb-attribution';
-                attr.innerHTML = `Photo by <a href="${escHtml(img.photographer_url)}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">${escHtml(img.photographer)}</a> on <a href="https://unsplash.com?utm_source=proxima_image_library&utm_medium=referral" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">Unsplash</a>`;
-                a.appendChild(attr);
-              }
 
               tile.appendChild(a);
 

@@ -79,8 +79,9 @@ templates/
 ├── stock_search.html           Stock photo search — phrase chips → results grid → download modal
 ├── review.html                 Review queue — approve/reject/archive pending images
 ├── upload.html                 Image upload and catalog pipeline with SSE progress
-├── tag_manager.html            Tag vocabulary editor
 └── login_error.html            Access denied/error template
+
+Tag Manager is embedded in the Maintenance Console. Legacy route `/tag-manager` redirects to `/maintenance#tag-manager`.
 
 tests/                          pytest — rename_assets, ImageScanner
 test_data/                      local_table.json — 253 records for local dev/testing
