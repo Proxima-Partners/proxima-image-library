@@ -2789,11 +2789,63 @@
       "Filename": "two-people-with-umbrellas-walking-along-a-rain-soaked-park-p.webp",
       "Alt Text": "Two people with umbrellas walking along a rain-soaked park path at night, illuminated by glowing street lamps.",
       "Tags": "nightscape, urban, partner, outdoor, ?rainy-night",
-      "Status": "pending-review",
+      "Status": "approved",
       "Slug": "two-people-with-umbrellas-walking-along-a-rain-soaked-park-p",
       "Location": "Situations/two-people-with-umbrellas-walking-along-a-rain-soaked-park-p.webp",
       "High-Res Location": "Unsplash/two-people-with-umbrellas-walking-along-a-rain-soaked-park-p-original.jpg",
       "Source": "Unsplash"
+    }
+  },
+  {
+    "id": "loc_be7f4c8a755b48",
+    "fields": {
+      "Filename": "aerial-view-of-densely-packed-colorful-victorian-houses-cove.webp",
+      "Alt Text": "Aerial view of densely packed colorful Victorian houses covering San Francisco hillsides with mountains in the background.",
+      "Tags": "san-francisco, neighborhood, victorian-homes, urban, bay-area",
+      "Status": "pending-review",
+      "Slug": "aerial-view-of-densely-packed-colorful-victorian-houses-cove",
+      "Location": "Locations/aerial-view-of-densely-packed-colorful-victorian-houses-cove.webp",
+      "High-Res Location": "Internal/aerial-view-of-densely-packed-colorful-victorian-houses-cove-original.jpeg",
+      "Source": "Internal"
+    }
+  },
+  {
+    "id": "loc_0d9996c0df994c",
+    "fields": {
+      "Filename": "homeless-man-wrapped-in-blanket-sitting-on-sidewalk-holding.webp",
+      "Alt Text": "Homeless man wrapped in blanket sitting on sidewalk holding cardboard sign reading \"Seeking Human Kindness\"",
+      "Tags": "unhoused, hardship, street, hope, individual",
+      "Status": "pending-review",
+      "Slug": "homeless-man-wrapped-in-blanket-sitting-on-sidewalk-holding",
+      "Location": "Situations/homeless-man-wrapped-in-blanket-sitting-on-sidewalk-holding.webp",
+      "High-Res Location": "Internal/homeless-man-wrapped-in-blanket-sitting-on-sidewalk-holding-original.jpeg",
+      "Source": "Internal"
+    }
+  },
+  {
+    "id": "loc_9b3b07c1addb4c",
+    "fields": {
+      "Filename": "volunteer-in-gloves-distributes-napkins-and-food-to-people-a.webp",
+      "Alt Text": "Volunteer in gloves distributes napkins and food to people at an outdoor community meal service table.",
+      "Tags": "generosity, volunteer, unhoused, community, service",
+      "Status": "pending-review",
+      "Slug": "volunteer-in-gloves-distributes-napkins-and-food-to-people-a",
+      "Location": "Community/volunteer-in-gloves-distributes-napkins-and-food-to-people-a.webp",
+      "High-Res Location": "Internal/volunteer-in-gloves-distributes-napkins-and-food-to-people-a-original.jpeg",
+      "Source": "Internal"
+    }
+  },
+  {
+    "id": "loc_2f2cbc1eccab43",
+    "fields": {
+      "Filename": "san-francisco-cable-car-number-58-at-van-ness-avenue-and-mar.webp",
+      "Alt Text": "San Francisco cable car number 58 at Van Ness Avenue and Market Street stop on a sunny day.",
+      "Tags": "cable-car, san-francisco, urban, street, outdoor",
+      "Status": "pending-review",
+      "Slug": "san-francisco-cable-car-number-58-at-van-ness-avenue-and-mar",
+      "Location": "Locations/san-francisco-cable-car-number-58-at-van-ness-avenue-and-mar.webp",
+      "High-Res Location": "Pexels/san-francisco-cable-car-number-58-at-van-ness-avenue-and-mar-original.jpeg",
+      "Source": "Pexels"
     }
   }
 ]

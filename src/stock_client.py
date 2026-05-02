@@ -22,14 +22,14 @@ def _slug(text: str, max_len: int = 60) -> str:
 # Per-library search functions
 # ---------------------------------------------------------------------------
 
-def search_pexels(phrase: str, limit: int = 8) -> dict:
+def search_pexels(phrase: str, limit: int = 8, page: int = 1) -> dict:
     """Search Pexels. Returns {results: [...], error: str|None}."""
     api_key = os.getenv("PEXELS_API_KEY", "")
     if not api_key:
         return {"results": [], "error": "PEXELS_API_KEY not configured"}
     try:
         headers = {"Authorization": api_key}
-        params = {"query": phrase, "per_page": limit}
+        params = {"query": phrase, "per_page": limit, "page": max(1, int(page))}
         r = requests.get(
             "https://api.pexels.com/v1/search",
             params=params,
@@ -64,7 +64,7 @@ def search_pexels(phrase: str, limit: int = 8) -> dict:
         return {"results": [], "error": str(e)}
 
 
-def search_shutterstock(phrase: str, limit: int = 8) -> dict:
+def search_shutterstock(phrase: str, limit: int = 8, page: int = 1) -> dict:
     """Search Shutterstock. Returns {results: [...], error: str|None}."""
     client_id = os.getenv("SHUTTERSTOCK_CLIENT_ID", "")
     client_secret = os.getenv("SHUTTERSTOCK_CLIENT_SECRET", "")
@@ -76,6 +76,7 @@ def search_shutterstock(phrase: str, limit: int = 8) -> dict:
         params = {
             "query": phrase,
             "per_page": limit,
+            "page": max(1, int(page)),
             "image_type": "photo",
         }
         r = requests.get(
@@ -117,7 +118,7 @@ def search_shutterstock(phrase: str, limit: int = 8) -> dict:
         return {"results": [], "error": str(e)}
 
 
-def search_pixabay(phrase: str, limit: int = 8) -> dict:
+def search_pixabay(phrase: str, limit: int = 8, page: int = 1) -> dict:
     """Search Pixabay. Returns {results: [...], error: str|None}."""
     api_key = os.getenv("PIXABAY_API_KEY", "")
     if not api_key:
@@ -128,6 +129,7 @@ def search_pixabay(phrase: str, limit: int = 8) -> dict:
             "q": phrase,
             "image_type": "photo",
             "per_page": limit,
+            "page": max(1, int(page)),
             "safesearch": "true",
         }
         r = requests.get(
@@ -162,14 +164,14 @@ def search_pixabay(phrase: str, limit: int = 8) -> dict:
         return {"results": [], "error": str(e)}
 
 
-def search_unsplash(phrase: str, limit: int = 8) -> dict:
+def search_unsplash(phrase: str, limit: int = 8, page: int = 1) -> dict:
     """Search Unsplash. Returns {results: [...], error: str|None}."""
     access_key = os.getenv("UNSPLASH_ACCESS_KEY", "")
     if not access_key:
         return {"results": [], "error": "UNSPLASH_ACCESS_KEY not configured"}
     try:
         headers = {"Authorization": f"Client-ID {access_key}"}
-        params = {"query": phrase, "per_page": limit}
+        params = {"query": phrase, "per_page": limit, "page": max(1, int(page))}
         r = requests.get(
             "https://api.unsplash.com/search/photos",
             params=params,
@@ -220,7 +222,7 @@ def search_unsplash(phrase: str, limit: int = 8) -> dict:
 # Concurrent multi-library search
 # ---------------------------------------------------------------------------
 
-def search_all_libraries(phrases: list, limit: int = 8) -> list:
+def search_all_libraries(phrases: list, limit: int = 8, page: int = 1) -> list:
     """Search all three libraries for all phrases concurrently."""
     searchers = {
         "pexels": search_pexels,
@@ -236,7 +238,7 @@ def search_all_libraries(phrases: list, limit: int = 8) -> list:
         future_to_key = {}
         for phrase in phrases:
             for lib_name, fn in searchers.items():
-                f = executor.submit(fn, phrase, limit)
+                f = executor.submit(fn, phrase, limit, page)
                 future_to_key[f] = (phrase, lib_name)
 
         for future in concurrent.futures.as_completed(future_to_key, timeout=25):
@@ -313,6 +315,98 @@ def parse_photo_suggestions(content: str) -> list:
         if phrases:
             return phrases[:20]
 
-    # ── Fallback: treat each non-empty line as a phrase ─────────────────
+    # ── Fallback A: treat each non-empty line as a phrase ───────────────
     phrases = [_clean(ln) for ln in lines if ln.strip()]
-    return [p for p in phrases if _valid(p)][:20]
+    phrases = [p for p in phrases if _valid(p)][:20]
+    if phrases:
+        return phrases
+
+    # ── Fallback B: derive short phrases from prose input ───────────────
+    text = _clean(content)
+    tokens = []
+    for raw in re.findall(r"[A-Za-z][A-Za-z'-]*", text):
+        tok = raw.lower().strip("'")
+        if tok:
+            tokens.append(tok)
+
+    stop_words = {
+        "a", "an", "and", "are", "as", "at", "be", "been", "being", "but", "by",
+        "for", "from", "had", "has", "have", "he", "her", "here", "hers", "him",
+        "his", "i", "if", "in", "into", "is", "it", "its", "itself", "just", "me",
+        "more", "most", "my", "of", "on", "or", "our", "ours", "she", "so", "some",
+        "than", "that", "the", "their", "theirs", "them", "then", "there", "these",
+        "they", "this", "those", "to", "too", "us", "was", "we", "were", "what",
+        "when", "where", "which", "who", "why", "will", "with", "you", "your", "yours",
+        "we're", "you're", "they're", "it's", "that's", "i'm", "can't", "don't", "won't",
+        "else", "here", "somewhere", "sometimes", "worked", "working", "stops", "stop",
+        "happens", "happen", "approach", "willing",
+    }
+    concrete_words = {
+        "city", "street", "teacher", "student", "students", "school", "classroom", "people",
+        "person", "man", "woman", "child", "building", "downtown", "sidewalk", "park", "office",
+    }
+    location_words = {"city", "street", "downtown", "sidewalk", "park", "office", "building", "school", "classroom"}
+    subject_words = {"teacher", "student", "students", "people", "person", "man", "woman", "child"}
+
+    core = [t for t in tokens if t not in stop_words and len(t) > 2]
+    if len(core) < 2:
+        return []
+
+    candidates = []
+
+    # Hand-crafted combinations generate more natural phrase chips from prose.
+    core_set = set(core)
+    boosted_phrases = []
+    has_city = "city" in core_set
+    has_teacher = "teacher" in core_set
+    has_students = bool({"student", "students"} & core_set)
+
+    if has_teacher and has_students:
+        boosted_phrases.append("teacher with students")
+    if has_city and has_students:
+        boosted_phrases.append("students in city")
+    if has_city and has_teacher:
+        boosted_phrases.append("teacher in city")
+    if has_city and (has_teacher or has_students):
+        boosted_phrases.append("urban classroom scene")
+
+    local_subjects = [w for w in core if w in subject_words]
+    local_locations = [w for w in core if w in location_words]
+    if local_subjects and local_locations:
+        boosted_phrases.append(f"{local_locations[0]} {local_subjects[0]}")
+        if len(local_subjects) > 1:
+            boosted_phrases.append(f"{local_subjects[0]} and {local_subjects[1]}")
+
+    for phrase in boosted_phrases:
+        if _valid(phrase):
+            candidates.append((12, phrase))
+
+    max_n = min(3, len(core))
+    for n in range(2, max_n + 1):
+        for i in range(0, len(core) - n + 1):
+            gram = core[i:i + n]
+            phrase = " ".join(gram)
+            if not _valid(phrase):
+                continue
+            score = sum(2 for w in gram if w in concrete_words) + sum(1 for w in gram if len(w) >= 6)
+            if any(w in concrete_words for w in gram):
+                score += 2
+            if any("'" in w for w in gram):
+                score -= 2
+            candidates.append((score, phrase))
+
+    # Prefer concrete, image-friendly phrases and keep output unique.
+    candidates.sort(key=lambda x: (-x[0], x[1]))
+    selected = []
+    seen = set()
+    for _, phrase in candidates:
+        if phrase in seen:
+            continue
+        seen.add(phrase)
+        if len(phrase.split()) > 3:
+            continue
+        selected.append(phrase)
+        if len(selected) >= 6:
+            break
+
+    return selected[:20]

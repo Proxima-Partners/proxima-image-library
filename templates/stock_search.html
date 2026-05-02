@@ -408,6 +408,8 @@
     .dl-cancel:hover { border-color: var(--accent); color: var(--accent); }
     .dl-download { padding: 8px 16px; border-radius: 20px; border: 1.5px solid #d1d5db; background: #fff; color: #374151; font-size: 13px; font-weight: 500; cursor: pointer; font-family: inherit; }
     .dl-download:hover { border-color: #9ca3af; }
+    .dl-download.downloading { border-color: #60a5fa; color: #1d4ed8; background: #eff6ff; }
+    .dl-download.done { border-color: #34d399; color: #065f46; background: #ecfdf5; }
     .dl-confirm { padding: 8px 20px; border-radius: 20px; border: none; background: var(--accent); color: #fff; font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit; }
     .dl-confirm:hover { background: var(--accent-hover); }
     .modal-close-x {
@@ -490,6 +492,28 @@
       border-color: rgba(255,255,255,0.5);
     }
 
+    /* ── Download feedback ── */
+    #download-toast {
+      position: fixed;
+      right: 20px;
+      bottom: 20px;
+      z-index: 1400;
+      background: #111827;
+      color: #fff;
+      border-radius: 10px;
+      padding: 10px 14px;
+      font-size: 13px;
+      box-shadow: 0 10px 24px rgba(0, 0, 0, 0.28);
+      opacity: 0;
+      transform: translateY(6px);
+      pointer-events: none;
+      transition: opacity 0.2s ease, transform 0.2s ease;
+    }
+    #download-toast.active {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
     /* ── Catalog progress overlay ── */
     #cat-overlay {
       position: fixed; inset: 0; background: rgba(0,0,0,0.5);
@@ -500,12 +524,40 @@
       background: #fff; border-radius: 10px; padding: 24px;
       max-width: 420px; width: 100%; box-shadow: 0 8px 32px rgba(0,0,0,0.2);
     }
-    #cat-header { font-size: 16px; font-weight: 700; color: #111; margin-bottom: 14px; font-family: 'Montserrat', sans-serif; }
+    #cat-header { font-size: 16px; font-weight: 700; color: #111; margin-bottom: 10px; font-family: 'Montserrat', sans-serif; }
+    #cat-status-wrap {
+      margin-bottom: 12px;
+    }
+    #cat-status-text {
+      font-size: 12px;
+      color: #6b7280;
+      margin-bottom: 8px;
+    }
+    #cat-status-bar {
+      height: 8px;
+      border-radius: 999px;
+      background: #e5e7eb;
+      overflow: hidden;
+    }
+    #cat-status-fill {
+      height: 100%;
+      width: 0%;
+      border-radius: 999px;
+      background: linear-gradient(90deg, #05718D, #2ea0ba);
+      transition: width 0.25s ease;
+    }
     #cat-log { font-size: 13px; color: #374151; line-height: 1.7; min-height: 60px; max-height: 200px; overflow-y: auto; }
     #cat-log .cat-err { color: #dc2626; }
     #cat-result { margin-top: 16px; }
     #cat-result.hidden { display: none; }
     #cat-result-inner { font-size: 13px; color: #111; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 6px; padding: 10px 14px; margin-bottom: 12px; line-height: 1.6; }
+    #cat-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    #cat-add-others { padding: 8px 20px; border-radius: 20px; border: 1px solid var(--border); background: #fff; color: #374151; font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit; }
     #cat-close { padding: 8px 20px; border-radius: 20px; border: none; background: var(--accent); color: #fff; font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit; }
 
     /* ── Shutterstock modal image section ── */
@@ -528,6 +580,8 @@
   </style>
 </head>
 <body>
+
+  <div id="download-toast" aria-live="polite"></div>
 
 <div id="preview-overlay">
   <div id="preview-modal">
@@ -570,10 +624,17 @@
 <div id="cat-overlay">
   <div id="cat-modal">
     <div id="cat-header">Adding to Library…</div>
+    <div id="cat-status-wrap">
+      <div id="cat-status-text">Preparing download…</div>
+      <div id="cat-status-bar"><div id="cat-status-fill"></div></div>
+    </div>
     <div id="cat-log"></div>
     <div id="cat-result" class="hidden">
       <div id="cat-result-inner"></div>
-      <button id="cat-close">Done</button>
+      <div id="cat-actions">
+        <button id="cat-add-others" type="button">Add Others</button>
+        <button id="cat-close" type="button">Return</button>
+      </div>
     </div>
   </div>
 </div>
@@ -621,6 +682,11 @@
       Photo suggestion phrases will be extracted automatically from the <strong>Photo Suggestion</strong> section.
     </p>
 
+    <textarea id="paste-input" rows="6"
+      placeholder="Paste your full skill output here, or just list phrases one per line:&#10;&#10;man alone grandstand&#10;spectators outdoor sporting event&#10;two friends city sidewalk"></textarea>
+
+    <div class="divider">or drop a file directly</div>
+
     <div class="drop-zone" id="drop-zone" onclick="document.getElementById('file-input').click()">
       <div class="drop-icon">📄</div>
       <p class="drop-label">Drop a .md or .txt file here, or click to browse</p>
@@ -628,12 +694,7 @@
              onchange="handleFileInput(this)" />
     </div>
 
-    <div class="divider">or paste content / phrases directly</div>
-
-    <textarea id="paste-input" rows="6"
-      placeholder="Paste your full skill output here, or just list phrases one per line:&#10;&#10;man alone grandstand&#10;spectators outdoor sporting event&#10;two friends city sidewalk"></textarea>
-
-    <button class="btn" onclick="parseContent()">Extract Phrases</button>
+    <button class="btn" type="button" onclick="parseContent()">Extract Phrases</button>
   </div>
 
   <!-- Step 2 — Review phrases -->
@@ -646,12 +707,12 @@
     <div class="add-phrase-row">
       <input type="text" id="add-input" placeholder="Add a phrase…" maxlength="80"
              onkeydown="if(event.key==='Enter') addPhrase()" />
-      <button class="btn-outline" onclick="addPhrase()">Add</button>
+      <button class="btn-outline" type="button" onclick="addPhrase()">Add</button>
     </div>
 
     <div class="action-row">
-      <button class="btn" id="btn-search" onclick="searchAll()">Search All Libraries</button>
-      <button class="btn-outline" onclick="resetToUpload()">← Upload Different File</button>
+      <button class="btn" id="btn-search" type="button" onclick="searchAll()">Search All Libraries</button>
+      <button class="btn-outline" type="button" onclick="resetToUpload()">← Upload Different File</button>
     </div>
   </div>
 
@@ -665,8 +726,12 @@
   <div class="panel hidden" id="step-results">
     <div class="results-header">
       <h2>Results</h2>
-      <button class="btn-outline" onclick="goBackToPhrases()">← Edit Phrases</button>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;align-items:center;">
+        <button class="btn-outline" type="button" id="btn-more-photos" onclick="loadMoreResults()">Show Another 25</button>
+        <button class="btn-outline" type="button" onclick="goBackToPhrases()">← Edit Phrases</button>
+      </div>
     </div>
+    <p class="subtitle" id="results-page-caption" style="margin-top:4px;"></p>
     <div id="results-container"></div>
   </div>
 
@@ -675,6 +740,8 @@
 
     // ── State ────────────────────────────────────────────────────────────
     let phrases = [];
+    let currentResultPage = 1;
+    let currentResultLimit = 25;
 
     // ── Show/hide panels ─────────────────────────────────────────────────
     function showOnly(id) {
@@ -741,7 +808,7 @@
         chip.className = 'chip';
         chip.innerHTML = `
           <span>${escHtml(phrase)}</span>
-          <button class="chip-remove" title="Remove" onclick="removePhrase(${i})">×</button>`;
+          <button class="chip-remove" type="button" title="Remove" onclick="removePhrase(${i})">×</button>`;
         grid.appendChild(chip);
       });
     }
@@ -766,27 +833,49 @@
     }
 
     // ── Search all libraries ─────────────────────────────────────────────
-    async function searchAll() {
+    async function searchAll(page = 1) {
       if (!phrases.length) { alert('Add at least one phrase.'); return; }
 
       document.getElementById('loading-msg').textContent =
-        `Searching ${phrases.length} phrase${phrases.length !== 1 ? 's' : ''} across Pexels, Shutterstock, Unsplash, and Pixabay…`;
+        `Searching page ${page} for ${phrases.length} phrase${phrases.length !== 1 ? 's' : ''} across Pexels, Shutterstock, Unsplash, and Pixabay…`;
       showOnly('step-loading');
 
       try {
         const res  = await fetch('/api/stock-search', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ phrases, limit: 25 }),
+          body: JSON.stringify({ phrases, limit: currentResultLimit, page }),
         });
         const data = await res.json();
         if (data.error) throw new Error(data.error);
+        currentResultPage = data.page || page;
         renderResults(data.results);
+        updateMoreButtonState(data.results);
         showOnly('step-results');
       } catch (err) {
         showOnly('step-phrases');
         alert(`Search failed: ${err.message}`);
       }
+    }
+
+    async function loadMoreResults() {
+      await searchAll(currentResultPage + 1);
+    }
+
+    function updateMoreButtonState(results) {
+      const btn = document.getElementById('btn-more-photos');
+      const caption = document.getElementById('results-page-caption');
+      const hasAnyResults = (results || []).some(item =>
+        LIBS.some(({ key }) => ((item[key] && item[key].results) || []).length > 0)
+      );
+      const hasPotentialMore = (results || []).some(item =>
+        LIBS.some(({ key }) => ((item[key] && item[key].results) || []).length === currentResultLimit)
+      );
+
+      btn.disabled = !hasPotentialMore;
+      btn.title = hasPotentialMore ? '' : 'No additional results reported by providers for this page size.';
+      caption.textContent = `Showing page ${currentResultPage} (${currentResultLimit} per library per phrase).`
+        + (hasAnyResults ? '' : ' No results found for this page.');
     }
 
     // ── Render results ───────────────────────────────────────────────────
@@ -1098,30 +1187,58 @@
       dlTags.innerHTML = tags.map(t => `<span class="dl-tag">${escHtml(t)}</span>`).join('');
 
       pendingDownload = { url, filename, dl: dlLocation, source, title: titleRaw, tags, photographer, previewUrl };
+      resetDownloadButtonState();
       dlOverlay.classList.add('active');
     });
 
     dlCancel.addEventListener('click', () => {
       dlOverlay.classList.remove('active');
       pendingDownload = null;
+      resetDownloadButtonState();
     });
 
     document.getElementById('dl-close-x').addEventListener('click', () => {
       dlOverlay.classList.remove('active');
       pendingDownload = null;
+      resetDownloadButtonState();
     });
 
     dlOverlay.addEventListener('click', e => {
       if (e.target === dlOverlay) {
         dlOverlay.classList.remove('active');
         pendingDownload = null;
+        resetDownloadButtonState();
       }
     });
 
     const dlDownload = document.getElementById('dl-download');
+    const downloadToast = document.getElementById('download-toast');
+    let downloadToastTimer = null;
+
+    function resetDownloadButtonState() {
+      dlDownload.disabled = false;
+      dlDownload.textContent = 'Download';
+      dlDownload.classList.remove('downloading', 'done');
+    }
+
+    function showDownloadToast(message) {
+      if (!downloadToast) return;
+      downloadToast.textContent = message;
+      downloadToast.classList.add('active');
+      if (downloadToastTimer) clearTimeout(downloadToastTimer);
+      downloadToastTimer = setTimeout(() => {
+        downloadToast.classList.remove('active');
+      }, 2200);
+    }
+
     dlDownload.addEventListener('click', () => {
       if (!pendingDownload) return;
       const { url, filename, dl } = pendingDownload;
+      dlDownload.disabled = true;
+      dlDownload.textContent = 'Downloading...';
+      dlDownload.classList.remove('done');
+      dlDownload.classList.add('downloading');
+
       const href = `/api/download-image?url=${encodeURIComponent(url)}&filename=${encodeURIComponent(filename)}&dl=${encodeURIComponent(dl)}`;
       const a = document.createElement('a');
       a.href = href;
@@ -1129,8 +1246,16 @@
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-      dlOverlay.classList.remove('active');
-      pendingDownload = null;
+      dlDownload.textContent = 'Downloaded';
+      dlDownload.classList.remove('downloading');
+      dlDownload.classList.add('done');
+      showDownloadToast('Download started in your browser.');
+
+      setTimeout(() => {
+        dlOverlay.classList.remove('active');
+        pendingDownload = null;
+        resetDownloadButtonState();
+      }, 700);
     });
 
     dlLargePreview.addEventListener('click', () => {
@@ -1139,11 +1264,69 @@
     });
 
     const catOverlay = document.getElementById('cat-overlay');
+    const catHeader  = document.getElementById('cat-header');
+    const catStatusText = document.getElementById('cat-status-text');
+    const catStatusFill = document.getElementById('cat-status-fill');
     const catLog     = document.getElementById('cat-log');
     const catResult  = document.getElementById('cat-result');
     const catResultInner = document.getElementById('cat-result-inner');
+    const catAddOthers = document.getElementById('cat-add-others');
     const catClose   = document.getElementById('cat-close');
-    catClose.addEventListener('click', () => catOverlay.classList.remove('active'));
+    function getReturnPath() {
+      const fromParam = new URLSearchParams(window.location.search).get('return_to');
+      if (fromParam === '/upload' || fromParam === '/stock-search') return fromParam;
+      try {
+        const ref = new URL(document.referrer || '');
+        if (ref.origin === window.location.origin && (ref.pathname === '/upload' || ref.pathname === '/stock-search')) {
+          return ref.pathname;
+        }
+      } catch (_) {}
+      return '/stock-search';
+    }
+
+    const stockReturnPath = getReturnPath();
+    catClose.textContent = stockReturnPath === '/upload' ? 'Return to Upload' : 'Return to Stock';
+
+    function resetCatalogStatusUi() {
+      catHeader.textContent = 'Adding to Library…';
+      catStatusText.textContent = 'Preparing download…';
+      catStatusFill.style.width = '10%';
+      catStatusFill.style.background = 'linear-gradient(90deg, #05718D, #2ea0ba)';
+      catResult.classList.add('hidden');
+      catResultInner.style.cssText = '';
+      catResultInner.innerHTML = '';
+      catLog.innerHTML = '';
+    }
+
+    function updateCatalogProgress(msg) {
+      const text = (msg || '').toLowerCase();
+      if (text.includes('download')) {
+        catStatusText.textContent = 'Downloading image…';
+        catStatusFill.style.width = '35%';
+        return;
+      }
+      if (text.includes('transform') || text.includes('webp') || text.includes('convert')) {
+        catStatusText.textContent = 'Preparing optimized file…';
+        catStatusFill.style.width = '55%';
+        return;
+      }
+      if (text.includes('claude') || text.includes('alt text') || text.includes('tag')) {
+        catStatusText.textContent = 'Generating metadata…';
+        catStatusFill.style.width = '75%';
+        return;
+      }
+      if (text.includes('sharepoint') || text.includes('record') || text.includes('save') || text.includes('stored')) {
+        catStatusText.textContent = 'Saving to library…';
+        catStatusFill.style.width = '90%';
+      }
+    }
+
+    catAddOthers.addEventListener('click', () => {
+      catOverlay.classList.remove('active');
+    });
+    catClose.addEventListener('click', () => {
+      window.location.href = stockReturnPath;
+    });
 
     dlConfirm.addEventListener('click', () => {
       if (!pendingDownload) return;
@@ -1152,10 +1335,7 @@
       pendingDownload = null;
 
       // Reset progress UI
-      catLog.innerHTML = '';
-      catResult.classList.add('hidden');
-      catResultInner.innerHTML = '';
-      document.getElementById('cat-header').textContent = 'Adding to Library…';
+      resetCatalogStatusUi();
       catOverlay.classList.add('active');
 
       const params = new URLSearchParams({
@@ -1183,37 +1363,52 @@
         if (msg === '[START]') return;
         if (msg === '[DONE]') {
           es.close();
-          document.getElementById('cat-header').textContent = 'Added to Library';
+          catHeader.textContent = 'Complete';
+          catStatusText.textContent = 'Download and cataloging complete.';
+          catStatusFill.style.width = '100%';
           return;
         }
         if (msg.startsWith('[ERROR]')) {
           es.close();
-          document.getElementById('cat-header').textContent = 'Error';
+          catHeader.textContent = 'Error';
+          catStatusText.textContent = 'Cataloging failed.';
+          catStatusFill.style.width = '100%';
+          catStatusFill.style.background = '#ef4444';
           logLine(msg.slice(7).trim(), 'cat-err');
           catResult.classList.remove('hidden');
           catResultInner.style.cssText = 'background:#fef2f2;border-color:#fecaca;';
           catResultInner.textContent = 'Something went wrong. Please try again.';
+          catAddOthers.textContent = 'Try Another';
           return;
         }
         if (msg.startsWith('[RESULT] ')) {
           try {
             const r = JSON.parse(msg.slice(9));
             catResult.classList.remove('hidden');
+            catAddOthers.textContent = 'Add Others';
             catResultInner.innerHTML =
-              `<strong>${escHtml(r.alt_text || r.filename)}</strong><br>` +
+              `<strong>Complete:</strong> ${escHtml(r.alt_text || r.filename)}<br>` +
               `Slug: ${escHtml(r.slug)}<br>` +
               `Tags: ${escHtml(r.tags)}<br>` +
               `Status: ${escHtml(r.status)}`;
           } catch (_) {}
           return;
         }
+        updateCatalogProgress(msg);
         logLine(msg);
       };
 
       es.onerror = () => {
         if (!catOverlay.classList.contains('active')) return;
         es.close();
+        catHeader.textContent = 'Connection Error';
+        catStatusText.textContent = 'Connection lost before completion.';
+        catStatusFill.style.width = '100%';
+        catStatusFill.style.background = '#ef4444';
         logLine('Connection lost', 'cat-err');
+        catResult.classList.remove('hidden');
+        catResultInner.style.cssText = 'background:#fef2f2;border-color:#fecaca;';
+        catResultInner.textContent = 'Connection lost. You can return and retry.';
       };
     });
 
@@ -1293,6 +1488,7 @@
       if (!pendingSsMeta.preview) return;
       openPreviewOverlay(pendingSsMeta.preview, pendingSsMeta.title || 'Shutterstock preview');
     });
+
   </script>
 
 </body>

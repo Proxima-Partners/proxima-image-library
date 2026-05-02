@@ -236,6 +236,58 @@
       font-size: 11px;
       font-weight: 500;
     }
+
+    /* ── Completion popup ── */
+    .upload-done-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(17, 24, 39, 0.45);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1200;
+      padding: 16px;
+    }
+    .upload-done-modal {
+      width: min(420px, 100%);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.2);
+      padding: 20px;
+      display: grid;
+      gap: 10px;
+    }
+    .upload-done-title {
+      font-family: 'Montserrat', sans-serif;
+      font-size: 18px;
+      font-weight: 700;
+      color: #05718D;
+    }
+    .upload-done-text {
+      font-size: 13px;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+    .upload-done-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      margin-top: 4px;
+    }
+    .btn-ghost {
+      padding: 9px 16px;
+      border-radius: 20px;
+      border: 1px solid var(--border);
+      background: #fff;
+      color: var(--text);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .btn-ghost:hover {
+      background: #f9fafb;
+    }
   </style>
 </head>
 <body>
@@ -288,6 +340,17 @@
     <h2>Processing Results</h2>
     <div id="results"></div>
   </div>
+
+  <div id="upload-done-overlay" class="upload-done-overlay hidden" aria-hidden="true">
+    <div class="upload-done-modal" role="dialog" aria-labelledby="upload-done-title" aria-modal="true">
+      <div id="upload-done-title" class="upload-done-title">Cataloging Complete</div>
+      <div id="upload-done-text" class="upload-done-text"></div>
+      <div class="upload-done-actions">
+        <button id="upload-done-stay" class="btn-ghost" type="button">Stay Here</button>
+        <button id="upload-done-home" class="btn" type="button">Done</button>
+      </div>
+    </div>
+  </div>
 </main>
 
 <script>
@@ -302,6 +365,17 @@
   const sizeWarning = document.getElementById('file-size-warning');
   const resultsPane = document.getElementById('results-panel');
   const resultsEl   = document.getElementById('results');
+  const uploadDoneOverlay = document.getElementById('upload-done-overlay');
+  const uploadDoneText = document.getElementById('upload-done-text');
+  const uploadDoneStay = document.getElementById('upload-done-stay');
+  const uploadDoneHome = document.getElementById('upload-done-home');
+
+  uploadDoneStay.addEventListener('click', () => {
+    uploadDoneOverlay.classList.add('hidden');
+  });
+  uploadDoneHome.addEventListener('click', () => {
+    window.location.href = '/';
+  });
 
   let selectedFiles = []; // Array of File objects
   {% if is_admin %}
@@ -519,6 +593,13 @@
           }
         };
       });
+    }
+
+    const doneCount = resultsEl.querySelectorAll('.badge-done').length;
+    const errorCount = resultsEl.querySelectorAll('.badge-error').length;
+    if (doneCount || errorCount) {
+      uploadDoneText.textContent = `${doneCount} completed, ${errorCount} failed. Click Done to return Home.`;
+      uploadDoneOverlay.classList.remove('hidden');
     }
 
     processBtn.disabled = false;

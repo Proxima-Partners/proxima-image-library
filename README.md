@@ -151,6 +151,127 @@ Register in `~/Library/Application Support/Claude/claude_desktop_config.json`:
 | `search_stock_photos` | Search Pexels, Shutterstock, Unsplash, Pixabay concurrently |
 | `catalog_image_from_file` | Accept a base64 image, run the full processing pipeline, add to library |
 
+### Claude Article Automation API
+
+For no-copy/paste integration from a Claude article-writing project, use:
+
+- `POST /api/mcp/claude-article`
+- Header: `X-MCP-Secret: <MCP_INTERNAL_SECRET>`
+
+Request body (example):
+
+```json
+{
+  "article_title": "Urban Lessons",
+  "article_body": "What happens when the approach that worked somewhere else stops working here?...",
+  "photo_suggestions": ["teacher with students", "students in city"],
+  "include_search": true,
+  "search_limit": 8
+}
+```
+
+Behavior:
+
+- If `photo_suggestions` is omitted or empty, phrases are auto-extracted from `article_body`.
+- Returns normalized phrase list and, when `include_search=true`, grouped stock results (Pexels/Shutterstock/Unsplash/Pixabay).
+- Use returned phrases/results to drive follow-up calls to:
+  - `POST /api/mcp/catalog-stock`
+  - `POST /api/mcp/catalog-from-file`
+
+### One-Call Full Automation API
+
+For full automation without copy/paste or step-by-step orchestration, use:
+
+- `POST /api/mcp/claude-article-auto`
+- Header: `X-MCP-Secret: <MCP_INTERNAL_SECRET>`
+
+Key request fields:
+
+- `approval_mode`: `manual` or `auto`
+  - `manual`: extract + search + shortlist only (no catalog writes)
+  - `auto`: extract + search + shortlist + catalog selected candidates
+- `photo_suggestions`: optional array; if absent, phrases are extracted from `article_body`
+- `search_limit`: results per library per phrase (max 25)
+- `max_catalog_items`: max shortlisted items to catalog in `auto` mode
+- `preferred_libraries`: library priority order, e.g. `["pexels","unsplash","pixabay","shutterstock"]`
+- `category`: optional forced category (`Headshots`, `Community`, `Locations`, `Situations`, `Graphics`, `Banners`)
+
+Response includes:
+
+- normalized phrase list
+- shortlisted candidates
+- in `auto` mode: `cataloged` items and `failures`
+
+### Claude Action Templates (Copy/Paste)
+
+Set these once in your Claude project Action/Webhook config:
+
+- Method: `POST`
+- URL: `https://library.liveproxima.org/api/mcp/claude-article-auto` (or local `http://127.0.0.1:5000/api/mcp/claude-article-auto`)
+- Header: `Content-Type: application/json`
+- Header: `X-MCP-Secret: <MCP_INTERNAL_SECRET>`
+
+Manual approval mode payload (extract + search + shortlist only):
+
+```json
+{
+  "article_title": "{{title}}",
+  "article_body": "{{article_text}}",
+  "approval_mode": "manual",
+  "search_limit": 8,
+  "max_catalog_items": 5,
+  "preferred_libraries": ["pexels", "unsplash", "pixabay", "shutterstock"],
+  "category": "Situations"
+}
+```
+
+Full auto mode payload (extract + search + catalog):
+
+```json
+{
+  "article_title": "{{title}}",
+  "article_body": "{{article_text}}",
+  "approval_mode": "auto",
+  "search_limit": 6,
+  "max_catalog_items": 3,
+  "preferred_libraries": ["pexels", "unsplash", "pixabay"],
+  "category": "Situations"
+}
+```
+
+Optional explicit suggestions payload (skip extraction step):
+
+```json
+{
+  "article_title": "{{title}}",
+  "photo_suggestions": [
+    "teacher with students",
+    "students in city",
+    "urban classroom scene"
+  ],
+  "approval_mode": "auto",
+  "search_limit": 4,
+  "max_catalog_items": 2,
+  "preferred_libraries": ["pexels", "unsplash"]
+}
+```
+
+Quick local test command:
+
+```bash
+SECRET=$(grep '^MCP_INTERNAL_SECRET=' .env | cut -d= -f2-)
+curl -s -X POST http://127.0.0.1:5000/api/mcp/claude-article-auto \
+  -H "Content-Type: application/json" \
+  -H "X-MCP-Secret: $SECRET" \
+  -d '{
+    "article_title":"Urban Lessons",
+    "article_body":"What happens when the approach that worked somewhere else stops working here? Sometimes the city itself is the teacher if we are willing to be students.",
+    "approval_mode":"manual",
+    "search_limit":4,
+    "max_catalog_items":2
+  }'
+```
+
 ---
 
 ## Documentation

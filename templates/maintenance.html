@@ -750,7 +750,9 @@
       <a href="/upload" class="header-link">Upload</a>
       <a href="/stock-search" class="header-link">Stock</a>
       <a href="/review" class="header-link">Review</a>
+      {% if is_admin %}
       <a href="/maintenance" class="header-link">Maintenance</a>
+      {% endif %}
       <a href="/logout" class="header-link">Sign out</a>
     </div>
   </header>
@@ -767,11 +769,11 @@
           <div class="hub-metric-label">Images Pending Review</div>
           <div id="metric-pending" class="hub-metric-value">--</div>
         </a>
-        <a class="hub-metric" href="/maintenance#correct">
+        <a class="hub-metric" href="#correct">
           <div class="hub-metric-label">Rejected Candidates</div>
           <div id="metric-rejected" class="hub-metric-value">--</div>
         </a>
-        <a class="hub-metric" href="/maintenance#cleanup">
+        <a class="hub-metric" href="#cleanup">
           <div class="hub-metric-label">Archived Candidates</div>
           <div id="metric-archived" class="hub-metric-value">--</div>
         </a>
@@ -3840,12 +3842,21 @@
     resetDuplicateUi('Run duplicate scan to review candidate groups.');
     initializeToolAccordions();
     setActiveWorkstream('diagnose');
-    // Activate workstream from URL hash (e.g. /maintenance#cleanup)
-    const hashWorkstream = window.location.hash.replace('#', '');
-    if (['diagnose','correct','cleanup','reporting'].includes(hashWorkstream)) {
+
+    function handleWorkstreamHash() {
+      const hashWorkstream = window.location.hash.replace('#', '');
+      if (!['diagnose','correct','cleanup','reporting'].includes(hashWorkstream)) return;
       setActiveWorkstream(hashWorkstream);
+      const firstPanel = document.querySelector(`.tool-panel[data-workstream="${hashWorkstream}"]`);
+      if (firstPanel) {
+        firstPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
       history.replaceState(null, '', window.location.pathname);
     }
+
+    // Activate workstream from URL hash (e.g. #cleanup) without reloading
+    window.addEventListener('hashchange', handleWorkstreamHash);
+    handleWorkstreamHash();
     refreshHubMetrics();
     refreshCheckpointOptions(false);
     refreshJobOptions(false);
@@ -3853,6 +3864,24 @@
 
     // ── Tag Manager ──────────────────────────────────────────────────────────
     let _tmLibrary = {};
+
+    function tmAcknowledgeAndCollapse(message, delayMs = 2400) {
+      const panel = document.getElementById('tm-panel');
+      const icon = document.getElementById('tm-toggle-icon');
+      const section = document.getElementById('tm-suggestions-section');
+      const list = document.getElementById('tm-suggestions-list');
+
+      section.classList.remove('tm-hidden');
+      list.innerHTML = `<div style="padding:12px 0;color:#28a745;font-weight:600;font-size:0.88rem;">${message}</div>`;
+      refreshHubMetrics();
+
+      setTimeout(() => {
+        panel.classList.add('is-collapsed');
+        icon.textContent = '▶';
+        section.classList.add('tm-hidden');
+        list.innerHTML = '';
+      }, delayMs);
+    }
 
     async function tmLoadLibrary() {
       const res = await fetch('/api/tag-library');
@@ -3867,11 +3896,7 @@
       const el = document.getElementById('tm-suggestions-list');
       const section = document.getElementById('tm-suggestions-section');
       if (!suggestions.length) {
-        el.innerHTML = `<div style="padding:12px 0;color:#28a745;font-weight:600;font-size:0.88rem;">
-          ✓ All done — ${count} tag${count !== 1 ? 's' : ''} approved into their recommended categories.
-        </div>`;
-        section.classList.remove('tm-hidden');
-        setTimeout(() => { section.classList.add('tm-hidden'); el.innerHTML = ''; }, 4000);
+        tmAcknowledgeAndCollapse(`✓ All done — ${count} tag${count !== 1 ? 's' : ''} approved into their recommended categories.`);
         return;
       }
       section.classList.remove('tm-hidden');
@@ -3900,7 +3925,10 @@
       const { suggestions } = await res.json();
       const el = document.getElementById('tm-suggestions-list');
       const section = document.getElementById('tm-suggestions-section');
-      if (!suggestions.length) { section.classList.add('tm-hidden'); return; }
+      if (!suggestions.length) {
+        tmAcknowledgeAndCollapse('✓ No tags pending review.');
+        return;
+      }
       section.classList.remove('tm-hidden');
       const categories = Object.keys(_tmLibrary).concat(['Custom']);
       el.innerHTML = suggestions.map(s => {
@@ -3977,6 +4005,9 @@
       const clean = tag.replace('?', '');
       document.getElementById(`tm-sug-${clean}`)?.remove();
       tmShowToast(`Discarded "${tag}"`);
+      if (!document.querySelector('.tm-suggestion-item')) {
+        tmAcknowledgeAndCollapse('✓ No tags pending review.');
+      }
     }
 
     async function tmApproveAll() {

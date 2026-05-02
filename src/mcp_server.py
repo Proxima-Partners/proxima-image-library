@@ -414,6 +414,28 @@ async def _search_stock_photos(args: dict) -> list[types.TextContent]:
             return {"results": [], "error": "Shutterstock credentials not configured"}
         try:
             credentials = base64.b64encode(f"{cid}:{csec}".encode()).decode()
+            token_resp = requests.post(
+                "https://api.shutterstock.com/v2/oauth/access_token",
+                data={"grant_type": "client_credentials"},
+                headers={
+                    "Authorization": f"Basic {credentials}",
+                    "Content-Type": "application/x-www-form-urlencoded",
+                },
+                timeout=10,
+            )
+            if token_resp.status_code == 401:
+                return {
+                    "results": [],
+                    "error": "Shutterstock API auth failed (401). Check SHUTTERSTOCK_CLIENT_ID and SHUTTERSTOCK_CLIENT_SECRET.",
+                }
+            token_resp.raise_for_status()
+            token = token_resp.json().get("access_token")
+            if not token:
+                return {
+                    "results": [],
+                    "error": "Shutterstock token response missing access_token",
+                }
+
             params = {
                 "query": phrase,
                 "per_page": lim,
@@ -425,9 +447,14 @@ async def _search_stock_photos(args: dict) -> list[types.TextContent]:
             r = requests.get(
                 "https://api.shutterstock.com/v2/images/search",
                 params=params,
-                headers={"Authorization": f"Basic {credentials}"},
+                headers={"Authorization": f"Bearer {token}"},
                 timeout=10,
             )
+            if r.status_code == 401:
+                return {
+                    "results": [],
+                    "error": "Shutterstock search unauthorized (401). Verify app permissions and API plan access.",
+                }
             r.raise_for_status()
             data = r.json()
             results = []
@@ -450,7 +477,7 @@ async def _search_stock_photos(args: dict) -> list[types.TextContent]:
                 })
             return {"results": results, "error": None}
         except Exception as e:
-            return {"results": [], "error": str(e)}
+            return {"results": [], "error": f"Shutterstock request failed: {e}"}
 
     def _unsplash(phrase, lim):
         import os
