@@ -31,3 +31,4 @@ proxima_ss_counter.json
 
 # Compiled macOS app bundles (rebuild from .applescript source)
 *.app/
+.python_packages/
