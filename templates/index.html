@@ -781,7 +781,7 @@
 
   function renderRecentStrip() {
     const el = document.getElementById('recent-strip');
-    const recent = allImages.slice(-10).reverse();
+    const recent = allImages.filter(img => img.status !== 'rejected').slice(-10).reverse();
     if (!recent.length) {
       document.getElementById('recent-section').style.display = 'none';
       return;
