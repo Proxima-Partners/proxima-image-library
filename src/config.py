@@ -15,6 +15,7 @@ class Config:
 
     # Paths
     IMAGE_FOLDER = os.getenv("IMAGE_FOLDER", "./assets")
+    LOCAL_INGEST_FOLDER = os.getenv("LOCAL_INGEST_FOLDER", "")
     SUPPORTED_FORMATS = os.getenv("SUPPORTED_FORMATS", ".jpg,.jpeg,.png,.gif,.webp").split(",")
     TAG_LIBRARY_PATH = os.getenv(
         "TAG_LIBRARY_PATH",

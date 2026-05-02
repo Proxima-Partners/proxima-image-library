@@ -659,6 +659,14 @@
       <div id="detail-actions">
         <button class="btn btn-primary" id="btn-copy">Copy path</button>
         <button class="btn btn-ghost" id="btn-open">Open full image</button>
+        <button class="btn btn-danger" id="btn-delete" style="margin-left:auto;">Delete</button>
+      </div>
+      <div id="detail-delete-confirm" style="display:none; margin-top:10px; padding:10px; background:#fff3f3; border:1px solid #fca5a5; border-radius:6px; font-size:13px;">
+        <span>Delete this image and its files? This cannot be undone.</span>
+        <div style="margin-top:8px; display:flex; gap:8px;">
+          <button class="btn btn-danger" id="btn-delete-confirm">Yes, delete</button>
+          <button class="btn btn-ghost" id="btn-delete-cancel">Cancel</button>
+        </div>
       </div>
     </div>
   </div>
@@ -781,7 +789,7 @@
 
   function renderRecentStrip() {
     const el = document.getElementById('recent-strip');
-    const recent = allImages.filter(img => img.status !== 'rejected').slice(-10).reverse();
+    const recent = allImages.filter(img => img.location && !['rejected', 'archived', 'ingested'].includes(img.status)).slice(-10).reverse();
     if (!recent.length) {
       document.getElementById('recent-section').style.display = 'none';
       return;
@@ -1045,6 +1053,41 @@
   document.getElementById('btn-open').addEventListener('click', () => {
     if (currentImage) window.open('/image?path=' + encodeURIComponent(currentImage.location), '_blank');
   });
+
+  const deleteConfirmEl = document.getElementById('detail-delete-confirm');
+  document.getElementById('btn-delete').addEventListener('click', () => {
+    deleteConfirmEl.style.display = '';
+  });
+  document.getElementById('btn-delete-cancel').addEventListener('click', () => {
+    deleteConfirmEl.style.display = 'none';
+  });
+  document.getElementById('btn-delete-confirm').addEventListener('click', async () => {
+    if (!currentImage) return;
+    const btn = document.getElementById('btn-delete-confirm');
+    btn.disabled = true;
+    btn.textContent = 'Deleting…';
+    try {
+      const resp = await fetch('/api/image/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ record_id: currentImage.id, delete_files: true }),
+      });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.error || 'Delete failed');
+      closeDetail();
+      location.reload();
+    } catch (err) {
+      btn.disabled = false;
+      btn.textContent = 'Yes, delete';
+      document.querySelector('#detail-delete-confirm span').textContent = 'Error: ' + (err.message || 'Delete failed');
+    }
+  });
+
+  const _origCloseDetail = closeDetail;
+  closeDetail = function () {
+    deleteConfirmEl.style.display = 'none';
+    _origCloseDetail();
+  };
 })();
 
 // ── Welcome modal ──────────────────────────────────────────────────────────

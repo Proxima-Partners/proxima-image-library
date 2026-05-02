@@ -112,6 +112,8 @@ def process_image(
     source: Optional[str] = None,
     write_high_res: bool = True,
     high_res_location_override: Optional[str] = None,
+    initial_status: str = "pending-review",
+    ingest_source: str = "",
 ) -> dict:
     """Full pipeline for a single image.
 
@@ -210,11 +212,12 @@ def process_image(
         filename=webp_filename,
         alt_text=alt_text,
         tags=tags,
-        status="pending-review",
+        status=initial_status,
         slug=slug,
         location=location,
         high_res_location=high_res_location,
         source=source_name,
+        ingest_source=ingest_source,
     )
     if not record:
         raise RuntimeError("Metadata record creation failed")
@@ -228,5 +231,5 @@ def process_image(
         "location": location,
         "high_res_location": high_res_location,
         "source": source_name,
-        "status": "pending-review",
+        "status": initial_status,
     }

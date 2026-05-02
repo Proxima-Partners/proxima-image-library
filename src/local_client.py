@@ -72,6 +72,7 @@ class LocalClient:
         location: str = "",
         high_res_location: str = "",
         source: str = "Internal",
+        ingest_source: str = "",
     ) -> Optional[Dict]:
         records = self._load()
         record = {
@@ -87,6 +88,8 @@ class LocalClient:
                 "Source": source,
             },
         }
+        if ingest_source:
+            record["fields"]["Ingest Source"] = ingest_source
         if image_url:
             record["fields"]["Image"] = [{"url": image_url}]
         records.append(record)

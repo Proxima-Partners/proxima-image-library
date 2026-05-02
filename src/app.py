@@ -56,6 +56,7 @@ _CSRF_QUERY_REQUIRED_PATHS = {
     "/api/upload/process",
     "/api/maintenance/retag-run",
     "/api/maintenance/sync-highres",
+    "/api/maintenance/folder-ingest",
 }
 _RATE_LIMIT_RULES = {
     "/api/parse-suggestions": (Config.RATE_LIMIT_AUTH_REQUESTS, Config.RATE_LIMIT_WINDOW_SECONDS),
@@ -1599,6 +1600,55 @@ def api_image_info():
         return jsonify({"error": "Internal server error"}), 500
 
 
+@app.route("/api/image/delete", methods=["POST"])
+@login_required
+def api_image_delete():
+    """Delete a single image record and its associated files."""
+    data = request.get_json(force=True) or {}
+    record_id = str(data.get("record_id", "")).strip()
+    delete_files = _as_bool(data.get("delete_files", True))
+
+    if not record_id:
+        return jsonify({"error": "record_id is required"}), 400
+
+    records = _records_snapshot(use_cache=False)
+    target = next((r for r in records if str(r.get("id", "")).strip() == record_id), None)
+    if not target:
+        return jsonify({"error": "Record not found"}), 404
+
+    fields = target.get("fields", {})
+
+    if delete_files:
+        if Config.STORAGE_MODE == "sharepoint":
+            sp_client = get_sp_client()
+            for area, rel in [
+                ("WebP", fields.get("Location", "")),
+                ("High-Res", fields.get("High-Res Location", "")),
+            ]:
+                rel = str(rel or "").strip()
+                if rel:
+                    _delete_sharepoint_target(sp_client, area, rel)
+        else:
+            image_root = Path(Config.IMAGE_FOLDER).resolve()
+            for area, rel in [
+                ("WebP", fields.get("Location", "")),
+                ("High-Res", fields.get("High-Res Location", "")),
+            ]:
+                rel = str(rel or "").strip()
+                if rel:
+                    _delete_local_target(image_root, area, rel)
+
+    deleted = _bulk_delete_records(get_client(), [record_id])
+
+    global _records_cache
+    _records_cache = None
+
+    if not deleted:
+        return jsonify({"error": "Failed to delete record"}), 500
+
+    return jsonify({"deleted": True, "record_id": record_id})
+
+
 @app.route("/thumbnail")
 @login_required
 def thumbnail():
@@ -1687,7 +1737,7 @@ def maintenance():
     return render_template("maintenance.html", user=user, is_admin=is_admin)
 
 
-_MAINTENANCE_PURGE_STATUSES = {"rejected", "archived"}
+_MAINTENANCE_PURGE_STATUSES = {"rejected", "archived", "ingested"}
 _MAINTENANCE_CANONICAL_CATEGORIES = [
     "Headshots",
     "Community",
@@ -2606,7 +2656,100 @@ def _collect_duplicate_snapshot(
 
     near_alt_groups = _build_near_alt_duplicate_groups(scanned_records, near_threshold) if include_near_alt else []
 
-    all_groups = filename_groups + slug_groups + alt_exact_groups + near_alt_groups
+    # Match records that share the same image stem — catches WebP record paired with
+    # a High-Res-only record where the High-Res filename is slug + "-original.ext".
+    image_stem_candidates = []
+    for rec in scanned_records:
+        slug = re.sub(r"\.[^.]+$", "", str(rec.get("slug") or "").strip())
+        if not slug:
+            # Derive from filename: strip -original suffix and extension
+            fn_stem = re.sub(r"\.[^.]+$", "", str(rec.get("filename") or "").strip())
+            fn_stem = re.sub(r"-original$", "", fn_stem)
+            slug = fn_stem
+        if not slug:
+            hr = str(rec.get("high_res_location") or "").strip()
+            if hr:
+                hr_stem = re.sub(r"\.[^.]+$", "", PurePosixPath(hr).name)
+                slug = re.sub(r"-original$", "", hr_stem)
+        if slug:
+            clone = dict(rec)
+            clone["_image_stem"] = slug.lower()
+            image_stem_candidates.append(clone)
+    image_stem_groups = _build_exact_duplicate_groups(image_stem_candidates, "_image_stem", "image_stem")
+    for group in image_stem_groups:
+        for rec in group.get("records", []):
+            rec.pop("_image_stem", None)
+    # Exclude image_stem groups already covered by filename/slug exact matches
+    covered_ids: set = set()
+    for g in filename_groups + slug_groups:
+        for rec in g.get("records", []):
+            covered_ids.add(rec.get("id", ""))
+    image_stem_groups = [
+        g for g in image_stem_groups
+        if not all(rec.get("id", "") in covered_ids for rec in g.get("records", []))
+    ]
+
+    # Match records that share both the same normalised alt text AND the same normalised tags.
+    # Requires both fields to be non-empty so we don't flood with untagged/un-alt'd records.
+    alt_tags_buckets: Dict[str, Dict] = {}
+    for rec in scanned_records:
+        alt_norm = _normalize_compare_text(rec.get("alt_text", ""))
+        tags_norm = _normalize_compare_text(rec.get("tags", ""))
+        if not alt_norm or not tags_norm:
+            continue
+        key = f"{alt_norm}||{tags_norm}"
+        if key not in alt_tags_buckets:
+            alt_tags_buckets[key] = {"display": key[:80], "records": []}
+        alt_tags_buckets[key]["records"].append(rec)
+    alt_tags_groups = [
+        {"group_type": "alt_and_tags", "key": b["display"], "records": sorted(
+            b["records"], key=lambda r: ((r.get("filename") or "").lower(), r.get("id") or "")
+        )}
+        for b in alt_tags_buckets.values() if len(b["records"]) >= 2
+    ]
+
+    # Match records with identical sorted tags AND near-duplicate alt text (≥0.85).
+    # Catches visually identical images that received slightly different alt text descriptions.
+    def _sorted_tags(tags_str: str) -> str:
+        return ",".join(sorted(t.strip().lower() for t in tags_str.split(",") if t.strip()))
+
+    _near_alt_tags_candidates = [
+        rec for rec in scanned_records
+        if _normalize_compare_text(rec.get("alt_text", "")) and rec.get("tags", "").strip()
+    ]
+    near_alt_tags_groups: list = []
+    _paired_near: set = set()
+    for i, ra in enumerate(_near_alt_tags_candidates):
+        for rb in _near_alt_tags_candidates[i + 1:]:
+            pair_key = tuple(sorted([ra.get("id", ""), rb.get("id", "")]))
+            if pair_key in _paired_near:
+                continue
+            if _sorted_tags(ra.get("tags", "")) != _sorted_tags(rb.get("tags", "")):
+                continue
+            alt_a = _normalize_compare_text(ra.get("alt_text", ""))
+            alt_b = _normalize_compare_text(rb.get("alt_text", ""))
+            if SequenceMatcher(None, alt_a, alt_b).ratio() >= 0.85:
+                _paired_near.add(pair_key)
+                near_alt_tags_groups.append({
+                    "group_type": "near_alt_and_tags",
+                    "key": f"near-alt+tags: {alt_a[:60]}",
+                    "records": sorted([ra, rb], key=lambda r: ((r.get("filename") or "").lower(), r.get("id") or "")),
+                })
+    # Exclude groups already fully covered by earlier passes
+    all_covered_ids: set = set()
+    for g in filename_groups + slug_groups + alt_exact_groups + image_stem_groups:
+        for rec in g.get("records", []):
+            all_covered_ids.add(rec.get("id", ""))
+    alt_tags_groups = [
+        g for g in alt_tags_groups
+        if not all(rec.get("id", "") in all_covered_ids for rec in g.get("records", []))
+    ]
+    near_alt_tags_groups = [
+        g for g in near_alt_tags_groups
+        if not all(rec.get("id", "") in all_covered_ids for rec in g.get("records", []))
+    ]
+
+    all_groups = filename_groups + slug_groups + alt_exact_groups + near_alt_groups + image_stem_groups + alt_tags_groups + near_alt_tags_groups
     for idx, group in enumerate(all_groups, 1):
         group["group_id"] = f"dup-{idx}"
         group["count"] = len(group.get("records", []))
@@ -2618,6 +2761,9 @@ def _collect_duplicate_snapshot(
         "slug_group_count": len(slug_groups),
         "alt_exact_group_count": len(alt_exact_groups),
         "alt_near_group_count": len(near_alt_groups),
+        "image_stem_group_count": len(image_stem_groups),
+        "alt_tags_group_count": len(alt_tags_groups),
+        "near_alt_tags_group_count": len(near_alt_tags_groups),
         "include_near_alt": include_near_alt,
         "near_threshold": near_threshold,
         "groups": all_groups[:limit],
@@ -2763,6 +2909,28 @@ def api_maintenance_purge_status():
                             file_delete_error_details.append(
                                 f"{area}/{rel} -> {outcome}"
                             )
+
+    # For ingested records, also delete the original file from LOCAL_INGEST_FOLDER
+    if delete_files and status == "ingested" and matches:
+        ingest_folder = Config.LOCAL_INGEST_FOLDER.strip() if Config.LOCAL_INGEST_FOLDER else ""
+        if ingest_folder:
+            ingest_path = Path(ingest_folder)
+            for rec in matches:
+                src_name = str(rec.get("fields", {}).get("Ingest Source", "") or "").strip()
+                if not src_name:
+                    continue
+                candidate = ingest_path / src_name
+                try:
+                    resolved = candidate.resolve()
+                    if str(resolved).startswith(str(ingest_path.resolve())) and resolved.exists():
+                        resolved.unlink()
+                        files_deleted += 1
+                    else:
+                        files_missing += 1
+                except Exception as exc:
+                    file_delete_errors += 1
+                    if len(file_delete_error_details) < 20:
+                        file_delete_error_details.append(f"ingest/{src_name} -> {exc}")
 
     record_ids = [str(r.get("id", "")).strip() for r in matches if str(r.get("id", "")).strip()]
 
@@ -3216,6 +3384,132 @@ def api_maintenance_duplicates_resolve():
     return jsonify(result)
 
 
+@app.route("/api/maintenance/duplicates/resolve-all", methods=["POST"])
+@login_required
+def api_maintenance_duplicates_resolve_all():
+    """Bulk resolve all current duplicate groups in one operation.
+
+    For each group the keeper is chosen automatically: the record with a non-empty
+    Location (WebP record) is preferred; otherwise the first record in the group.
+    """
+    data = request.get_json(force=True) or {}
+    action = str(data.get("action", "merge")).strip().lower()
+    confirm_token = str(data.get("confirm_token", "")).strip().upper()
+    approval_token = str(data.get("approval_token", "")).strip()
+    limit_raw = data.get("limit", 1000)
+
+    if action not in {"delete", "merge"}:
+        return jsonify({"error": "action must be one of ['delete', 'merge']"}), 400
+    if confirm_token != "PURGE":
+        return jsonify({"error": "confirm_token must be PURGE"}), 400
+
+    try:
+        limit = max(1, min(int(limit_raw), 2000))
+    except (TypeError, ValueError):
+        limit = 1000
+
+    snapshot = _collect_duplicate_snapshot(limit=limit, records=None)
+    groups = snapshot.get("groups", [])
+    if not groups:
+        return jsonify({"error": "No duplicate groups found. Run a scan first."}), 400
+
+    all_record_ids = [r.get("id", "") for g in groups for r in g.get("records", [])]
+    guardrail_error = _validate_destructive_guardrails(
+        action="duplicates-resolve-all",
+        record_ids=all_record_ids,
+        expected_count=len(all_record_ids),
+        approval_token=approval_token,
+    )
+    if guardrail_error:
+        return guardrail_error
+
+    client = get_client()
+    records_snapshot = _records_snapshot(use_cache=False)
+    by_id = {str(r.get("id", "")).strip(): r for r in records_snapshot if str(r.get("id", "")).strip()}
+
+    groups_processed = 0
+    groups_skipped = 0
+    total_deleted = 0
+    total_failed = 0
+
+    for group in groups:
+        members = group.get("records", [])
+        if len(members) < 2:
+            groups_skipped += 1
+            continue
+
+        keep = next((m for m in members if str(m.get("location") or "").strip()), members[0])
+        keep_id = keep.get("id", "")
+        delete_ids = [m.get("id", "") for m in members if m.get("id", "") != keep_id and m.get("id", "") in by_id]
+
+        if not delete_ids:
+            groups_skipped += 1
+            continue
+
+        if action == "merge":
+            keep_fields = by_id.get(keep_id, {}).get("fields", {})
+            all_fields = [by_id[mid].get("fields", {}) for mid in [keep_id] + delete_ids if mid in by_id]
+
+            merged_patch: Dict = {}
+            merged_tags: list = []
+            merged_tag_keys: set = set()
+            for fields in all_fields:
+                for tag in str(fields.get("Tags", "") or "").split(","):
+                    cleaned = tag.strip()
+                    if not cleaned or cleaned.lower() in merged_tag_keys:
+                        continue
+                    merged_tag_keys.add(cleaned.lower())
+                    merged_tags.append(cleaned)
+            new_tags = ", ".join(merged_tags)
+            if new_tags and new_tags != str(keep_fields.get("Tags", "") or "").strip():
+                merged_patch["Tags"] = new_tags
+
+            alt_candidates = [str(f.get("Alt Text", "") or "").strip() for f in all_fields]
+            best_alt = max((a for a in alt_candidates if a), key=len, default="")
+            if best_alt and best_alt != str(keep_fields.get("Alt Text", "") or "").strip():
+                merged_patch["Alt Text"] = best_alt
+
+            for field_name in ["Slug", "Location", "High-Res Location", "Source"]:
+                if str(keep_fields.get(field_name, "") or "").strip():
+                    continue
+                for fields in all_fields:
+                    candidate = str(fields.get(field_name, "") or "").strip()
+                    if candidate:
+                        merged_patch[field_name] = candidate
+                        break
+
+            if merged_patch:
+                client.patch_fields(keep_id, merged_patch)
+
+        deleted = _bulk_delete_records(client, delete_ids)
+        total_deleted += deleted
+        total_failed += max(0, len(delete_ids) - deleted)
+        groups_processed += 1
+
+    global _records_cache
+    _records_cache = None
+
+    _maintenance_append_audit(
+        action="duplicates-resolve-all",
+        outcome="ok",
+        details={
+            "action": action,
+            "groups_processed": groups_processed,
+            "groups_skipped": groups_skipped,
+            "total_deleted": total_deleted,
+            "total_failed": total_failed,
+        },
+    )
+
+    return jsonify({
+        "action": action,
+        "groups_processed": groups_processed,
+        "groups_skipped": groups_skipped,
+        "total_deleted": total_deleted,
+        "total_failed": total_failed,
+    })
+
+
 def _normalize_filter_key(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", "", str(value or "").strip().lower())
 
@@ -3254,6 +3548,8 @@ def _get_retag_target_records(
     status_filter: str,
     max_records: int,
     records: Optional[List[Dict]] = None,
+    missing_alt_only: bool = False,
+    missing_tags_only: bool = False,
 ) -> List[Dict]:
     tag_filters = [
         t.strip().lower()
@@ -3268,6 +3564,11 @@ def _get_retag_target_records(
         for rec in record_pool
         if _record_matches_retag_filters(rec, category_filter, tag_filters, status_filter)
     ]
+
+    if missing_alt_only:
+        matches = [r for r in matches if not str(r.get("fields", {}).get("Alt Text", "") or "").strip()]
+    if missing_tags_only:
+        matches = [r for r in matches if not str(r.get("fields", {}).get("Tags", "") or "").strip()]
     matches.sort(
         key=lambda r: (
             str(r.get("fields", {}).get("Filename", "") or "").lower(),
@@ -3368,8 +3669,12 @@ def _status_reset_targets(
     }
 
 
-def _load_record_image_bytes(rec: Dict, storage_mode: str, sp_client) -> tuple[bytes, str, str]:
-    """Load image bytes for a record. Returns (bytes, filename, source_label)."""
+def _load_record_image_bytes(rec: Dict, storage_mode: str, sp_client, prefer_webp: bool = False) -> tuple[bytes, str, str]:
+    """Load image bytes for a record. Returns (bytes, filename, source_label).
+
+    prefer_webp=True tries the WebP version first — use for vision/AI calls
+    where high-res quality is unnecessary and file size matters.
+    """
     fields = rec.get("fields", {})
     filename_fallback = str(fields.get("Filename", "") or "image.jpg").strip() or "image.jpg"
     location = _sanitize_relative_path(fields.get("Location", ""))
@@ -3377,16 +3682,20 @@ def _load_record_image_bytes(rec: Dict, storage_mode: str, sp_client) -> tuple[b
 
     if storage_mode == "sharepoint" and sp_client is not None:
         root = Config.SHAREPOINT_IMAGE_FOLDER.strip("/")
-        candidates: list[tuple[str, str, str]] = []
 
-        if high_res_location:
-            high_path = f"High-Res/{high_res_location}" if not root else f"{root}/High-Res/{high_res_location}"
-            candidates.append((high_path, PurePosixPath(high_res_location).name or filename_fallback, "high-res"))
+        webp_entries: list[tuple[str, str, str]] = []
+        hr_entries: list[tuple[str, str, str]] = []
+
         if location:
             webp_path = f"WebP/{location}" if not root else f"{root}/WebP/{location}"
-            candidates.append((webp_path, PurePosixPath(location).name or filename_fallback, "webp"))
+            webp_entries.append((webp_path, PurePosixPath(location).name or filename_fallback, "webp"))
             legacy_path = f"{location}" if not root else f"{root}/{location}"
-            candidates.append((legacy_path, PurePosixPath(location).name or filename_fallback, "legacy"))
+            webp_entries.append((legacy_path, PurePosixPath(location).name or filename_fallback, "legacy"))
+        if high_res_location:
+            high_path = f"High-Res/{high_res_location}" if not root else f"{root}/High-Res/{high_res_location}"
+            hr_entries.append((high_path, PurePosixPath(high_res_location).name or filename_fallback, "high-res"))
+
+        candidates = (webp_entries + hr_entries) if prefer_webp else (hr_entries + webp_entries)
 
         errors = []
         for sp_path, filename, source_label in candidates:
@@ -3401,25 +3710,29 @@ def _load_record_image_bytes(rec: Dict, storage_mode: str, sp_client) -> tuple[b
         )
 
     base = Path(Config.IMAGE_FOLDER).resolve()
-    candidates_local: list[tuple[Optional[Path], str, str]] = []
 
-    if high_res_location:
-        candidates_local.append((
-            _safe_local_target(base, "High-Res", high_res_location),
-            PurePosixPath(high_res_location).name or filename_fallback,
-            "high-res",
-        ))
+    webp_local: list[tuple[Optional[Path], str, str]] = []
+    hr_local: list[tuple[Optional[Path], str, str]] = []
+
     if location:
-        candidates_local.append((
+        webp_local.append((
             _safe_local_target(base, "WebP", location),
             PurePosixPath(location).name or filename_fallback,
             "webp",
         ))
-        candidates_local.append((
+        webp_local.append((
             _safe_local_target(base, "", location),
             PurePosixPath(location).name or filename_fallback,
             "legacy",
         ))
+    if high_res_location:
+        hr_local.append((
+            _safe_local_target(base, "High-Res", high_res_location),
+            PurePosixPath(high_res_location).name or filename_fallback,
+            "high-res",
+        ))
+
+    candidates_local = (webp_local + hr_local) if prefer_webp else (hr_local + webp_local)
 
     for path, filename, source_label in candidates_local:
         if path is not None and path.exists() and path.is_file():
@@ -3584,6 +3897,8 @@ def api_maintenance_retag_preview():
     tag_filter = request.args.get("tag", "").strip()
     status_filter = request.args.get("status", "").strip()
     max_records_raw = request.args.get("max_records", "100").strip()
+    missing_alt_only = _as_bool(request.args.get("missing_alt_only", "false"))
+    missing_tags_only = _as_bool(request.args.get("missing_tags_only", "false"))
 
     try:
         max_records = max(1, min(int(max_records_raw), 1000))
@@ -3597,6 +3912,8 @@ def api_maintenance_retag_preview():
         status_filter=status_filter,
         max_records=max_records,
         records=records,
+        missing_alt_only=missing_alt_only,
+        missing_tags_only=missing_tags_only,
     )
 
     sample = []
@@ -3632,6 +3949,8 @@ def api_maintenance_retag_run():
     max_records_raw = request.args.get("max_records", "100").strip()
     regenerate_alt = _as_bool(request.args.get("regenerate_alt", "true"))
     regenerate_tags = _as_bool(request.args.get("regenerate_tags", "true"))
+    missing_alt_only = _as_bool(request.args.get("missing_alt_only", "false"))
+    missing_tags_only = _as_bool(request.args.get("missing_tags_only", "false"))
 
     if not regenerate_alt and not regenerate_tags:
         return jsonify({"error": "At least one of regenerate_alt or regenerate_tags must be true"}), 400
@@ -3668,6 +3987,8 @@ def api_maintenance_retag_run():
                     status_filter=status_filter,
                     max_records=max_records,
                     records=records,
+                    missing_alt_only=missing_alt_only,
+                    missing_tags_only=missing_tags_only,
                 )
                 total = len(targets)
                 q.put(("progress", f"Matched {total} record(s) for bulk re-tag"))
@@ -3690,6 +4011,7 @@ def api_maintenance_retag_run():
                             rec,
                             storage_mode=storage_mode,
                             sp_client=sp_client,
+                            prefer_webp=True,
                         )
                         q.put(("progress", f"    Loaded {source_label} bytes"))
 
@@ -3700,13 +4022,23 @@ def api_maintenance_retag_run():
                         new_tags = current_tags
 
                         if regenerate_alt:
-                            candidate_alt = gen.generate_alt_text(file_bytes, filename=source_filename)
+                            try:
+                                candidate_alt = gen._vision_message(
+                                    file_bytes, source_filename,
+                                    f"Analyze this image and generate a concise, descriptive alt text for web accessibility. "
+                                    f"Max 125 characters. Not starting with 'Image of'. Generate ONLY the alt text.",
+                                ).strip()
+                            except Exception as exc:
+                                raise ValueError(f"Alt text generation failed: {exc}") from exc
                             if not candidate_alt:
                                 raise ValueError("Alt text generation returned empty")
-                            new_alt = candidate_alt.strip()
+                            new_alt = candidate_alt
 
                         if regenerate_tags:
-                            candidate_tags = gen.generate_tags(file_bytes, filename=source_filename)
+                            try:
+                                candidate_tags = gen.generate_tags(file_bytes, filename=source_filename)
+                            except Exception as exc:
+                                raise ValueError(f"Tag generation failed: {exc}") from exc
                             if not candidate_tags:
                                 raise ValueError("Tag generation returned empty")
                             new_tags = candidate_tags.strip()
@@ -4307,6 +4639,156 @@ def api_maintenance_sync_highres():
             elif kind == "done":
                 global _records_cache
                 _records_cache = None
+                yield f"data: [RESULT] {json.dumps(value, ensure_ascii=False)}\n\n"
+                yield "data: [DONE]\n\n"
+                break
+            elif kind == "error":
+                yield f"data: [ERROR] {value}\n\n"
+                break
+
+        t.join(timeout=5)
+
+    return Response(
+        stream_with_context(generate()),
+        mimetype="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@app.route("/api/maintenance/folder-ingest")
+@login_required
+def api_maintenance_folder_ingest():
+    """SSE stream — scan LOCAL_INGEST_FOLDER and process files not yet in the library."""
+    dry_run = request.args.get("dry_run", "").strip().lower() in {"1", "true", "yes"}
+    source_param = request.args.get("source", "").strip()
+
+    def generate():
+        yield "data: [START]\n\n"
+        q: queue.Queue = queue.Queue()
+
+        def worker():
+            try:
+                from src.ai_generator import AltTextGenerator
+                from src.image_processor import normalize_source, process_image, SOURCES
+
+                ingest_folder = Config.LOCAL_INGEST_FOLDER.strip() if Config.LOCAL_INGEST_FOLDER else ""
+                if not ingest_folder:
+                    q.put(("error", "LOCAL_INGEST_FOLDER is not configured"))
+                    return
+
+                ingest_path = Path(ingest_folder)
+                if not ingest_path.exists() or not ingest_path.is_dir():
+                    q.put(("error", f"Ingest folder not found: {ingest_folder}"))
+                    return
+
+                formats = _normalized_formats()
+                source = normalize_source(source_param) if source_param else "Internal"
+
+                # Collect candidate files
+                candidates = [
+                    f for f in ingest_path.rglob("*")
+                    if f.is_file() and f.suffix.lower() in formats
+                ]
+
+                if Config.TEST_MODE:
+                    list_client = LocalClient()
+                    sp_client = None
+                    storage_mode = "local"
+                else:
+                    from src.sharepoint_list_client import SharePointListClient
+                    from src.sharepoint_client import SharePointClient
+                    list_client = SharePointListClient()
+                    sp_client = SharePointClient()
+                    storage_mode = "sharepoint"
+
+                # Build set of known filenames already in the library
+                records = list_client.get_all_records()
+                existing_basenames = set()
+                for rec in records:
+                    fields = rec.get("fields", {})
+                    for field in ("High-Res Location", "Location"):
+                        val = str(fields.get(field, "") or "").strip()
+                        if val:
+                            existing_basenames.add(PurePosixPath(val).name)
+                    ingest_src = str(fields.get("Ingest Source", "") or "").strip()
+                    if ingest_src:
+                        existing_basenames.add(ingest_src)
+
+                new_files = [f for f in candidates if f.name not in existing_basenames]
+                skipped = len(candidates) - len(new_files)
+
+                q.put(("progress", f"Found {len(candidates)} file(s) in ingest folder — {len(new_files)} new, {skipped} already in library"))
+
+                if dry_run:
+                    q.put(("done", {
+                        "folder": str(ingest_path),
+                        "source": source,
+                        "total_found": len(candidates),
+                        "new_files": len(new_files),
+                        "skipped": skipped,
+                        "processed": 0,
+                        "failed": 0,
+                        "dry_run": True,
+                        "filenames": [f.name for f in new_files],
+                    }))
+                    return
+
+                gen = AltTextGenerator()
+                processed = 0
+                failed = 0
+                total = len(new_files)
+                for idx, file_path in enumerate(new_files, 1):
+                    q.put(("progress", f"[{idx}/{total}] Processing {file_path.name}"))
+                    try:
+                        file_bytes = file_path.read_bytes()
+                        process_image(
+                            file_bytes=file_bytes,
+                            original_filename=file_path.name,
+                            generator=gen,
+                            list_client=list_client,
+                            sp_client=sp_client,
+                            image_folder=Config.IMAGE_FOLDER,
+                            storage_mode=storage_mode,
+                            on_progress=lambda msg: q.put(("progress", f"    {msg}")),
+                            source=source,
+                            initial_status="ingested",
+                            ingest_source=file_path.name,
+                        )
+                        processed += 1
+                    except Exception as exc:
+                        failed += 1
+                        q.put(("progress", f"[ERROR] {file_path.name}: {exc}"))
+
+                global _records_cache
+                _records_cache = None
+
+                q.put(("done", {
+                    "folder": str(ingest_path),
+                    "source": source,
+                    "total_found": len(candidates),
+                    "new_files": total,
+                    "skipped": skipped,
+                    "processed": processed,
+                    "failed": failed,
+                    "dry_run": False,
+                }))
+
+            except Exception as exc:
+                q.put(("error", f"Folder ingest failed: {exc}"))
+
+        t = threading.Thread(target=worker, daemon=True)
+        t.start()
+
+        while True:
+            try:
+                kind, value = q.get(timeout=600)
+            except queue.Empty:
+                yield "data: [ERROR] Folder ingest timed out after 10 minutes\n\n"
+                break
+
+            if kind == "progress":
+                yield f"data: {value}\n\n"
+            elif kind == "done":
                 yield f"data: [RESULT] {json.dumps(value, ensure_ascii=False)}\n\n"
                 yield "data: [DONE]\n\n"
                 break

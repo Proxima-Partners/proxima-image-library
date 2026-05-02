@@ -1,9 +1,11 @@
 """AI-powered alt text generation using Claude."""
 
 import base64
+import io
 from pathlib import Path
 from typing import Optional, Union
 from anthropic import Anthropic
+from PIL import Image as PILImage
 
 # Maps file extensions to MIME types for the Claude API
 _MEDIA_TYPES = {
@@ -29,18 +31,44 @@ class AltTextGenerator:
     # Internal helpers
     # ------------------------------------------------------------------
 
+    _API_MAX_BYTES = 5 * 1024 * 1024  # 5 MB Claude API limit
+    _API_MAX_SIDE = 1568              # Claude's recommended max dimension
+
+    def _shrink_for_api(self, data: bytes) -> bytes:
+        """Resize image bytes so they fit within the Claude API size limit."""
+        if len(data) <= self._API_MAX_BYTES:
+            return data
+        with PILImage.open(io.BytesIO(data)) as img:
+            img = img.convert("RGB")
+            w, h = img.size
+            scale = min(self._API_MAX_SIDE / max(w, h), 1.0)
+            if scale < 1.0:
+                img = img.resize((int(w * scale), int(h * scale)), PILImage.LANCZOS)
+            buf = io.BytesIO()
+            img.save(buf, format="JPEG", quality=85)
+            result = buf.getvalue()
+            # If still too large, reduce quality further
+            if len(result) > self._API_MAX_BYTES:
+                buf = io.BytesIO()
+                img.save(buf, format="JPEG", quality=60)
+                result = buf.getvalue()
+        return result
+
     def _encode(self, source: Union[str, bytes], filename: str = "") -> tuple[str, str]:
         """Return (base64_data, media_type) from a path or bytes."""
         if isinstance(source, bytes):
+            data = self._shrink_for_api(source)
             ext = Path(filename).suffix.lower() if filename else ".jpg"
-            media_type = _MEDIA_TYPES.get(ext, "image/jpeg")
-            return base64.standard_b64encode(source).decode("utf-8"), media_type
+            media_type = "image/jpeg" if len(data) != len(source) else _MEDIA_TYPES.get(ext, "image/jpeg")
+            return base64.standard_b64encode(data).decode("utf-8"), media_type
 
         # Local file path
         path = Path(source)
-        media_type = _MEDIA_TYPES.get(path.suffix.lower(), "image/jpeg")
         with open(path, "rb") as f:
-            return base64.standard_b64encode(f.read()).decode("utf-8"), media_type
+            raw = f.read()
+        data = self._shrink_for_api(raw)
+        media_type = "image/jpeg" if len(data) != len(raw) else _MEDIA_TYPES.get(path.suffix.lower(), "image/jpeg")
+        return base64.standard_b64encode(data).decode("utf-8"), media_type
 
     def _vision_message(self, source: Union[str, bytes], filename: str, prompt: str) -> str:
         """Send a vision request to Claude and return the response text."""

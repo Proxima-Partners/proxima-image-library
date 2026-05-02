@@ -830,11 +830,44 @@
       </div>
     </section>
 
+    <section class="panel tool-panel" data-workstream="correct" data-title="Folder Ingest">
+      <h1>Folder Ingest</h1>
+      <p class="sub">
+        Scans a local folder (configured via <code>LOCAL_INGEST_FOLDER</code>) and runs the full upload pipeline on any files not already in the library. Deduplication is by filename.
+      </p>
+
+      <div class="controls">
+        <label for="ingest-source">Source</label>
+        <select id="ingest-source">
+          <option value="">Internal (default)</option>
+          <option>ShutterStock</option>
+          <option>AdobeStock</option>
+          <option>Unsplash</option>
+          <option>Pexels</option>
+          <option>Pixabay</option>
+          <option>Internal</option>
+        </select>
+        <label class="check-row">
+          <input id="ingest-dry-run" type="checkbox" checked />
+          Dry run
+        </label>
+        <button id="ingest-run-btn" class="btn">Run Folder Ingest</button>
+      </div>
+
+      <div id="ingest-log" class="log"></div>
+
+      <div id="ingest-summary" class="summary">
+        <h2>Run Summary</h2>
+        <div id="ingest-summary-grid" class="summary-grid"></div>
+        <div id="ingest-file-list" class="orphan-list" style="display:none;"></div>
+      </div>
+    </section>
+
     <section class="panel tool-panel" data-workstream="cleanup" data-title="Record Purge by Status">
       <div class="tool-risk tool-risk-high">Danger Zone</div>
       <h1>Record Purge by Status</h1>
       <p class="sub">
-        Deletes records in bulk by status. Supported statuses are <strong>rejected</strong> and <strong>archived</strong>. Always run preview first to confirm the exact count.
+        Deletes records in bulk by status. Supported statuses are <strong>rejected</strong>, <strong>archived</strong>, and <strong>ingested</strong>. Always run preview first to confirm the exact count.
       </p>
 
       <div class="controls">
@@ -842,6 +875,7 @@
         <select id="purge-status">
           <option value="rejected">rejected</option>
           <option value="archived">archived</option>
+          <option value="ingested">ingested</option>
         </select>
         <label class="check-row">
           <input id="purge-delete-files" type="checkbox" />
@@ -975,6 +1009,14 @@
         <label class="check-row">
           <input id="retag-tags" type="checkbox" checked />
           Regenerate tags
+        </label>
+        <label class="check-row">
+          <input id="retag-missing-alt-only" type="checkbox" />
+          Missing alt text only
+        </label>
+        <label class="check-row">
+          <input id="retag-missing-tags-only" type="checkbox" />
+          Missing tags only
         </label>
         <button id="retag-preview-btn" class="btn">Preview Selection</button>
         <button id="retag-run-btn" class="btn" disabled>Run Bulk Re-Tag</button>
@@ -1170,6 +1212,7 @@
           <option value="delete">Delete extras only</option>
         </select>
         <button id="duplicates-resolve-btn" class="btn btn-danger" disabled>Resolve Group</button>
+        <button id="duplicates-resolve-all-btn" class="btn btn-danger" disabled>Resolve All Groups</button>
       </div>
 
       <div id="duplicates-summary" class="purge-preview">
@@ -1404,6 +1447,14 @@
     const summaryGridEl = document.getElementById('summary-grid');
     const orphanWrapEl = document.getElementById('orphan-wrap');
 
+    const ingestRunBtn = document.getElementById('ingest-run-btn');
+    const ingestSourceSelect = document.getElementById('ingest-source');
+    const ingestDryRunInput = document.getElementById('ingest-dry-run');
+    const ingestLogEl = document.getElementById('ingest-log');
+    const ingestSummaryEl = document.getElementById('ingest-summary');
+    const ingestSummaryGridEl = document.getElementById('ingest-summary-grid');
+    const ingestFileListEl = document.getElementById('ingest-file-list');
+
     const purgeStatusSelect = document.getElementById('purge-status');
     const purgeDeleteFilesInput = document.getElementById('purge-delete-files');
     const purgePreviewBtn = document.getElementById('purge-preview-btn');
@@ -1443,6 +1494,8 @@
     const retagMaxSelect = document.getElementById('retag-max');
     const retagAltInput = document.getElementById('retag-alt');
     const retagTagsInput = document.getElementById('retag-tags');
+    const retagMissingAltOnly = document.getElementById('retag-missing-alt-only');
+    const retagMissingTagsOnly = document.getElementById('retag-missing-tags-only');
     const retagPreviewBtn = document.getElementById('retag-preview-btn');
     const retagRunBtn = document.getElementById('retag-run-btn');
     const retagOpenOrphansBtn = document.getElementById('retag-open-orphans-btn');
@@ -1487,6 +1540,7 @@
     const duplicatesKeepSelect = document.getElementById('duplicates-keep');
     const duplicatesActionSelect = document.getElementById('duplicates-action');
     const duplicatesResolveBtn = document.getElementById('duplicates-resolve-btn');
+    const duplicatesResolveAllBtn = document.getElementById('duplicates-resolve-all-btn');
     const duplicatesSummaryEl = document.getElementById('duplicates-summary');
     const duplicatesResultEl = document.getElementById('duplicates-result');
     const duplicatesListEl = document.getElementById('duplicates-list');
@@ -2063,6 +2117,8 @@
         max_records: retagMaxSelect.value,
         regenerate_alt: String(!!retagAltInput.checked),
         regenerate_tags: String(!!retagTagsInput.checked),
+        missing_alt_only: String(!!retagMissingAltOnly.checked),
+        missing_tags_only: String(!!retagMissingTagsOnly.checked),
       });
     }
 
@@ -2111,6 +2167,7 @@
         emptyOption.textContent = 'No duplicate groups';
         duplicatesGroupSelect.appendChild(emptyOption);
         duplicatesResolveBtn.disabled = true;
+        duplicatesResolveAllBtn.disabled = true;
         return;
       }
 
@@ -2137,6 +2194,7 @@
       });
       duplicatesKeepSelect.value = initialGroup.records[0]?.id || '';
       duplicatesResolveBtn.disabled = !duplicatesKeepSelect.value;
+      duplicatesResolveAllBtn.disabled = !duplicateScanState.groups.length;
     }
 
     function updateKeepSelectorForGroup() {
@@ -2167,7 +2225,10 @@
         `Filename: ${data.filename_group_count}. ` +
         `Slug: ${data.slug_group_count}. ` +
         `Alt exact: ${data.alt_exact_group_count}. ` +
-        `Alt near: ${data.alt_near_group_count}.`;
+        `Alt near: ${data.alt_near_group_count}. ` +
+        `Image stem: ${data.image_stem_group_count ?? 0}. ` +
+        `Alt+tags: ${data.alt_tags_group_count ?? 0}. ` +
+        `Near alt+tags: ${data.near_alt_tags_group_count ?? 0}.`;
 
       duplicatesListEl.innerHTML = '';
       if (!duplicateScanState.groups.length) {
@@ -2286,6 +2347,7 @@
       retagResponseModal.setAttribute('aria-hidden', 'true');
       retagResponseCopy.textContent = '';
       retagResponseCopy.style.color = 'inherit';
+      location.reload();
     }
 
     function showOrphanResponsePopup(title, message, isError = false) {
@@ -2856,6 +2918,97 @@
       };
     });
 
+    let ingestActiveEs = null;
+
+    function ingestAppendLine(text, cls = '') {
+      const div = document.createElement('div');
+      div.textContent = text;
+      if (cls) div.className = cls;
+      ingestLogEl.appendChild(div);
+      ingestLogEl.scrollTop = ingestLogEl.scrollHeight;
+    }
+
+    function ingestRenderSummary(result) {
+      ingestSummaryGridEl.innerHTML = [
+        `Folder: ${result.folder}`,
+        `Source: ${result.source}`,
+        `Total files found: ${result.total_found}`,
+        `New (not in library): ${result.new_files}`,
+        `Already in library (skipped): ${result.skipped}`,
+        `Processed: ${result.processed}`,
+        `Failed: ${result.failed}`,
+        result.dry_run ? `Mode: Dry run` : `Mode: Live`,
+      ].map(v => `<div>${v}</div>`).join('');
+
+      if (result.dry_run && result.filenames && result.filenames.length) {
+        ingestFileListEl.style.display = '';
+        ingestFileListEl.innerHTML = '<strong>Files that would be ingested:</strong><br>' +
+          result.filenames.map(f => `<div>${f}</div>`).join('');
+      } else {
+        ingestFileListEl.style.display = 'none';
+      }
+
+      ingestSummaryEl.style.display = '';
+    }
+
+    ingestRunBtn.addEventListener('click', () => {
+      if (ingestActiveEs) {
+        ingestActiveEs.close();
+        ingestActiveEs = null;
+      }
+      ingestRunBtn.disabled = true;
+      ingestLogEl.innerHTML = '';
+      ingestSummaryEl.style.display = 'none';
+      ingestSummaryGridEl.innerHTML = '';
+      ingestFileListEl.style.display = 'none';
+      ingestFileListEl.innerHTML = '';
+      ingestAppendLine('Starting folder ingest...');
+
+      const params = new URLSearchParams();
+      const src = ingestSourceSelect.value.trim();
+      if (src) params.set('source', src);
+      if (ingestDryRunInput.checked) params.set('dry_run', 'true');
+      params.set('csrf_token', window.PROXIMA_CSRF_TOKEN);
+
+      const es = new EventSource(`/api/maintenance/folder-ingest?${params.toString()}`);
+      ingestActiveEs = es;
+
+      es.onmessage = (e) => {
+        const msg = e.data;
+        if (msg === '[START]') return;
+        if (msg === '[DONE]') {
+          ingestAppendLine('Completed.');
+          ingestRunBtn.disabled = false;
+          es.close();
+          ingestActiveEs = null;
+          return;
+        }
+        if (msg.startsWith('[RESULT] ')) {
+          try {
+            ingestRenderSummary(JSON.parse(msg.slice(9)));
+          } catch (_) {
+            ingestAppendLine('Could not parse result payload.', 'line-err');
+          }
+          return;
+        }
+        if (msg.startsWith('[ERROR]')) {
+          ingestAppendLine(msg, 'line-err');
+          ingestRunBtn.disabled = false;
+          es.close();
+          ingestActiveEs = null;
+          return;
+        }
+        ingestAppendLine(msg);
+      };
+
+      es.onerror = () => {
+        ingestAppendLine('Stream connection lost.', 'line-err');
+        ingestRunBtn.disabled = false;
+        es.close();
+        ingestActiveEs = null;
+      };
+    });
+
     purgeStatusSelect.addEventListener('change', resetPurgeState);
     purgeDeleteFilesInput.addEventListener('change', resetPurgeState);
 
@@ -2964,11 +3117,11 @@
         }
 
         renderPurgeResult(data);
-        setPurgePreview('Purge complete. Run preview again before any additional purge.', false);
+        setPurgePreview('Purge complete. Reloading...', false);
         purgeRunBtn.disabled = true;
         purgePreviewState = null;
-        refreshHubMetrics();
         closePurgeModal();
+        setTimeout(() => location.reload(), 1200);
       } catch (err) {
         renderPurgeResult({
           matched_records: '-',
@@ -3519,6 +3672,50 @@
         duplicatesResultEl.classList.add('line-err');
         duplicatesResultEl.textContent = err.message || 'Duplicate resolve failed.';
         duplicatesResolveBtn.disabled = false;
+      }
+    });
+
+    duplicatesResolveAllBtn.addEventListener('click', async () => {
+      const groupCount = duplicateScanState.groups.length;
+      if (!groupCount) return;
+
+      if (!(await confirmPurge(`${duplicatesActionSelect.value} all ${groupCount} duplicate group(s) at once. Keepers are chosen automatically (record with a location is preferred). This cannot be undone.`))) {
+        return;
+      }
+
+      duplicatesResolveAllBtn.disabled = true;
+      duplicatesResolveBtn.disabled = true;
+      setPurgeModalWorking('Resolving all duplicate groups…');
+
+      try {
+        const resp = await fetch('/api/maintenance/duplicates/resolve-all', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: duplicatesActionSelect.value,
+            confirm_token: 'PURGE',
+            approval_token: getActiveApprovalToken(),
+            limit: duplicateScanState.groups.length,
+          }),
+        });
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.error || 'Bulk resolve failed.');
+
+        setPurgeModalResult(
+          `Done. Groups processed: ${data.groups_processed}. Deleted: ${data.total_deleted}. Failed: ${data.total_failed}. Skipped: ${data.groups_skipped}.`,
+          false,
+        );
+        duplicatesResultEl.classList.remove('line-err');
+        duplicatesResultEl.textContent =
+          `Bulk resolve complete. Action=${data.action}. Processed=${data.groups_processed}. Deleted=${data.total_deleted}. Failed=${data.total_failed}.`;
+        await runDuplicateScan();
+        refreshHubMetrics();
+        closePurgeModal();
+      } catch (err) {
+        setPurgeModalResult(err.message || 'Bulk resolve failed.', true);
+        duplicatesResultEl.classList.add('line-err');
+        duplicatesResultEl.textContent = err.message || 'Bulk resolve failed.';
+        duplicatesResolveAllBtn.disabled = false;
       }
     });
 
