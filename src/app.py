@@ -66,6 +66,9 @@ _RATE_LIMIT_RULES = {
     "/api/catalog-stock": (Config.RATE_LIMIT_STREAM_REQUESTS, Config.RATE_LIMIT_WINDOW_SECONDS),
     "/api/mcp/catalog-stock": (Config.RATE_LIMIT_STREAM_REQUESTS * 2, Config.RATE_LIMIT_WINDOW_SECONDS),
     "/api/mcp/catalog-from-file": (Config.RATE_LIMIT_STREAM_REQUESTS * 2, Config.RATE_LIMIT_WINDOW_SECONDS),
+    "/api/mcp/claude-article": (Config.RATE_LIMIT_STREAM_REQUESTS * 2, Config.RATE_LIMIT_WINDOW_SECONDS),
+    "/api/mcp/claude-article-auto": (Config.RATE_LIMIT_STREAM_REQUESTS * 2, Config.RATE_LIMIT_WINDOW_SECONDS),
+    "/api/mcp/stock-search": (Config.RATE_LIMIT_AUTH_REQUESTS, Config.RATE_LIMIT_WINDOW_SECONDS),
 }
 _RATE_LIMIT_LOCK = threading.Lock()
 _rate_limit_state: dict[tuple[str, str], list[float]] = {}
@@ -478,6 +481,17 @@ def health():
     return jsonify({"status": "ok"})
 
 
+@app.route("/api/version")
+def api_version():
+    import subprocess
+    try:
+        sha = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+        short = sha[:7]
+    except Exception:
+        sha, short = "unknown", "unknown"
+    return jsonify({"commit": sha, "short": short})
+
+
 @app.route("/")
 @app.route("/library")
 @login_required
@@ -611,12 +625,13 @@ def api_stock_search():
     data = request.get_json(force=True)
     phrases = data.get("phrases", [])
     limit = max(1, min(int(data.get("limit", 25)), 25))
+    page = max(1, min(int(data.get("page", 1)), 100))
     if not phrases:
         return jsonify({"error": "No phrases provided"}), 400
     phrases = phrases[:20]
     from src.stock_client import search_all_libraries
-    results = search_all_libraries(phrases, limit)
-    return jsonify({"results": results})
+    results = search_all_libraries(phrases, limit, page)
+    return jsonify({"results": results, "page": page, "limit": limit})
 
 
 _DOWNLOAD_ALLOWED_DOMAINS = {
@@ -948,6 +963,408 @@ def api_mcp_catalog_from_file():
         return jsonify({"error": "Internal server error"}), 500
 
 
+@app.route("/api/mcp/claude-article", methods=["POST"])
+def api_mcp_claude_article():
+    """Internal endpoint for Claude article automation.
+
+    Accepts Claude output, extracts photo phrases, and optionally runs stock search.
+    Protected by X-MCP-Secret header instead of MSAL session auth.
+    """
+    secret = Config.MCP_INTERNAL_SECRET
+    if not secret or request.headers.get("X-MCP-Secret") != secret:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    data = request.get_json(force=True) or {}
+
+    article_title = str(data.get("article_title", "") or "").strip()
+    article_body = str(data.get("article_body", "") or "").strip()
+    raw_suggestions = data.get("photo_suggestions", [])
+    include_search = bool(data.get("include_search", True))
+    try:
+        search_limit = max(1, min(int(data.get("search_limit", 8)), 25))
+    except (TypeError, ValueError):
+        return jsonify({"error": "search_limit must be an integer"}), 400
+
+    if raw_suggestions and not isinstance(raw_suggestions, list):
+        return jsonify({"error": "photo_suggestions must be an array of strings"}), 400
+
+    phrases: list[str] = []
+    if isinstance(raw_suggestions, list):
+        phrases = [str(p).strip() for p in raw_suggestions if str(p).strip()]
+
+    if not phrases:
+        from src.stock_client import parse_photo_suggestions
+
+        parse_source = article_body or str(data.get("content", "") or "").strip()
+        if not parse_source:
+            return jsonify({"error": "Provide article_body/content or photo_suggestions"}), 400
+        phrases = parse_photo_suggestions(parse_source)
+
+    phrases = phrases[:20]
+    if not phrases:
+        return jsonify({"error": "No usable photo phrases found"}), 400
+
+    response_payload = {
+        "article_title": article_title,
+        "phrase_count": len(phrases),
+        "phrases": phrases,
+        "search_included": include_search,
+        "search_limit": search_limit,
+    }
+
+    if include_search:
+        from src.stock_client import search_all_libraries
+
+        search_results = search_all_libraries(phrases, limit=search_limit, page=1)
+        response_payload["results"] = search_results
+
+    response_payload["next_actions"] = {
+        "catalog_stock_endpoint": "/api/mcp/catalog-stock",
+        "catalog_file_endpoint": "/api/mcp/catalog-from-file",
+    }
+
+    return jsonify(response_payload)
+
+
+@app.route("/api/mcp/claude-article-auto", methods=["POST"])
+def api_mcp_claude_article_auto():
+    """Internal one-call automation endpoint for Claude article workflows.
+
+    approval_mode:
+      - manual: extract/search and return shortlisted candidates only
+      - auto: extract/search + catalog candidates directly
+    """
+    secret = Config.MCP_INTERNAL_SECRET
+    if not secret or request.headers.get("X-MCP-Secret") != secret:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    data = request.get_json(force=True) or {}
+
+    article_title = str(data.get("article_title", "") or "").strip()
+    article_body = str(data.get("article_body", "") or "").strip()
+    raw_suggestions = data.get("photo_suggestions", [])
+    approval_mode = str(data.get("approval_mode", "manual") or "manual").strip().lower()
+    preferred_libraries = data.get("preferred_libraries", ["pexels", "unsplash", "pixabay", "shutterstock"])
+
+    if approval_mode not in {"manual", "auto"}:
+        return jsonify({"error": "approval_mode must be manual or auto"}), 400
+    if preferred_libraries and not isinstance(preferred_libraries, list):
+        return jsonify({"error": "preferred_libraries must be an array"}), 400
+
+    try:
+        search_limit = max(1, min(int(data.get("search_limit", 8)), 25))
+        max_catalog_items = max(1, min(int(data.get("max_catalog_items", 5)), 20))
+    except (TypeError, ValueError):
+        return jsonify({"error": "search_limit and max_catalog_items must be integers"}), 400
+
+    category = str(data.get("category", "") or "").strip() or None
+    from src.image_processor import CATEGORIES
+    if category is not None and category not in CATEGORIES:
+        return jsonify({"error": f"Invalid category. Must be one of: {CATEGORIES}"}), 400
+
+    if raw_suggestions and not isinstance(raw_suggestions, list):
+        return jsonify({"error": "photo_suggestions must be an array of strings"}), 400
+
+    phrases: list[str] = []
+    if isinstance(raw_suggestions, list):
+        phrases = [str(p).strip() for p in raw_suggestions if str(p).strip()]
+
+    if not phrases:
+        from src.stock_client import parse_photo_suggestions
+
+        parse_source = article_body or str(data.get("content", "") or "").strip()
+        if not parse_source:
+            return jsonify({"error": "Provide article_body/content or photo_suggestions"}), 400
+        phrases = parse_photo_suggestions(parse_source)
+
+    phrases = phrases[:20]
+    if not phrases:
+        return jsonify({"error": "No usable photo phrases found"}), 400
+
+    from src.stock_client import search_all_libraries
+
+    search_results = search_all_libraries(phrases, limit=search_limit, page=1)
+    library_order = [str(x).strip().lower() for x in preferred_libraries if str(x).strip()]
+    if not library_order:
+        library_order = ["pexels", "unsplash", "pixabay", "shutterstock"]
+
+    def _safe_filename_from(download_url: str, title: str, phrase: str) -> str:
+        title_base = re.sub(r"[^a-zA-Z0-9\s-]+", "", title or "").strip()
+        if not title_base:
+            title_base = phrase or "image"
+        title_base = re.sub(r"\s+", "-", title_base)[:60].strip("-") or "image"
+        ext = ".jpg"
+        match = re.search(r"\.(jpe?g|png|gif|webp)(?:\?|$)", download_url or "", re.IGNORECASE)
+        if match:
+            ext = "." + match.group(1).lower().replace("jpeg", "jpg")
+        return f"{title_base}{ext}"
+
+    shortlisted: list[dict] = []
+    for group in search_results:
+        phrase = str(group.get("phrase", "") or "").strip()
+        if not phrase:
+            continue
+
+        # Collect the best image from each available library for this phrase
+        phrase_images = []
+        for lib in library_order:
+            lib_data = group.get(lib) if isinstance(group, dict) else None
+            if not isinstance(lib_data, dict):
+                continue
+            items = lib_data.get("results", [])
+            if not isinstance(items, list) or not items:
+                continue
+
+            # Get the first valid image from this library
+            for item in items:
+                download_url = str(item.get("download_url", "") or "").strip()
+                if not download_url:
+                    # Shutterstock entries generally do not provide a direct download URL.
+                    continue
+                title = str(item.get("title", "") or "").strip()
+                tags_val = item.get("tags", [])
+                tags = [str(t).strip() for t in tags_val if str(t).strip()] if isinstance(tags_val, list) else []
+                photographer = str(item.get("photographer", "") or "").strip()
+                picked = {
+                    "phrase": phrase,
+                    "library": lib,
+                    "download_url": download_url,
+                    "title": title,
+                    "tags": tags,
+                    "photographer": photographer,
+                    "filename": _safe_filename_from(download_url, title, phrase),
+                }
+                phrase_images.append(picked)
+                break  # Only take first valid image from this library
+
+        # Add all collected images to shortlist (provides library diversity)
+        shortlisted.extend(phrase_images)
+
+    payload = {
+        "article_title": article_title,
+        "approval_mode": approval_mode,
+        "phrase_count": len(phrases),
+        "phrases": phrases,
+        "search_limit": search_limit,
+        "shortlisted_count": len(shortlisted),
+        "shortlisted": shortlisted,
+    }
+
+    if approval_mode == "manual":
+        # Build a full preview URL so Claude can give the user a clickable link
+        base_url = request.host_url.rstrip("/")
+        preview_endpoint = "/api/mcp/preview"
+        preview_url = f"{base_url}{preview_endpoint}"
+
+        payload["next_actions"] = {
+            "preview_endpoint": preview_endpoint,
+            "preview_url": preview_url,
+            "hint": (
+                "DO NOT try to render the images inline — stock photo CDN URLs are blocked "
+                "by Claude's sandbox CSP. Instead, give the user a clickable markdown link "
+                f"to open the gallery in their browser: [Open Image Gallery]({preview_url}) "
+                "and instruct them to POST preview_data to that URL, or call the endpoint "
+                "yourself using the fetch/HTTP tool and return the resulting HTML URL."
+            ),
+        }
+        # Include the full payload needed for preview rendering
+        payload["preview_data"] = {
+            "article_title": article_title,
+            "phrases": phrases,
+            "shortlisted": shortlisted,
+        }
+        return jsonify(payload)
+
+    # approval_mode == auto: process shortlisted candidates immediately
+    from src.image_processor import process_image
+    from src.ai_generator import AltTextGenerator
+
+    if Config.TEST_MODE:
+        list_client = LocalClient()
+        sp_client = None
+        storage_mode = "local"
+    else:
+        from src.sharepoint_list_client import SharePointListClient
+        from src.sharepoint_client import SharePointClient
+
+        list_client = SharePointListClient()
+        sp_client = SharePointClient()
+        storage_mode = "sharepoint"
+
+    generator = AltTextGenerator()
+    cataloged = []
+    failures = []
+
+    for candidate in shortlisted[:max_catalog_items]:
+        try:
+            download_url = candidate["download_url"]
+            domain = urlparse(download_url).netloc.lower()
+            if not any(domain == d or domain.endswith("." + d) for d in _DOWNLOAD_ALLOWED_DOMAINS):
+                raise ValueError("URL not permitted")
+
+            file_bytes = _download_limited_bytes(download_url, timeout=30)
+            _validate_image_payload(file_bytes, candidate["filename"])
+
+            source_context = _stock_source_context(
+                candidate.get("library", ""),
+                candidate.get("title", ""),
+                candidate.get("tags", []),
+                candidate.get("photographer", ""),
+            )
+
+            result = process_image(
+                file_bytes=file_bytes,
+                original_filename=candidate["filename"],
+                generator=generator,
+                list_client=list_client,
+                sp_client=sp_client,
+                image_folder=Config.IMAGE_FOLDER,
+                storage_mode=storage_mode,
+                category=category,
+                source_context=source_context or None,
+                source=candidate.get("library", ""),
+            )
+            cataloged.append({
+                "phrase": candidate.get("phrase", ""),
+                "library": candidate.get("library", ""),
+                "download_url": download_url,
+                "result": result,
+            })
+        except Exception as exc:
+            failures.append({
+                "phrase": candidate.get("phrase", ""),
+                "library": candidate.get("library", ""),
+                "download_url": candidate.get("download_url", ""),
+                "error": str(exc),
+            })
+
+    payload["auto_catalog"] = {
+        "requested_max_catalog_items": max_catalog_items,
+        "processed_count": min(len(shortlisted), max_catalog_items),
+        "cataloged_count": len(cataloged),
+        "failure_count": len(failures),
+        "cataloged": cataloged,
+        "failures": failures,
+    }
+    return jsonify(payload)
+
+
+@app.route("/api/mcp/stock-search", methods=["POST"])
+def api_mcp_stock_search():
+    """MCP endpoint: search stock libraries by phrase list.
+
+    Same results format as /api/stock-search but authenticated via X-MCP-Secret
+    so Claude.ai skills can call it directly without a browser session.
+    """
+    secret = Config.MCP_INTERNAL_SECRET
+    if not secret or request.headers.get("X-MCP-Secret") != secret:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    data = request.get_json(force=True) or {}
+    phrases = data.get("phrases", [])
+    if not isinstance(phrases, list):
+        return jsonify({"error": "phrases must be an array of strings"}), 400
+    phrases = [str(p).strip() for p in phrases if str(p).strip()][:20]
+    if not phrases:
+        return jsonify({"error": "At least one phrase required"}), 400
+
+    try:
+        limit = max(1, min(int(data.get("limit", 8)), 25))
+        page = max(1, min(int(data.get("page", 1)), 100))
+    except (TypeError, ValueError):
+        return jsonify({"error": "limit and page must be integers"}), 400
+
+    from src.stock_client import search_all_libraries
+    results = search_all_libraries(phrases, limit=limit, page=page)
+    return jsonify({"results": results, "page": page, "limit": limit})
+
+
+@app.route("/api/mcp/preview", methods=["POST", "GET"])
+def api_mcp_preview():
+    """Interactive preview endpoint for Claude article workflows.
+    
+    Takes shortlisted results and renders an interactive gallery for
+    selection/approval before cataloging to SharePoint.
+    
+    This endpoint serves HTML (not JSON) to display the preview UI
+    in a browser or Claude.ai rendering context.
+    
+    Accepts both POST (JSON body) and GET (query params) for flexibility.
+    """
+    import base64
+    
+    secret = Config.MCP_INTERNAL_SECRET
+    provided = (
+        request.headers.get("X-MCP-Secret")
+        or request.args.get("secret")
+        or request.form.get("secret")
+    )
+    if not secret or provided != secret:
+        return jsonify({"error": "Unauthorized"}), 401
+    
+    # Support both POST (JSON) and GET (query params or form data)
+    if request.method == "POST":
+        data = request.get_json(force=True) or {}
+    else:
+        # GET request: try to decode from query param or form data
+        encoded_data = request.args.get("data") or request.form.get("data")
+        if encoded_data:
+            try:
+                data = json.loads(base64.b64decode(encoded_data).decode())
+            except Exception:
+                data = {}
+        else:
+            # Fall back to individual query parameters
+            data = {
+                "article_title": request.args.get("article_title", "Preview Gallery"),
+                "shortlisted": json.loads(request.args.get("shortlisted", "[]")),
+                "phrases": json.loads(request.args.get("phrases", "[]")),
+            }
+    
+    # Extract preview parameters from request
+    article_title = str(data.get("article_title", "Preview Gallery") or "Preview Gallery").strip()
+    shortlisted = data.get("shortlisted", [])
+    phrases = data.get("phrases", [])
+    
+    if not isinstance(shortlisted, list):
+        return jsonify({"error": "shortlisted must be an array"}), 400
+    
+    if not shortlisted:
+        return render_template("mcp_preview.html", 
+                             article_title=article_title,
+                             images=[],
+                             phrases=[],
+                             empty=True)
+    
+    # Prepare images for gallery display
+    images = []
+    for idx, item in enumerate(shortlisted):
+        if not isinstance(item, dict):
+            continue
+        
+        download_url = str(item.get("download_url", "")).strip()
+        if not download_url:
+            continue
+        
+        images.append({
+            "id": f"img_{idx}",
+            "index": idx,
+            "download_url": download_url,
+            "title": str(item.get("title", "") or "").strip() or "Untitled",
+            "filename": str(item.get("filename", "") or "").strip() or "image.jpg",
+            "library": str(item.get("library", "") or "").strip() or "stock",
+            "photographer": str(item.get("photographer", "") or "").strip(),
+            "phrase": str(item.get("phrase", "") or "").strip(),
+            "tags": item.get("tags", []) if isinstance(item.get("tags", []), list) else [],
+        })
+    
+    return render_template("mcp_preview.html",
+                         article_title=article_title,
+                         images=images,
+                         phrases=phrases,
+                         empty=len(images) == 0)
+
+
 @app.route("/api/download-image")
 @login_required
 def api_download_image():
@@ -1265,7 +1682,9 @@ def tag_manager():
 @app.route("/maintenance")
 @login_required
 def maintenance():
-    return render_template("maintenance.html", user=session.get("user", {}))
+    user = session.get("user", {})
+    is_admin = _is_maintenance_admin_user(user)
+    return render_template("maintenance.html", user=user, is_admin=is_admin)
 
 
 _MAINTENANCE_PURGE_STATUSES = {"rejected", "archived"}
@@ -4973,4 +5392,4 @@ def api_ss_track():
 
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5001)
+    app.run(debug=True, port=5000)
