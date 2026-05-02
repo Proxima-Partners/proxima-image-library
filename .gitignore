@@ -18,6 +18,8 @@ env/
 sync_log.txt
 rename_map.csv
 maintenance_state.json
+test_preview_output.html
+.claude/
 test_data/maintenance_checkpoints/
 test_data/t1_last_report.json
 test_data/t1_ci_report.json

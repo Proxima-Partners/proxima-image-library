@@ -1,0 +1,692 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Image Selection Preview — Proxima</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Montserrat:wght@600;700;800&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #f5f5f5;
+      --surface: #ffffff;
+      --border: #e0e0e0;
+      --accent: #05718D;
+      --accent-hover: #045f77;
+      --text: #111827;
+      --muted: #6b7280;
+      --radius: 8px;
+      --shadow: 0 1px 3px rgba(0,0,0,0.12);
+      --pexels-color: #05a081;
+      --shutterstock-color: #e81c28;
+      --unsplash-color: #111111;
+      --pixabay-color: #2ec66e;
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    /* ── Header ── */
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 14px 32px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      box-shadow: var(--shadow);
+    }
+    header h1 { font-family: 'Montserrat', sans-serif; font-size: 17px; font-weight: 700; letter-spacing: -0.3px; color: #05718D; }
+    .breadcrumb {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      color: var(--muted);
+      margin-left: auto;
+    }
+
+    /* ── Main panel ── */
+    .main-panel {
+      max-width: 960px;
+      margin: 32px auto;
+      padding: 32px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+    }
+
+    .main-panel h2 {
+      font-family: 'Montserrat', sans-serif;
+      font-size: 20px;
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+
+    .subtitle {
+      font-size: 13px;
+      color: var(--muted);
+      margin-bottom: 24px;
+      line-height: 1.5;
+    }
+
+    /* ── Empty state ── */
+    .empty-state {
+      text-align: center;
+      padding: 60px 24px;
+    }
+
+    .empty-icon {
+      font-size: 48px;
+      margin-bottom: 16px;
+    }
+
+    .empty-msg {
+      font-size: 14px;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+
+    /* ── Gallery grid ── */
+    .gallery {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 16px;
+      margin-bottom: 28px;
+    }
+
+    .image-tile {
+      position: relative;
+      border: 1.5px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+      background: #f9fafb;
+      transition: border-color 0.15s, box-shadow 0.15s;
+      cursor: pointer;
+    }
+
+    .image-tile:hover {
+      border-color: var(--accent);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.10);
+    }
+
+    .image-tile input[type="checkbox"] {
+      position: absolute;
+      top: 8px;
+      left: 8px;
+      width: 18px;
+      height: 18px;
+      cursor: pointer;
+      z-index: 10;
+      accent-color: var(--accent);
+    }
+
+    .image-container {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 3/2;
+      overflow: hidden;
+      background: #f3f4f6;
+    }
+
+    .image-container img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    .image-meta {
+      padding: 10px;
+      font-size: 12px;
+      line-height: 1.4;
+    }
+
+    .image-title {
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 4px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .image-phrase {
+      color: var(--accent);
+      font-size: 11px;
+      font-weight: 500;
+      margin-bottom: 2px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .image-photographer {
+      color: var(--muted);
+      font-size: 11px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .library-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      color: #fff;
+      margin-top: 4px;
+    }
+
+    .library-badge.pexels { background: var(--pexels-color); }
+    .library-badge.unsplash { background: var(--unsplash-color); }
+    .library-badge.pixabay { background: var(--pixabay-color); }
+    .library-badge.shutterstock { background: var(--shutterstock-color); }
+
+    /* ── Controls ── */
+    .controls {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 20px;
+      padding-bottom: 20px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .select-all-label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 14px;
+      cursor: pointer;
+    }
+
+    .select-all-label input[type="checkbox"] {
+      width: 16px;
+      height: 16px;
+      accent-color: var(--accent);
+    }
+
+    .counter {
+      font-size: 13px;
+      color: var(--muted);
+      margin-left: auto;
+    }
+
+    /* ── Buttons ── */
+    .btn-group {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .btn {
+      padding: 10px 24px;
+      border-radius: 20px;
+      border: none;
+      background: var(--accent);
+      color: #fff;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+      font-family: inherit;
+    }
+
+    .btn:hover { background: var(--accent-hover); }
+    .btn:disabled { background: #7ab8c8; cursor: not-allowed; }
+
+    .btn-outline {
+      padding: 9px 20px;
+      border-radius: 20px;
+      border: 1.5px solid var(--border);
+      background: var(--surface);
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: border-color 0.15s, color 0.15s;
+      font-family: inherit;
+    }
+
+    .btn-outline:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    /* ── Phrase chips ── */
+    .phrases-section {
+      margin-top: 28px;
+      padding-top: 20px;
+      border-top: 1px solid var(--border);
+    }
+
+    .phrases-section h3 {
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 12px;
+      color: var(--text);
+    }
+
+    .chip-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      padding: 6px 12px;
+      background: #e6f4f8;
+      color: #045f77;
+      border-radius: 20px;
+      font-size: 13px;
+      font-weight: 500;
+    }
+
+    /* ── Loading ── */
+    .loading-wrap {
+      text-align: center;
+      padding: 60px 24px;
+    }
+
+    .spinner {
+      width: 36px;
+      height: 36px;
+      border: 3px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin: 0 auto 16px;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .loading-msg {
+      font-size: 14px;
+      color: var(--muted);
+    }
+
+    /* ── Toast notification ── */
+    #toast {
+      position: fixed;
+      right: 20px;
+      bottom: 20px;
+      z-index: 1400;
+      background: #111827;
+      color: #fff;
+      border-radius: 10px;
+      padding: 12px 16px;
+      font-size: 13px;
+      box-shadow: 0 10px 24px rgba(0, 0, 0, 0.28);
+      opacity: 0;
+      transform: translateY(6px);
+      pointer-events: none;
+      transition: opacity 0.2s ease, transform 0.2s ease;
+    }
+
+    #toast.active {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    /* ── Modal ── */
+    #catalog-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.5);
+      z-index: 1100;
+      display: none;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #catalog-overlay.active { display: flex; }
+
+    #catalog-modal {
+      background: #fff;
+      border-radius: 10px;
+      padding: 24px;
+      max-width: 420px;
+      width: 100%;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+    }
+
+    #catalog-header {
+      font-size: 16px;
+      font-weight: 700;
+      color: #111;
+      margin-bottom: 10px;
+      font-family: 'Montserrat', sans-serif;
+    }
+
+    #catalog-status {
+      margin-bottom: 12px;
+    }
+
+    #catalog-status-text {
+      font-size: 12px;
+      color: #6b7280;
+      margin-bottom: 8px;
+    }
+
+    #catalog-status-bar {
+      height: 8px;
+      border-radius: 999px;
+      background: #e5e7eb;
+      overflow: hidden;
+    }
+
+    #catalog-status-fill {
+      height: 100%;
+      width: 0%;
+      border-radius: 999px;
+      background: linear-gradient(90deg, #05718D, #2ea0ba);
+      transition: width 0.25s ease;
+    }
+
+    #catalog-log {
+      font-size: 13px;
+      color: #374151;
+      line-height: 1.7;
+      min-height: 60px;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+
+    #catalog-log .err { color: #dc2626; }
+
+    #catalog-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      margin-top: 16px;
+    }
+
+    .catalog-cancel {
+      padding: 8px 20px;
+      border-radius: 20px;
+      border: 1.5px solid var(--border);
+      background: #fff;
+      color: #374151;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+    }
+
+    .catalog-cancel:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    .catalog-confirm {
+      padding: 8px 20px;
+      border-radius: 20px;
+      border: none;
+      background: var(--accent);
+      color: #fff;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+    }
+
+    .catalog-confirm:hover { background: var(--accent-hover); }
+  </style>
+</head>
+<body>
+
+  <div id="toast" aria-live="polite"></div>
+
+  <!-- Cataloging progress modal -->
+  <div id="catalog-overlay">
+    <div id="catalog-modal">
+      <div id="catalog-header">Cataloging Images…</div>
+      <div id="catalog-status">
+        <div id="catalog-status-text">Preparing download…</div>
+        <div id="catalog-status-bar"><div id="catalog-status-fill"></div></div>
+      </div>
+      <div id="catalog-log"></div>
+      <div id="catalog-actions">
+        <button class="catalog-cancel" id="catalog-cancel" type="button">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <header>
+    <h1>Image Selection Preview</h1>
+    <div class="breadcrumb">
+      <span style="color: var(--muted);">Article: <strong>{{ article_title }}</strong></span>
+    </div>
+  </header>
+
+  <div class="main-panel">
+    {% if empty %}
+      <div class="empty-state">
+        <div class="empty-icon">📷</div>
+        <div class="empty-msg">
+          <p>No images found for preview.</p>
+          <p style="margin-top: 8px; font-size: 12px;">Check your article content and try again.</p>
+        </div>
+      </div>
+    {% else %}
+      <h2>Select Images to Catalog</h2>
+      <p class="subtitle">
+        Choose which images you'd like to add to the library. Selected images will be cataloged with AI-generated alt text.
+      </p>
+
+      <div class="controls">
+        <label class="select-all-label">
+          <input type="checkbox" id="select-all" />
+          Select All
+        </label>
+        <div class="counter" id="counter">0 selected</div>
+        <div style="margin-left: auto; display: flex; gap: 10px;">
+          <button class="btn" id="catalog-btn" type="button" disabled>
+            Catalog Selected
+          </button>
+        </div>
+      </div>
+
+      <div class="gallery" id="gallery">
+        {% for image in images %}
+          <div class="image-tile" data-image-id="{{ image.id }}" data-index="{{ image.index }}">
+            <input type="checkbox" class="image-checkbox" data-index="{{ image.index }}" />
+            <div class="image-container">
+              <img src="{{ image.download_url }}" alt="{{ image.title }}" loading="lazy" />
+            </div>
+            <div class="image-meta">
+              <div class="image-phrase">{{ image.phrase }}</div>
+              <div class="image-title" title="{{ image.title }}">{{ image.title }}</div>
+              {% if image.photographer %}
+                <div class="image-photographer" title="{{ image.photographer }}">by {{ image.photographer }}</div>
+              {% endif %}
+              <div class="library-badge {{ image.library }}">{{ image.library }}</div>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+
+      {% if phrases %}
+        <div class="phrases-section">
+          <h3>Search Phrases</h3>
+          <div class="chip-grid">
+            {% for phrase in phrases %}
+              <div class="chip">{{ phrase }}</div>
+            {% endfor %}
+          </div>
+        </div>
+      {% endif %}
+    {% endif %}
+  </div>
+
+  <script>
+    window.PROXIMA_CSRF_TOKEN = {{ csrf_token|tojson }};
+
+    // ── State ────────────────────────────────────────────────────────────
+    const images = {{ images|tojson }};
+    let selectedIndices = new Set();
+
+    // ── Initialize ───────────────────────────────────────────────────────
+    function init() {
+      updateCounter();
+      attachCheckboxListeners();
+      document.getElementById('select-all').addEventListener('change', handleSelectAll);
+      document.getElementById('catalog-btn').addEventListener('click', handleCatalog);
+      document.getElementById('catalog-cancel').addEventListener('click', closeCatalogModal);
+    }
+
+    // ── Checkbox handling ────────────────────────────────────────────────
+    function attachCheckboxListeners() {
+      document.querySelectorAll('.image-checkbox').forEach(checkbox => {
+        checkbox.addEventListener('change', (e) => {
+          const index = parseInt(e.target.dataset.index);
+          if (e.target.checked) {
+            selectedIndices.add(index);
+          } else {
+            selectedIndices.delete(index);
+          }
+          updateCounter();
+          updateSelectAll();
+        });
+      });
+    }
+
+    function handleSelectAll(e) {
+      if (e.target.checked) {
+        document.querySelectorAll('.image-checkbox').forEach(checkbox => {
+          checkbox.checked = true;
+          selectedIndices.add(parseInt(checkbox.dataset.index));
+        });
+      } else {
+        document.querySelectorAll('.image-checkbox').forEach(checkbox => {
+          checkbox.checked = false;
+        });
+        selectedIndices.clear();
+      }
+      updateCounter();
+    }
+
+    function updateSelectAll() {
+      const total = document.querySelectorAll('.image-checkbox').length;
+      const checked = document.querySelectorAll('.image-checkbox:checked').length;
+      const selectAllCheckbox = document.getElementById('select-all');
+      selectAllCheckbox.checked = checked === total && total > 0;
+    }
+
+    function updateCounter() {
+      const count = selectedIndices.size;
+      document.getElementById('counter').textContent = `${count} selected`;
+      document.getElementById('catalog-btn').disabled = count === 0;
+    }
+
+    // ── Catalog workflow ─────────────────────────────────────────────────
+    function handleCatalog() {
+      if (selectedIndices.size === 0) {
+        showToast('Please select at least one image');
+        return;
+      }
+
+      const selectedImages = Array.from(selectedIndices)
+        .map(idx => images[idx])
+        .filter(img => !!img);
+
+      if (selectedImages.length === 0) {
+        showToast('No valid images selected');
+        return;
+      }
+
+      openCatalogModal();
+      catalogImages(selectedImages);
+    }
+
+    async function catalogImages(imagesToCatalog) {
+      const logEl = document.getElementById('catalog-log');
+      const statusFillEl = document.getElementById('catalog-status-fill');
+      logEl.innerHTML = '';
+
+      for (let i = 0; i < imagesToCatalog.length; i++) {
+        const image = imagesToCatalog[i];
+        const progress = ((i + 1) / imagesToCatalog.length) * 100;
+
+        try {
+          logEl.innerHTML += `<div>📥 Cataloging: <strong>${image.title}</strong>…</div>`;
+          logEl.scrollTop = logEl.scrollHeight;
+
+          const response = await fetch('/api/mcp/catalog-stock', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-MCP-Secret': '{{ mcp_secret|default("") }}',
+            },
+            body: JSON.stringify({
+              download_url: image.download_url,
+              filename: image.filename,
+              title: image.title,
+              tags: image.tags,
+              photographer: image.photographer,
+              source: image.library,
+            }),
+          });
+
+          if (!response.ok) {
+            const error = await response.json();
+            logEl.innerHTML += `<div class="err">❌ Failed: ${error.error || 'Unknown error'}</div>`;
+          } else {
+            const result = await response.json();
+            logEl.innerHTML += `<div>✅ Success: Added to <strong>${result.location || 'Library'}</strong></div>`;
+          }
+
+          statusFillEl.style.width = progress + '%';
+          logEl.scrollTop = logEl.scrollHeight;
+        } catch (err) {
+          logEl.innerHTML += `<div class="err">❌ Error: ${err.message}</div>`;
+          logEl.scrollTop = logEl.scrollHeight;
+        }
+      }
+
+      statusFillEl.style.width = '100%';
+      logEl.innerHTML += `<div style="margin-top: 8px; font-weight: 600;">✨ All done! ${imagesToCatalog.length} image(s) cataloged.</div>`;
+      document.getElementById('catalog-actions').innerHTML = '<button class="catalog-confirm" onclick="location.reload()">Close</button>';
+    }
+
+    function openCatalogModal() {
+      document.getElementById('catalog-overlay').classList.add('active');
+    }
+
+    function closeCatalogModal() {
+      document.getElementById('catalog-overlay').classList.remove('active');
+    }
+
+    // ── Toast notifications ──────────────────────────────────────────────
+    function showToast(message) {
+      const toast = document.getElementById('toast');
+      toast.textContent = message;
+      toast.classList.add('active');
+      setTimeout(() => {
+        toast.classList.remove('active');
+      }, 3000);
+    }
+
+    // ── Init ─────────────────────────────────────────────────────────────
+    document.addEventListener('DOMContentLoaded', init);
+  </script>
+
+</body>
+</html>
