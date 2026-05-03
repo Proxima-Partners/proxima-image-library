@@ -173,13 +173,14 @@ def _run_once(on_progress: Optional[Callable[[str], None]] = None) -> Dict:
                 ingest_source=filename,
             )
 
-            # Verify: confirm the record exists in the list with a location
+            # Verify: confirm the WebP file exists in SharePoint
             verified = False
             location = str(result.get("location") or result.get("high_res_location") or "").strip()
             if location:
-                # Attempt a lightweight metadata check on the stored file
+                root = (Config.IMAGE_FOLDER or "").strip().strip("/")
+                webp_path = f"{root}/WebP/{location}" if root else f"WebP/{location}"
                 try:
-                    sp_client.get_file_metadata(location)
+                    sp_client.get_file_metadata(webp_path)
                     verified = True
                 except Exception:
                     verified = False
