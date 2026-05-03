@@ -1650,10 +1650,26 @@ def api_image_status():
         fields["Alt Text"] = alt_text.strip()
 
     if Config.TEST_MODE:
-        ok = LocalClient().patch_fields(record_id, fields)
+        list_client = LocalClient()
     else:
         from src.sharepoint_list_client import SharePointListClient
-        ok = SharePointListClient().patch_fields(record_id, fields)
+        list_client = SharePointListClient()
+
+    # Strip ?-suggested tags from records being rejected — they'll never be cataloged
+    if status == "rejected":
+        records = list_client.get_all_records()
+        for rec in records:
+            if rec.get("id") == record_id or rec.get("fields", {}).get("id") == record_id:
+                existing_tags = rec.get("fields", {}).get("Tags", "")
+                cleaned = ", ".join(
+                    t.strip() for t in existing_tags.split(",")
+                    if t.strip() and not t.strip().startswith("?")
+                )
+                if cleaned != existing_tags:
+                    fields["Tags"] = cleaned
+                break
+
+    ok = list_client.patch_fields(record_id, fields)
 
     if ok:
         global _records_cache
