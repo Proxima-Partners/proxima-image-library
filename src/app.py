@@ -34,6 +34,7 @@ from werkzeug.exceptions import RequestEntityTooLarge
 
 from src.local_client import LocalClient
 from src.config import Config
+from src import ingest_poller
 
 load_dotenv()
 Config.validate_runtime()
@@ -2910,27 +2911,48 @@ def api_maintenance_purge_status():
                                 f"{area}/{rel} -> {outcome}"
                             )
 
-    # For ingested records, also delete the original file from LOCAL_INGEST_FOLDER
+    # For ingested records, also delete the original file from the ingest folder
     if delete_files and status == "ingested" and matches:
-        ingest_folder = Config.LOCAL_INGEST_FOLDER.strip() if Config.LOCAL_INGEST_FOLDER else ""
-        if ingest_folder:
-            ingest_path = Path(ingest_folder)
-            for rec in matches:
-                src_name = str(rec.get("fields", {}).get("Ingest Source", "") or "").strip()
-                if not src_name:
-                    continue
-                candidate = ingest_path / src_name
-                try:
-                    resolved = candidate.resolve()
-                    if str(resolved).startswith(str(ingest_path.resolve())) and resolved.exists():
-                        resolved.unlink()
-                        files_deleted += 1
-                    else:
-                        files_missing += 1
-                except Exception as exc:
-                    file_delete_errors += 1
-                    if len(file_delete_error_details) < 20:
-                        file_delete_error_details.append(f"ingest/{src_name} -> {exc}")
+        if Config.STORAGE_MODE == "sharepoint":
+            sp_ingest_folder = Config.SHAREPOINT_INGEST_FOLDER.strip() if Config.SHAREPOINT_INGEST_FOLDER else ""
+            if sp_ingest_folder:
+                from src.sharepoint_client import SharePointClient as _SPClient
+                _sp = _SPClient()
+                for rec in matches:
+                    src_name = str(rec.get("fields", {}).get("Ingest Source", "") or "").strip()
+                    if not src_name:
+                        continue
+                    sp_path = f"{sp_ingest_folder}/{src_name}"
+                    try:
+                        deleted = _sp.delete_file(sp_path)
+                        if deleted:
+                            files_deleted += 1
+                        else:
+                            files_missing += 1
+                    except Exception as exc:
+                        file_delete_errors += 1
+                        if len(file_delete_error_details) < 20:
+                            file_delete_error_details.append(f"ingest/{src_name} -> {exc}")
+        else:
+            ingest_folder = Config.LOCAL_INGEST_FOLDER.strip() if Config.LOCAL_INGEST_FOLDER else ""
+            if ingest_folder:
+                ingest_path = Path(ingest_folder)
+                for rec in matches:
+                    src_name = str(rec.get("fields", {}).get("Ingest Source", "") or "").strip()
+                    if not src_name:
+                        continue
+                    candidate = ingest_path / src_name
+                    try:
+                        resolved = candidate.resolve()
+                        if str(resolved).startswith(str(ingest_path.resolve())) and resolved.exists():
+                            resolved.unlink()
+                            files_deleted += 1
+                        else:
+                            files_missing += 1
+                    except Exception as exc:
+                        file_delete_errors += 1
+                        if len(file_delete_error_details) < 20:
+                            file_delete_error_details.append(f"ingest/{src_name} -> {exc}")
 
     record_ids = [str(r.get("id", "")).strip() for r in matches if str(r.get("id", "")).strip()]
 
@@ -4658,9 +4680,7 @@ def api_maintenance_sync_highres():
 @app.route("/api/maintenance/folder-ingest")
 @login_required
 def api_maintenance_folder_ingest():
-    """SSE stream — scan LOCAL_INGEST_FOLDER and process files not yet in the library."""
-    dry_run = request.args.get("dry_run", "").strip().lower() in {"1", "true", "yes"}
-    source_param = request.args.get("source", "").strip()
+    """SSE stream — trigger an immediate ingest run via the background poller."""
 
     def generate():
         yield "data: [START]\n\n"
@@ -4668,111 +4688,13 @@ def api_maintenance_folder_ingest():
 
         def worker():
             try:
-                from src.ai_generator import AltTextGenerator
-                from src.image_processor import normalize_source, process_image, SOURCES
-
-                ingest_folder = Config.LOCAL_INGEST_FOLDER.strip() if Config.LOCAL_INGEST_FOLDER else ""
-                if not ingest_folder:
-                    q.put(("error", "LOCAL_INGEST_FOLDER is not configured"))
-                    return
-
-                ingest_path = Path(ingest_folder)
-                if not ingest_path.exists() or not ingest_path.is_dir():
-                    q.put(("error", f"Ingest folder not found: {ingest_folder}"))
-                    return
-
-                formats = _normalized_formats()
-                source = normalize_source(source_param) if source_param else "Internal"
-
-                # Collect candidate files
-                candidates = [
-                    f for f in ingest_path.rglob("*")
-                    if f.is_file() and f.suffix.lower() in formats
-                ]
-
-                if Config.TEST_MODE:
-                    list_client = LocalClient()
-                    sp_client = None
-                    storage_mode = "local"
+                result = ingest_poller.run_now(on_progress=lambda msg: q.put(("progress", msg)))
+                if "error" in result:
+                    q.put(("error", result["error"]))
                 else:
-                    from src.sharepoint_list_client import SharePointListClient
-                    from src.sharepoint_client import SharePointClient
-                    list_client = SharePointListClient()
-                    sp_client = SharePointClient()
-                    storage_mode = "sharepoint"
-
-                # Build set of known filenames already in the library
-                records = list_client.get_all_records()
-                existing_basenames = set()
-                for rec in records:
-                    fields = rec.get("fields", {})
-                    for field in ("High-Res Location", "Location"):
-                        val = str(fields.get(field, "") or "").strip()
-                        if val:
-                            existing_basenames.add(PurePosixPath(val).name)
-                    ingest_src = str(fields.get("Ingest Source", "") or "").strip()
-                    if ingest_src:
-                        existing_basenames.add(ingest_src)
-
-                new_files = [f for f in candidates if f.name not in existing_basenames]
-                skipped = len(candidates) - len(new_files)
-
-                q.put(("progress", f"Found {len(candidates)} file(s) in ingest folder — {len(new_files)} new, {skipped} already in library"))
-
-                if dry_run:
-                    q.put(("done", {
-                        "folder": str(ingest_path),
-                        "source": source,
-                        "total_found": len(candidates),
-                        "new_files": len(new_files),
-                        "skipped": skipped,
-                        "processed": 0,
-                        "failed": 0,
-                        "dry_run": True,
-                        "filenames": [f.name for f in new_files],
-                    }))
-                    return
-
-                gen = AltTextGenerator()
-                processed = 0
-                failed = 0
-                total = len(new_files)
-                for idx, file_path in enumerate(new_files, 1):
-                    q.put(("progress", f"[{idx}/{total}] Processing {file_path.name}"))
-                    try:
-                        file_bytes = file_path.read_bytes()
-                        process_image(
-                            file_bytes=file_bytes,
-                            original_filename=file_path.name,
-                            generator=gen,
-                            list_client=list_client,
-                            sp_client=sp_client,
-                            image_folder=Config.IMAGE_FOLDER,
-                            storage_mode=storage_mode,
-                            on_progress=lambda msg: q.put(("progress", f"    {msg}")),
-                            source=source,
-                            initial_status="ingested",
-                            ingest_source=file_path.name,
-                        )
-                        processed += 1
-                    except Exception as exc:
-                        failed += 1
-                        q.put(("progress", f"[ERROR] {file_path.name}: {exc}"))
-
-                global _records_cache
-                _records_cache = None
-
-                q.put(("done", {
-                    "folder": str(ingest_path),
-                    "source": source,
-                    "total_found": len(candidates),
-                    "new_files": total,
-                    "skipped": skipped,
-                    "processed": processed,
-                    "failed": failed,
-                    "dry_run": False,
-                }))
-
+                    global _records_cache
+                    _records_cache = None
+                    q.put(("done", result))
             except Exception as exc:
                 q.put(("error", f"Folder ingest failed: {exc}"))
 
@@ -4803,6 +4725,13 @@ def api_maintenance_folder_ingest():
         mimetype="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+@app.route("/api/maintenance/ingest-log")
+@login_required
+def api_maintenance_ingest_log():
+    """Return the rolling ingest poller log."""
+    return jsonify({"log": ingest_poller.get_log()})
 
 
 @app.route("/api/maintenance/health-snapshot")
@@ -5872,6 +5801,10 @@ def api_ss_track():
         _ss_write(data)
     return jsonify({"used": data["count"], "limit": SS_QUOTA_LIMIT})
 
+
+# Start background ingest poller (SharePoint mode only)
+if Config.STORAGE_MODE == "sharepoint" and Config.SHAREPOINT_INGEST_FOLDER:
+    ingest_poller.start(Config.INGEST_POLL_INTERVAL_SECONDS)
 
 if __name__ == "__main__":
     app.run(debug=True, port=5000)

@@ -1,10 +1,11 @@
 """Configuration management for Asset Library."""
 
 import os
+from pathlib import Path
 from dotenv import load_dotenv
 
-# Load environment variables from .env file
-load_dotenv()
+# Load .env from the project root regardless of working directory
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 
 class Config:
@@ -81,6 +82,8 @@ class Config:
     SHAREPOINT_SITE_ID = os.getenv("SHAREPOINT_SITE_ID", "")
     SHAREPOINT_LIST_NAME = os.getenv("SHAREPOINT_LIST_NAME", "Assets")
     SHAREPOINT_IMAGE_FOLDER = os.getenv("SHAREPOINT_IMAGE_FOLDER", "Images")
+    SHAREPOINT_INGEST_FOLDER = os.getenv("SHAREPOINT_INGEST_FOLDER", "")
+    INGEST_POLL_INTERVAL_SECONDS = int(os.getenv("INGEST_POLL_INTERVAL_SECONDS", "300"))
 
     # MCP internal API secret
     MCP_INTERNAL_SECRET = os.getenv("MCP_INTERNAL_SECRET", "")
