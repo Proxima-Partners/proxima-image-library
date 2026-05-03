@@ -5545,8 +5545,12 @@ def api_tag_library_suggestions():
     from src.tag_library import TagLibrary
     records = get_all_records()
     suggestions: dict = {}  # tag → count
+    _SKIP_STATUSES = {"rejected", "archived"}
     for rec in records:
-        for tag in rec.get("fields", {}).get("Tags", "").split(","):
+        fields = rec.get("fields", {})
+        if fields.get("Status", "").lower() in _SKIP_STATUSES:
+            continue
+        for tag in fields.get("Tags", "").split(","):
             tag = tag.strip()
             if tag.startswith("?"):
                 suggestions[tag] = suggestions.get(tag, 0) + 1
