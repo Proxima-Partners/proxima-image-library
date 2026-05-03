@@ -1,5 +1,6 @@
 """Background poller — watches SHAREPOINT_INGEST_FOLDER and auto-processes new images."""
 
+import json
 import logging
 import threading
 import time
@@ -10,9 +11,13 @@ from typing import Callable, Deque, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
-# Rolling in-memory log — last 200 entries, thread-safe via _log_lock
-_log: Deque[Dict] = deque(maxlen=200)
+_LOG_MAX = 500
+_SP_LOG_PATH = "Config/ingest_log.json"
+
+# Rolling in-memory log — last 500 entries, thread-safe via _log_lock
+_log: Deque[Dict] = deque(maxlen=_LOG_MAX)
 _log_lock = threading.Lock()
+_log_loaded = False  # load from SP once on first use
 
 # Prevent concurrent runs
 _run_lock = threading.Lock()
@@ -20,16 +25,60 @@ _run_lock = threading.Lock()
 _poller_thread: Optional[threading.Thread] = None
 
 
+def _sp_client():
+    from src.config import Config
+    if Config.STORAGE_MODE != "sharepoint":
+        return None
+    from src.sharepoint_client import SharePointClient
+    return SharePointClient()
+
+
+def _load_log_from_sp() -> None:
+    global _log_loaded
+    sp = _sp_client()
+    if not sp:
+        _log_loaded = True
+        return
+    try:
+        raw = sp.get_file_bytes(_SP_LOG_PATH)
+        entries = json.loads(raw)
+        if isinstance(entries, list):
+            with _log_lock:
+                _log.clear()
+                for e in entries[-_LOG_MAX:]:
+                    _log.append(e)
+    except Exception:
+        pass  # no log file yet — start fresh
+    _log_loaded = True
+
+
+def _flush_log_to_sp() -> None:
+    sp = _sp_client()
+    if not sp:
+        return
+    try:
+        with _log_lock:
+            entries = list(_log)
+        sp.upload_file("Config", "ingest_log.json",
+                       json.dumps(entries, indent=2).encode())
+    except Exception as exc:
+        logger.warning("[ingest-poller] Could not save log to SharePoint: %s", exc)
+
+
 def get_log() -> List[Dict]:
+    if not _log_loaded:
+        _load_log_from_sp()
     with _log_lock:
         return list(_log)
 
 
 def _emit(level: str, msg: str) -> None:
+    if not _log_loaded:
+        _load_log_from_sp()
     entry = {"ts": datetime.now(timezone.utc).isoformat(), "level": level, "msg": msg}
     with _log_lock:
         _log.append(entry)
-    log_fn = getattr(logger, level, logger.info)
+    log_fn = getattr(logger, level if level != "warning" else "warning", logger.info)
     log_fn("[ingest-poller] %s", msg)
 
 
@@ -69,6 +118,7 @@ def _run_once(on_progress: Optional[Callable[[str], None]] = None) -> Dict:
 
     if not candidates:
         progress("Ingest folder is empty — nothing to do")
+        _flush_log_to_sp()
         return {"skipped": 0, "processed": 0, "failed": 0, "deleted": 0}
 
     # Build set of filenames already in the library
@@ -93,6 +143,7 @@ def _run_once(on_progress: Optional[Callable[[str], None]] = None) -> Dict:
 
     if not new_files:
         progress(f"Scanned {len(candidates)} file(s) — all already in library")
+        _flush_log_to_sp()
         return {"skipped": skipped, "processed": 0, "failed": 0, "deleted": 0}
 
     progress(f"Found {len(candidates)} file(s) — {len(new_files)} new, {skipped} already in library")
@@ -152,7 +203,9 @@ def _run_once(on_progress: Optional[Callable[[str], None]] = None) -> Dict:
             _emit("error", f"[ERROR] {filename}: {exc}")
 
     progress(f"Done — processed {processed}, failed/retry {failed}, deleted {deleted}")
-    return {"skipped": skipped, "processed": processed, "failed": failed, "deleted": deleted}
+    result = {"skipped": skipped, "processed": processed, "failed": failed, "deleted": deleted}
+    _flush_log_to_sp()
+    return result
 
 
 def _poll_loop(interval_seconds: int) -> None:
