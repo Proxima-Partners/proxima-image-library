@@ -1367,7 +1367,7 @@
     </section>
 
     <!-- Tag Manager ──────────────────────────────────────────────── -->
-    <section class="panel tool-panel is-collapsed" id="tm-panel" data-workstream="always">
+    <section class="panel tool-panel is-collapsed" id="tm-panel" data-workstream="correct" data-title="Tag Manager">
       <button type="button" class="tool-toggle" id="tm-toggle">
         Tag Manager
         <span class="tool-toggle-icon" id="tm-toggle-icon">▶</span>
@@ -4318,12 +4318,11 @@
     // Auto-open if navigated via anchor (then clear hash so refresh doesn't re-open)
     function handleTagManagerHash() {
       if (window.location.hash === '#tag-manager') {
-        const panel = document.getElementById('tm-panel');
-        panel.classList.remove('is-collapsed');
-        document.getElementById('tm-toggle-icon').textContent = '▼';
+        setActiveWorkstream('correct');
+        openToolPanel('correct', 'Tag Manager');
         if (!_tmLoaded) { _tmLoaded = true; tmLoadLibrary().then(tmLoadSuggestions); }
         setTimeout(() => {
-          panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          document.getElementById('tm-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
           history.replaceState(null, '', window.location.pathname);
         }, 200);
       }
