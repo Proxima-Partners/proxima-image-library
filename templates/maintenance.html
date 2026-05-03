@@ -833,25 +833,16 @@
     <section class="panel tool-panel" data-workstream="correct" data-title="Folder Ingest">
       <h1>Folder Ingest</h1>
       <p class="sub">
-        Scans a local folder (configured via <code>LOCAL_INGEST_FOLDER</code>) and runs the full upload pipeline on any files not already in the library. Deduplication is by filename.
+        The background poller automatically scans <code>Ingrest-images</code> every 5 minutes, processes new files, and deletes them after successful upload. Use the manual trigger below to run immediately.
       </p>
 
       <div class="controls">
-        <label for="ingest-source">Source</label>
-        <select id="ingest-source">
-          <option value="">Internal (default)</option>
-          <option>ShutterStock</option>
-          <option>AdobeStock</option>
-          <option>Unsplash</option>
-          <option>Pexels</option>
-          <option>Pixabay</option>
-          <option>Internal</option>
-        </select>
         <label class="check-row">
           <input id="ingest-dry-run" type="checkbox" checked />
           Dry run
         </label>
-        <button id="ingest-run-btn" class="btn">Run Folder Ingest</button>
+        <button id="ingest-run-btn" class="btn">Run Now</button>
+        <button id="ingest-log-btn" class="btn btn-secondary" type="button">Refresh Poller Log</button>
       </div>
 
       <div id="ingest-log" class="log"></div>
@@ -860,6 +851,24 @@
         <h2>Run Summary</h2>
         <div id="ingest-summary-grid" class="summary-grid"></div>
         <div id="ingest-file-list" class="orphan-list" style="display:none;"></div>
+      </div>
+
+      <div style="margin-top:24px;">
+        <h2 style="font-size:15px;font-weight:600;margin-bottom:10px;">Background Poller Activity</h2>
+        <div id="poller-log-table-wrap">
+          <table id="poller-log-table" style="width:100%;border-collapse:collapse;font-size:13px;">
+            <thead>
+              <tr style="text-align:left;border-bottom:2px solid var(--border);">
+                <th style="padding:6px 10px;white-space:nowrap;">Time (UTC)</th>
+                <th style="padding:6px 10px;width:60px;">Level</th>
+                <th style="padding:6px 10px;">Message</th>
+              </tr>
+            </thead>
+            <tbody id="poller-log-body">
+              <tr><td colspan="3" style="padding:10px;color:var(--muted);">Click "Refresh Poller Log" to load.</td></tr>
+            </tbody>
+          </table>
+        </div>
       </div>
     </section>
 
@@ -2965,8 +2974,6 @@
       ingestAppendLine('Starting folder ingest...');
 
       const params = new URLSearchParams();
-      const src = ingestSourceSelect.value.trim();
-      if (src) params.set('source', src);
       if (ingestDryRunInput.checked) params.set('dry_run', 'true');
       params.set('csrf_token', window.PROXIMA_CSRF_TOKEN);
 
@@ -3007,6 +3014,42 @@
         es.close();
         ingestActiveEs = null;
       };
+    });
+
+    // Poller log
+    const ingestLogBtn = document.getElementById('ingest-log-btn');
+    const pollerLogBody = document.getElementById('poller-log-body');
+
+    function levelStyle(level) {
+      if (level === 'error') return 'color:#dc2626;font-weight:600;';
+      if (level === 'warning') return 'color:#d97706;font-weight:600;';
+      return 'color:#16a34a;';
+    }
+
+    ingestLogBtn.addEventListener('click', async () => {
+      ingestLogBtn.disabled = true;
+      ingestLogBtn.textContent = 'Loading…';
+      try {
+        const resp = await fetch(`/api/maintenance/ingest-log?csrf_token=${window.PROXIMA_CSRF_TOKEN}`);
+        const data = await resp.json();
+        const entries = (data.log || []).slice().reverse();
+        if (!entries.length) {
+          pollerLogBody.innerHTML = '<tr><td colspan="3" style="padding:10px;color:var(--muted);">No activity yet.</td></tr>';
+        } else {
+          pollerLogBody.innerHTML = entries.map(e => {
+            const ts = e.ts ? e.ts.replace('T', ' ').replace(/\.\d+Z$/, ' UTC') : '';
+            return `<tr style="border-bottom:1px solid var(--border);">
+              <td style="padding:5px 10px;white-space:nowrap;color:var(--muted);font-size:12px;">${ts}</td>
+              <td style="padding:5px 10px;white-space:nowrap;${levelStyle(e.level)}">${e.level || 'info'}</td>
+              <td style="padding:5px 10px;">${e.msg || ''}</td>
+            </tr>`;
+          }).join('');
+        }
+      } catch (err) {
+        pollerLogBody.innerHTML = `<tr><td colspan="3" style="padding:10px;color:#dc2626;">Failed to load: ${err.message}</td></tr>`;
+      }
+      ingestLogBtn.disabled = false;
+      ingestLogBtn.textContent = 'Refresh Poller Log';
     });
 
     purgeStatusSelect.addEventListener('change', resetPurgeState);
