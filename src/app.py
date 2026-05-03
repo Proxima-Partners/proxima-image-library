@@ -5602,6 +5602,38 @@ def api_tag_library_remove():
     return jsonify({"ok": found})
 
 
+@app.route("/api/tag-library/discard-suggestion", methods=["POST"])
+@login_required
+def api_tag_library_discard_suggestion():
+    """Remove a ?suggested tag from all records (without promoting it)."""
+    data = request.get_json(force=True)
+    tag = data.get("tag", "").strip()
+    if not tag:
+        return jsonify({"error": "tag required"}), 400
+
+    # Normalise — accept with or without ?
+    suggested = tag if tag.startswith("?") else f"?{tag}"
+
+    client = get_client()
+    records = client.get_all_records()
+    patches: list[tuple[str, dict]] = []
+
+    for rec in records:
+        rec_id = str(rec.get("id", "")).strip()
+        raw_tags = rec.get("fields", {}).get("Tags", "") or ""
+        tag_list = [t.strip() for t in raw_tags.split(",") if t.strip()]
+        new_tags = [t for t in tag_list if t != suggested]
+        if len(new_tags) != len(tag_list) and rec_id:
+            patches.append((rec_id, {"Tags": ", ".join(new_tags)}))
+
+    if patches:
+        client.bulk_patch_fields(patches)
+        global _records_cache
+        _records_cache = None
+
+    return jsonify({"ok": True, "records_updated": len(patches)})
+
+
 def _clear_promoted_suggestions_from_records(promoted_tags: list[str]) -> int:
     """Replace ?prefixed promoted tags in records with approved tag names."""
     clean_promoted = {

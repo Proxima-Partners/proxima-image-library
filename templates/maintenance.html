@@ -4259,7 +4259,16 @@
 
     async function tmDiscard(tag) {
       const clean = tag.replace('?', '');
-      document.getElementById(`tm-sug-${clean}`)?.remove();
+      const el = document.getElementById(`tm-sug-${clean}`);
+      if (el) el.style.opacity = '0.4';
+      try {
+        await fetch('/api/tag-library/discard-suggestion', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tag }),
+        });
+      } catch (e) { /* non-fatal */ }
+      el?.remove();
       tmShowToast(`Discarded "${tag}"`);
       if (!document.querySelector('.tm-suggestion-item')) {
         tmAcknowledgeAndCollapse('✓ No tags pending review.');
