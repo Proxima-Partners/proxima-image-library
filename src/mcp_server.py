@@ -345,11 +345,17 @@ async def _search_image_library(args: dict) -> list[types.TextContent]:
             ),
         )]
 
-    # Fetch thumbnails in parallel
+    base_url = (Config.APP_BASE_URL or "http://localhost:5000").rstrip("/")
+
+    # Build thumbnail URLs — use /thumbnail route which proxies SharePoint
+    def _thumb_url(location: str) -> str:
+        return f"{base_url}/thumbnail?path={location}" if location else ""
+
+    # Fetch thumbnails in parallel (inline in chat)
     def _get_thumb(item):
         loc = item.get("location", "")
         if Config.STORAGE_MODE == "sharepoint":
-            return item, _fetch_thumb(f"http://localhost:5000/thumbnail?path={loc}")
+            return item, _fetch_thumb(_thumb_url(loc))
         return item, _thumb_local(loc)
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=8) as ex:
@@ -364,7 +370,49 @@ async def _search_image_library(args: dict) -> list[types.TextContent]:
             except Exception:
                 pass
 
+    # Build shortlist for the preview gallery
+    shortlisted = []
+    for item in results:
+        loc = item.get("location", "")
+        shortlisted.append({
+            "type": "internal",
+            "download_url": _thumb_url(loc),  # displayed in gallery (thumbnail proxy)
+            "thumb": _thumb_url(loc),
+            "title": item.get("alt_text", "") or item.get("filename", ""),
+            "filename": item.get("filename", ""),
+            "library": "internal",
+            "slug": item.get("slug", ""),
+            "location": loc,
+            "phrase": phrases[0] if phrases else "",
+        })
+
+    # Create a preview session
+    secret = Config.MCP_INTERNAL_SECRET
+    article_title = args.get("article_title", "Internal Library Results")
+    preview_url = None
+    token = None
+    try:
+        sess_resp = _requests.post(
+            f"{base_url}/api/mcp/preview/session",
+            json={"article_title": article_title, "shortlisted": shortlisted, "phrases": phrases},
+            headers={"X-MCP-Secret": secret},
+            timeout=15,
+        )
+        sess_resp.raise_for_status()
+        token = sess_resp.json().get("token", "")
+        preview_url = f"{base_url}/api/mcp/preview/{token}"
+    except Exception:
+        pass  # gallery link optional — inline results still shown
+
     contents: list = []
+
+    header = f"Found **{len(results)} match(es)** in the internal library."
+    if preview_url:
+        header += (
+            f" **[Open selection gallery]({preview_url})** to pick visually, "
+            f"then tell me and I'll call `get_selected_images` with token `{token}`."
+        )
+    contents.append(types.TextContent(type="text", text=header))
 
     for idx, item in enumerate(results):
         label = (
@@ -705,14 +753,24 @@ async def _get_selected_images(args: dict) -> list[types.TextContent]:
     if not selected:
         return [types.TextContent(type="text", text="No images were selected in the gallery.")]
 
-    summary = "\n".join(
-        f"- #{i+1} **{img.get('title','Untitled')}** ({img.get('library','').capitalize()}) — `{img.get('download_url','')}`"
-        for i, img in enumerate(selected)
-    )
-    return [types.TextContent(
-        type="text",
-        text=f"The user selected **{len(selected)} image(s)**:\n\n{summary}\n\nNow call `catalog_stock_image` for each one.",
-    )]
+    internal = [img for img in selected if img.get("type") == "internal" or img.get("library") == "internal"]
+    stock = [img for img in selected if img.get("type") != "internal" and img.get("library") != "internal"]
+
+    lines = []
+    if internal:
+        lines.append(f"**{len(internal)} internal library image(s)** (already cataloged — no action needed):")
+        for img in internal:
+            slug = img.get("slug") or img.get("location", "")
+            lines.append(f"  - {img.get('title', 'Untitled')} — slug: `{slug}`")
+    if stock:
+        lines.append(f"\n**{len(stock)} stock image(s)** to catalog:")
+        for i, img in enumerate(stock):
+            lines.append(f"  - #{i+1} **{img.get('title','Untitled')}** ({img.get('library','').capitalize()}) — `{img.get('download_url','')}`")
+        lines.append("\nCall `catalog_stock_image` for each stock image above.")
+    if not stock:
+        lines.append("\nAll selected images are already in the library. No cataloging needed.")
+
+    return [types.TextContent(type="text", text="\n".join(lines))]
 
 
 async def _catalog_stock_image(args: dict) -> list[types.TextContent]:

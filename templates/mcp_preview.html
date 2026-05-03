@@ -246,6 +246,20 @@
     .library-badge.unsplash { background: var(--unsplash-color); }
     .library-badge.pixabay { background: var(--pixabay-color); }
     .library-badge.shutterstock { background: var(--shutterstock-color); }
+    .library-badge.internal { background: var(--accent); }
+
+    .image-tile.is-internal .image-container::after {
+      content: '✓ In Library';
+      position: absolute;
+      bottom: 6px;
+      right: 6px;
+      background: rgba(5,113,141,0.85);
+      color: #fff;
+      font-size: 10px;
+      font-weight: 600;
+      padding: 2px 7px;
+      border-radius: 10px;
+    }
 
     /* ── Controls ── */
     .controls {
@@ -544,9 +558,10 @@
         </div>
       </div>
     {% else %}
-      <h2>Select Images to Catalog</h2>
+      <h2>Select Images</h2>
       <p class="subtitle">
-        Choose which images you'd like to add to the library. Selected images will be cataloged with AI-generated alt text.
+        Choose images to use. Stock images will be cataloged with AI-generated alt text.
+        Images marked <strong>✓ In Library</strong> are already cataloged — selecting them returns their metadata to Claude.
       </p>
 
       <div class="controls">
@@ -557,14 +572,14 @@
         <div class="counter" id="counter">0 selected</div>
         <div style="margin-left: auto; display: flex; gap: 10px;">
           <button class="btn" id="catalog-btn" type="button" disabled>
-            Catalog Selected
+            Confirm Selection
           </button>
         </div>
       </div>
 
       <div class="gallery" id="gallery">
         {% for image in images %}
-          <div class="image-tile" data-image-id="{{ image.id }}" data-index="{{ image.index }}">
+          <div class="image-tile{% if image.type == 'internal' %} is-internal{% endif %}" data-image-id="{{ image.id }}" data-index="{{ image.index }}">
             <input type="checkbox" class="image-checkbox" data-index="{{ image.index }}" />
             <div class="image-container" data-src="{{ image.download_url }}" data-caption="{{ image.title }}{% if image.photographer %} — {{ image.photographer }}{% endif %}">
               <img src="{{ image.download_url }}" alt="{{ image.title }}" loading="lazy" />
@@ -575,7 +590,11 @@
               {% if image.photographer %}
                 <div class="image-photographer" title="{{ image.photographer }}">by {{ image.photographer }}</div>
               {% endif %}
-              <div class="library-badge {{ image.library }}">{{ image.library }}</div>
+              {% if image.type == 'internal' %}
+                <div class="library-badge internal">Proxima Library</div>
+              {% else %}
+                <div class="library-badge {{ image.library }}">{{ image.library }}</div>
+              {% endif %}
             </div>
           </div>
         {% endfor %}
@@ -711,11 +730,22 @@
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ selected: selectedImages }),
           });
+          const internalCount = selectedImages.filter(img => img.type === 'internal' || img.library === 'internal').length;
+          const stockCount = selectedImages.length - internalCount;
+          let desc = '';
+          if (internalCount > 0 && stockCount > 0) {
+            desc = `${internalCount} from your library + ${stockCount} stock to catalog.`;
+          } else if (internalCount > 0) {
+            desc = `${internalCount} image${internalCount !== 1 ? 's' : ''} from your library selected.`;
+          } else {
+            desc = `${stockCount} stock image${stockCount !== 1 ? 's' : ''} ready to catalog.`;
+          }
           document.querySelector('.main-panel').innerHTML = `
             <div style="text-align:center;padding:48px 24px;">
               <div style="font-size:48px;margin-bottom:16px;">✅</div>
               <h2 style="font-family:Montserrat,sans-serif;font-size:20px;margin-bottom:8px;">Selection saved!</h2>
-              <p style="color:#6b7280;font-size:14px;">Go back to Claude and ask it to catalog your ${selectedImages.length} selected image${selectedImages.length !== 1 ? 's' : ''}.</p>
+              <p style="color:#6b7280;font-size:14px;">${desc}</p>
+              <p style="color:#6b7280;font-size:14px;margin-top:8px;">Go back to Claude — it will retrieve your picks.</p>
             </div>`;
         } catch (err) {
           showToast('Failed to save selection: ' + err.message);

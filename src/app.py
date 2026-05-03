@@ -1430,6 +1430,9 @@ def api_mcp_preview_token(token: str):
             "photographer": str(item.get("photographer", "") or "").strip(),
             "phrase": str(item.get("phrase", "") or "").strip(),
             "tags": item.get("tags", []) if isinstance(item.get("tags", []), list) else [],
+            "type": str(item.get("type", "") or "").strip(),
+            "slug": str(item.get("slug", "") or "").strip(),
+            "location": str(item.get("location", "") or "").strip(),
         })
 
     return render_template(
