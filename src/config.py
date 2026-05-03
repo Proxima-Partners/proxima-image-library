@@ -85,6 +85,9 @@ class Config:
     SHAREPOINT_INGEST_FOLDER = os.getenv("SHAREPOINT_INGEST_FOLDER", "")
     INGEST_POLL_INTERVAL_SECONDS = int(os.getenv("INGEST_POLL_INTERVAL_SECONDS", "300"))
 
+    # Base URL for generating links back to this app (used by MCP server)
+    APP_BASE_URL = os.getenv("APP_BASE_URL", "http://localhost:5000")
+
     # MCP internal API secret
     MCP_INTERNAL_SECRET = os.getenv("MCP_INTERNAL_SECRET", "")
 

@@ -570,46 +570,57 @@ async def _search_stock_photos(args: dict) -> list[types.TextContent]:
             except Exception as e:
                 output[phrase][lib] = {"results": [], "error": str(e)}
 
-    contents: list = []
-
-    # Collect thumbnails to fetch: (phrase, source, index, url, title)
-    to_fetch = []
+    # Build shortlist for the preview UI
+    shortlisted = []
     for phrase, libs in output.items():
         for source, lib_data in libs.items():
-            for i, img in enumerate(lib_data.get("results", [])[:3]):
-                thumb_url = img.get("thumb", "")
-                if thumb_url:
-                    to_fetch.append((phrase, source, i + 1, thumb_url, img.get("title", "")))
+            for img in lib_data.get("results", []):
+                if not img.get("download_url"):
+                    continue
+                shortlisted.append({
+                    "download_url": img.get("download_url", ""),
+                    "thumb": img.get("thumb", ""),
+                    "title": img.get("title", ""),
+                    "filename": img.get("filename", f"{phrase.replace(' ', '-')}.jpg"),
+                    "library": source,
+                    "photographer": img.get("photographer", ""),
+                    "phrase": phrase,
+                })
 
-    # Fetch all thumbnails in parallel
-    def _fetch(entry):
-        phrase, source, idx, url, title = entry
-        return phrase, source, idx, title, _fetch_thumb(url)
+    if not shortlisted:
+        return [types.TextContent(type="text", text="No results found for the given phrases.")]
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=16) as ex:
-        futures = {ex.submit(_fetch, e): e for e in to_fetch}
-        fetched = []
-        for f in concurrent.futures.as_completed(futures):
-            try:
-                phrase, source, idx, title, img = f.result()
-                if img:
-                    fetched.append((phrase, source, idx, title, img))
-            except Exception:
-                pass
+    # POST to the preview endpoint and return the URL
+    base_url = (Config.APP_BASE_URL or "http://localhost:5000").rstrip("/")
+    secret = Config.MCP_INTERNAL_SECRET
+    article_title = args.get("article_title", "Stock Photo Selection")
 
-    # Sort: by phrase order, then source, then index
-    phrase_order = {p: i for i, p in enumerate(output.keys())}
-    source_order = {"pexels": 0, "unsplash": 1, "pixabay": 2, "shutterstock": 3}
-    fetched.sort(key=lambda x: (phrase_order.get(x[0], 99), source_order.get(x[1], 99), x[2]))
+    try:
+        resp = _requests.post(
+            f"{base_url}/api/mcp/preview",
+            json={"article_title": article_title, "shortlisted": shortlisted, "phrases": phrases},
+            headers={"X-MCP-Secret": secret},
+            timeout=15,
+        )
+        resp.raise_for_status()
+        # The endpoint returns HTML — derive the GET URL from the token it embeds,
+        # or just direct the user to open the preview via a signed GET URL.
+        # Simpler: encode the payload and build a GET URL.
+        encoded = base64.b64encode(
+            json.dumps({"article_title": article_title, "shortlisted": shortlisted, "phrases": phrases}).encode()
+        ).decode()
+        preview_url = f"{base_url}/api/mcp/preview?secret={secret}&data={encoded}"
+    except Exception as e:
+        return [types.TextContent(type="text", text=f"Could not generate preview: {e}")]
 
-    for phrase, source, idx, title, img in fetched:
-        label = f'**"{phrase}"** — {source.capitalize()} #{idx}'
-        if title:
-            label += f": {title[:60]}"
-        contents.append(types.TextContent(type="text", text=label))
-        contents.append(img)
-
-    return contents
+    return [types.TextContent(
+        type="text",
+        text=(
+            f"Found **{len(shortlisted)} images** across {len(phrases)} search phrase(s).\n\n"
+            f"Open the selection gallery to choose which images to catalog:\n\n"
+            f"{preview_url}"
+        ),
+    )]
 
 
 async def _catalog_stock_image(args: dict) -> list[types.TextContent]:
