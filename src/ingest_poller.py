@@ -134,19 +134,31 @@ def _run_once(on_progress: Optional[Callable[[str], None]] = None) -> Dict:
         if ingest_src:
             existing.add(ingest_src)
 
-    new_files = [
-        (sp_path, rel)
-        for sp_path, rel in candidates
-        if PurePosixPath(sp_path).name not in existing
-    ]
-    skipped = len(candidates) - len(new_files)
+    new_files = []
+    already_in_library = []
+    for sp_path, rel in candidates:
+        if PurePosixPath(sp_path).name in existing:
+            already_in_library.append(sp_path)
+        else:
+            new_files.append((sp_path, rel))
+
+    # Delete duplicates from ingest folder
+    for sp_path in already_in_library:
+        filename = PurePosixPath(sp_path).name
+        try:
+            sp_client.delete_file(sp_path)
+            _emit("info", f"Deleted duplicate from ingest folder: {filename}")
+        except Exception as exc:
+            _emit("warning", f"Could not delete duplicate {filename}: {exc}")
+
+    skipped = len(already_in_library)
 
     if not new_files:
-        progress(f"Scanned {len(candidates)} file(s) — all already in library")
+        progress(f"Scanned {len(candidates)} file(s) — all already in library ({skipped} deleted from ingest folder)")
         _flush_log_to_sp()
-        return {"skipped": skipped, "processed": 0, "failed": 0, "deleted": 0}
+        return {"skipped": skipped, "processed": 0, "failed": 0, "deleted": skipped}
 
-    progress(f"Found {len(candidates)} file(s) — {len(new_files)} new, {skipped} already in library")
+    progress(f"Found {len(candidates)} file(s) — {len(new_files)} new, {skipped} duplicates removed")
 
     gen = AltTextGenerator()
     processed = 0
