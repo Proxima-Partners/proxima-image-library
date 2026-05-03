@@ -164,9 +164,9 @@ async def list_tools() -> list[types.Tool]:
             name="search_stock_photos",
             description=(
                 "Search stock photo libraries (Pexels, Shutterstock, Unsplash, Pixabay) "
-                "concurrently. Use this only after presenting internal library results "
-                "and the user has not selected one. "
-                "Returns results grouped by phrase, each with per-library tabs."
+                "concurrently. Also automatically includes matching internal library images "
+                "at the top of the combined gallery. Use this as the primary search tool — "
+                "it returns a single gallery link with both internal and stock results."
             ),
             inputSchema={
                 "type": "object",
@@ -638,8 +638,39 @@ async def _search_stock_photos(args: dict) -> list[types.TextContent]:
             except Exception as e:
                 output[phrase][lib] = {"results": [], "error": str(e)}
 
+    base_url = (Config.APP_BASE_URL or "http://localhost:5000").rstrip("/")
+    secret = Config.MCP_INTERNAL_SECRET
+    article_title = args.get("article_title", "Image Selection")
+
+    # Query internal library and prepend matches so gallery is combined
+    internal_shortlisted = []
+    try:
+        client = _get_list_client()
+        records = client.get_all_records()
+        scored = []
+        for rec in records:
+            fields = rec.get("fields", {})
+            score = _score_record(fields, phrases)
+            if score > 0:
+                loc = fields.get("Location", "")
+                scored.append((score, {
+                    "type": "internal",
+                    "download_url": f"{base_url}/thumbnail?path={loc}",
+                    "thumb": f"{base_url}/thumbnail?path={loc}",
+                    "title": fields.get("Alt Text", "") or fields.get("Filename", ""),
+                    "filename": fields.get("Filename", ""),
+                    "library": "internal",
+                    "slug": fields.get("Slug", ""),
+                    "location": loc,
+                    "phrase": phrases[0] if phrases else "",
+                }))
+        scored.sort(key=lambda x: x[0], reverse=True)
+        internal_shortlisted = [item for _, item in scored[:8]]
+    except Exception:
+        pass
+
     # Build shortlist for the preview UI
-    shortlisted = []
+    shortlisted = list(internal_shortlisted)  # internal first
     for phrase, libs in output.items():
         for source, lib_data in libs.items():
             for img in lib_data.get("results", []):
@@ -657,10 +688,6 @@ async def _search_stock_photos(args: dict) -> list[types.TextContent]:
 
     if not shortlisted:
         return [types.TextContent(type="text", text="No results found for the given phrases.")]
-
-    base_url = (Config.APP_BASE_URL or "http://localhost:5000").rstrip("/")
-    secret = Config.MCP_INTERNAL_SECRET
-    article_title = args.get("article_title", "Stock Photo Selection")
 
     # Create a server-side session and get a short token
     try:
@@ -688,14 +715,15 @@ async def _search_stock_photos(args: dict) -> list[types.TextContent]:
                 to_fetch.append((len(to_fetch) + 1, item, thumb))
             seen_phrases[phrase] += 1
 
+    stock_count = len(shortlisted) - len(internal_shortlisted)
+    internal_note = f" ({len(internal_shortlisted)} already in your library + {stock_count} stock)" if internal_shortlisted else ""
     contents: list = [types.TextContent(
         type="text",
         text=(
-            f"Found **{len(shortlisted)} images** across {len(phrases)} search phrase(s). "
-            f"Here's a preview — tell me which numbers to catalog, or **[open the selection gallery]({preview_url})** "
-            f"to pick visually and click Catalog Selected.\n\n"
-            f"Once you've made your selection in the gallery, tell me and I'll call `get_selected_images` "
-            f"with token `{token}` to retrieve your picks and catalog them."
+            f"Found **{len(shortlisted)} images**{internal_note} across {len(phrases)} phrase(s). "
+            f"**[Open the combined gallery]({preview_url})** to pick visually — "
+            f"library images are marked ✓.\n\n"
+            f"Once you've selected, tell me and I'll call `get_selected_images` with token `{token}`."
         ),
     )]
 
