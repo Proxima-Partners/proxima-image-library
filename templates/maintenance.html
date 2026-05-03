@@ -842,6 +842,7 @@
           Dry run
         </label>
         <button id="ingest-run-btn" class="btn">Run Now</button>
+        <button id="ingest-cancel-btn" class="btn btn-secondary" type="button" style="display:none;">Cancel</button>
         <button id="ingest-log-btn" class="btn btn-secondary" type="button">Refresh Poller Log</button>
       </div>
 
@@ -1457,7 +1458,7 @@
     const orphanWrapEl = document.getElementById('orphan-wrap');
 
     const ingestRunBtn = document.getElementById('ingest-run-btn');
-    const ingestSourceSelect = document.getElementById('ingest-source');
+    const ingestCancelBtn = document.getElementById('ingest-cancel-btn');
     const ingestDryRunInput = document.getElementById('ingest-dry-run');
     const ingestLogEl = document.getElementById('ingest-log');
     const ingestSummaryEl = document.getElementById('ingest-summary');
@@ -2929,6 +2930,10 @@
 
     let ingestActiveEs = null;
 
+    window.addEventListener('beforeunload', () => {
+      if (ingestActiveEs) { ingestActiveEs.close(); ingestActiveEs = null; }
+    });
+
     function ingestAppendLine(text, cls = '') {
       const div = document.createElement('div');
       div.textContent = text;
@@ -2960,12 +2965,20 @@
       ingestSummaryEl.style.display = '';
     }
 
+    ingestCancelBtn.addEventListener('click', () => {
+      if (ingestActiveEs) { ingestActiveEs.close(); ingestActiveEs = null; }
+      ingestRunBtn.disabled = false;
+      ingestCancelBtn.style.display = 'none';
+      ingestAppendLine('Cancelled.', 'line-err');
+    });
+
     ingestRunBtn.addEventListener('click', () => {
       if (ingestActiveEs) {
         ingestActiveEs.close();
         ingestActiveEs = null;
       }
       ingestRunBtn.disabled = true;
+      ingestCancelBtn.style.display = '';
       ingestLogEl.innerHTML = '';
       ingestSummaryEl.style.display = 'none';
       ingestSummaryGridEl.innerHTML = '';
@@ -2986,6 +2999,7 @@
         if (msg === '[DONE]') {
           ingestAppendLine('Completed.');
           ingestRunBtn.disabled = false;
+          ingestCancelBtn.style.display = 'none';
           es.close();
           ingestActiveEs = null;
           return;
@@ -3001,6 +3015,7 @@
         if (msg.startsWith('[ERROR]')) {
           ingestAppendLine(msg, 'line-err');
           ingestRunBtn.disabled = false;
+          ingestCancelBtn.style.display = 'none';
           es.close();
           ingestActiveEs = null;
           return;
@@ -3011,6 +3026,7 @@
       es.onerror = () => {
         ingestAppendLine('Stream connection lost.', 'line-err');
         ingestRunBtn.disabled = false;
+        ingestCancelBtn.style.display = 'none';
         es.close();
         ingestActiveEs = null;
       };
