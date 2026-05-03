@@ -590,37 +590,59 @@ async def _search_stock_photos(args: dict) -> list[types.TextContent]:
     if not shortlisted:
         return [types.TextContent(type="text", text="No results found for the given phrases.")]
 
-    # POST to the preview endpoint and return the URL
     base_url = (Config.APP_BASE_URL or "http://localhost:5000").rstrip("/")
     secret = Config.MCP_INTERNAL_SECRET
     article_title = args.get("article_title", "Stock Photo Selection")
 
-    try:
-        resp = _requests.post(
-            f"{base_url}/api/mcp/preview",
-            json={"article_title": article_title, "shortlisted": shortlisted, "phrases": phrases},
-            headers={"X-MCP-Secret": secret},
-            timeout=15,
-        )
-        resp.raise_for_status()
-        # The endpoint returns HTML — derive the GET URL from the token it embeds,
-        # or just direct the user to open the preview via a signed GET URL.
-        # Simpler: encode the payload and build a GET URL.
-        encoded = base64.b64encode(
-            json.dumps({"article_title": article_title, "shortlisted": shortlisted, "phrases": phrases}).encode()
-        ).decode()
-        preview_url = f"{base_url}/api/mcp/preview?secret={secret}&data={encoded}"
-    except Exception as e:
-        return [types.TextContent(type="text", text=f"Could not generate preview: {e}")]
+    # Build preview URL
+    encoded = base64.b64encode(
+        json.dumps({"article_title": article_title, "shortlisted": shortlisted, "phrases": phrases}).encode()
+    ).decode()
+    preview_url = f"{base_url}/api/mcp/preview?secret={secret}&data={encoded}"
 
-    return [types.TextContent(
+    # Fetch thumbnails in parallel (up to 3 per phrase, max 12 total)
+    to_fetch = []
+    seen_phrases: dict = {}
+    for item in shortlisted:
+        phrase = item.get("phrase", "")
+        seen_phrases[phrase] = seen_phrases.get(phrase, 0)
+        if seen_phrases[phrase] < 3 and len(to_fetch) < 12:
+            thumb = item.get("thumb") or item.get("download_url", "")
+            if thumb:
+                to_fetch.append((len(to_fetch) + 1, item, thumb))
+            seen_phrases[phrase] += 1
+
+    contents: list = [types.TextContent(
         type="text",
-        text=(
-            f"Found **{len(shortlisted)} images** across {len(phrases)} search phrase(s).\n\n"
-            f"Open the selection gallery to choose which images to catalog:\n\n"
-            f"{preview_url}"
-        ),
+        text=f"Found **{len(shortlisted)} images** across {len(phrases)} search phrase(s). Here's a preview — tell me which numbers to catalog, or open the full gallery:\n\n**Full selection gallery:** {preview_url}",
     )]
+
+    def _fetch_entry(entry):
+        idx, item, thumb_url = entry
+        img = _fetch_thumb(thumb_url)
+        return idx, item, img
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=12) as ex:
+        futures = {ex.submit(_fetch_entry, e): e for e in to_fetch}
+        results = []
+        for f in concurrent.futures.as_completed(futures):
+            try:
+                results.append(f.result())
+            except Exception:
+                pass
+
+    results.sort(key=lambda x: x[0])
+
+    for idx, item, img in results:
+        label = f"**#{idx}** — {item.get('title', '')[:60]}"
+        if item.get("photographer"):
+            label += f" by {item['photographer']}"
+        label += f" ({item.get('library', '').capitalize()})"
+        contents.append(types.TextContent(type="text", text=label))
+        if img:
+            contents.append(img)
+
+    return contents
 
 
 async def _catalog_stock_image(args: dict) -> list[types.TextContent]:
