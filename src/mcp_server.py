@@ -236,6 +236,24 @@ async def list_tools() -> list[types.Tool]:
             },
         ),
         types.Tool(
+            name="get_selected_images",
+            description=(
+                "Retrieve the images the user selected in the preview gallery. "
+                "Call this after the user says they have made their selection. "
+                "Returns the selected images so you can catalog them with catalog_stock_image."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "token": {
+                        "type": "string",
+                        "description": "The session token returned by search_stock_photos.",
+                    },
+                },
+                "required": ["token"],
+            },
+        ),
+        types.Tool(
             name="catalog_image_from_file",
             description=(
                 "Catalog an image file that the user has attached to this conversation. "
@@ -276,6 +294,8 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextCont
         return await _search_stock_photos(arguments)
     if name == "catalog_stock_image":
         return await _catalog_stock_image(arguments)
+    if name == "get_selected_images":
+        return await _get_selected_images(arguments)
     if name == "catalog_image_from_file":
         return await _catalog_image_from_file(arguments)
     return [types.TextContent(type="text", text=json.dumps({"error": f"Unknown tool: {name}"}))]
@@ -594,11 +614,19 @@ async def _search_stock_photos(args: dict) -> list[types.TextContent]:
     secret = Config.MCP_INTERNAL_SECRET
     article_title = args.get("article_title", "Stock Photo Selection")
 
-    # Build preview URL
-    encoded = base64.b64encode(
-        json.dumps({"article_title": article_title, "shortlisted": shortlisted, "phrases": phrases}).encode()
-    ).decode()
-    preview_url = f"{base_url}/api/mcp/preview?secret={secret}&data={encoded}"
+    # Create a server-side session and get a short token
+    try:
+        sess_resp = _requests.post(
+            f"{base_url}/api/mcp/preview/session",
+            json={"article_title": article_title, "shortlisted": shortlisted, "phrases": phrases},
+            headers={"X-MCP-Secret": secret},
+            timeout=15,
+        )
+        sess_resp.raise_for_status()
+        token = sess_resp.json().get("token", "")
+        preview_url = f"{base_url}/api/mcp/preview/{token}"
+    except Exception as e:
+        return [types.TextContent(type="text", text=f"Could not create preview session: {e}")]
 
     # Fetch thumbnails in parallel (up to 3 per phrase, max 12 total)
     to_fetch = []
@@ -614,7 +642,13 @@ async def _search_stock_photos(args: dict) -> list[types.TextContent]:
 
     contents: list = [types.TextContent(
         type="text",
-        text=f"Found **{len(shortlisted)} images** across {len(phrases)} search phrase(s). Here's a preview — tell me which numbers to catalog, or open the full gallery:\n\n**Full selection gallery:** {preview_url}",
+        text=(
+            f"Found **{len(shortlisted)} images** across {len(phrases)} search phrase(s). "
+            f"Here's a preview — tell me which numbers to catalog, or **[open the selection gallery]({preview_url})** "
+            f"to pick visually and click Catalog Selected.\n\n"
+            f"Once you've made your selection in the gallery, tell me and I'll call `get_selected_images` "
+            f"with token `{token}` to retrieve your picks and catalog them."
+        ),
     )]
 
     def _fetch_entry(entry):
@@ -643,6 +677,42 @@ async def _search_stock_photos(args: dict) -> list[types.TextContent]:
             contents.append(img)
 
     return contents
+
+
+async def _get_selected_images(args: dict) -> list[types.TextContent]:
+    token = args.get("token", "").strip()
+    if not token:
+        return [types.TextContent(type="text", text=json.dumps({"error": "token required"}))]
+
+    base_url = (Config.APP_BASE_URL or "http://localhost:5000").rstrip("/")
+    secret = Config.MCP_INTERNAL_SECRET
+
+    try:
+        resp = _requests.get(
+            f"{base_url}/api/mcp/preview/{token}/selection",
+            headers={"X-MCP-Secret": secret},
+            timeout=10,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+    except Exception as e:
+        return [types.TextContent(type="text", text=json.dumps({"error": str(e)}))]
+
+    if not data.get("ready"):
+        return [types.TextContent(type="text", text="The user hasn't made a selection yet. Ask them to open the gallery, choose images, and click 'Catalog Selected'.")]
+
+    selected = data.get("selected", [])
+    if not selected:
+        return [types.TextContent(type="text", text="No images were selected in the gallery.")]
+
+    summary = "\n".join(
+        f"- #{i+1} **{img.get('title','Untitled')}** ({img.get('library','').capitalize()}) — `{img.get('download_url','')}`"
+        for i, img in enumerate(selected)
+    )
+    return [types.TextContent(
+        type="text",
+        text=f"The user selected **{len(selected)} image(s)**:\n\n{summary}\n\nNow call `catalog_stock_image` for each one.",
+    )]
 
 
 async def _catalog_stock_image(args: dict) -> list[types.TextContent]:

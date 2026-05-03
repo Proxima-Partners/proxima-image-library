@@ -596,6 +596,7 @@
 
   <script>
     window.PROXIMA_CSRF_TOKEN = {{ csrf_token|tojson }};
+    const SESSION_TOKEN = {{ (session_token or '')|tojson }};
 
     // ── State ────────────────────────────────────────────────────────────
     const images = {{ images|tojson }};
@@ -687,7 +688,7 @@
     }
 
     // ── Catalog workflow ─────────────────────────────────────────────────
-    function handleCatalog() {
+    async function handleCatalog() {
       if (selectedIndices.size === 0) {
         showToast('Please select at least one image');
         return;
@@ -699,6 +700,26 @@
 
       if (selectedImages.length === 0) {
         showToast('No valid images selected');
+        return;
+      }
+
+      // If opened via a session token, save selection back to Claude instead of cataloging here
+      if (SESSION_TOKEN) {
+        try {
+          await fetch(`/api/mcp/preview/${SESSION_TOKEN}/select`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ selected: selectedImages }),
+          });
+          document.querySelector('.main-panel').innerHTML = `
+            <div style="text-align:center;padding:48px 24px;">
+              <div style="font-size:48px;margin-bottom:16px;">✅</div>
+              <h2 style="font-family:Montserrat,sans-serif;font-size:20px;margin-bottom:8px;">Selection saved!</h2>
+              <p style="color:#6b7280;font-size:14px;">Go back to Claude and ask it to catalog your ${selectedImages.length} selected image${selectedImages.length !== 1 ? 's' : ''}.</p>
+            </div>`;
+        } catch (err) {
+          showToast('Failed to save selection: ' + err.message);
+        }
         return;
       }
 

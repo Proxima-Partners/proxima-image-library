@@ -1367,6 +1367,122 @@ def api_mcp_preview():
                          empty=len(images) == 0)
 
 
+# In-memory session store: token → {shortlist, article_title, phrases, selection, created_at}
+_preview_sessions: dict = {}
+_preview_sessions_lock = threading.Lock()
+_PREVIEW_SESSION_TTL = 3600  # 1 hour
+
+
+def _preview_session_cleanup():
+    now = time.time()
+    with _preview_sessions_lock:
+        expired = [k for k, v in _preview_sessions.items() if now - v["created_at"] > _PREVIEW_SESSION_TTL]
+        for k in expired:
+            del _preview_sessions[k]
+
+
+@app.route("/api/mcp/preview/session", methods=["POST"])
+def api_mcp_preview_session():
+    """Create a preview session. Returns a short token for the gallery URL."""
+    secret = Config.MCP_INTERNAL_SECRET
+    provided = request.headers.get("X-MCP-Secret") or request.args.get("secret")
+    if not secret or provided != secret:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    data = request.get_json(force=True) or {}
+    shortlisted = data.get("shortlisted", [])
+    if not isinstance(shortlisted, list) or not shortlisted:
+        return jsonify({"error": "shortlisted required"}), 400
+
+    _preview_session_cleanup()
+    token = secrets.token_urlsafe(16)
+    with _preview_sessions_lock:
+        _preview_sessions[token] = {
+            "article_title": str(data.get("article_title", "Stock Photo Selection") or ""),
+            "phrases": data.get("phrases", []),
+            "shortlisted": shortlisted,
+            "selection": None,
+            "created_at": time.time(),
+        }
+    return jsonify({"token": token})
+
+
+@app.route("/api/mcp/preview/<token>", methods=["GET"])
+def api_mcp_preview_token(token: str):
+    """Render the selection gallery for a session token."""
+    with _preview_sessions_lock:
+        sess = _preview_sessions.get(token)
+    if not sess:
+        return "Preview session not found or expired.", 404
+
+    shortlisted = sess["shortlisted"]
+    images = []
+    for idx, item in enumerate(shortlisted):
+        if not isinstance(item, dict) or not item.get("download_url"):
+            continue
+        images.append({
+            "id": f"img_{idx}",
+            "index": idx,
+            "download_url": item.get("download_url", ""),
+            "title": str(item.get("title", "") or "").strip() or "Untitled",
+            "filename": str(item.get("filename", "") or "").strip() or "image.jpg",
+            "library": str(item.get("library", "") or "").strip() or "stock",
+            "photographer": str(item.get("photographer", "") or "").strip(),
+            "phrase": str(item.get("phrase", "") or "").strip(),
+            "tags": item.get("tags", []) if isinstance(item.get("tags", []), list) else [],
+        })
+
+    return render_template(
+        "mcp_preview.html",
+        article_title=sess["article_title"],
+        images=images,
+        phrases=sess["phrases"],
+        empty=len(images) == 0,
+        session_token=token,
+    )
+
+
+@app.route("/api/mcp/preview/<token>/select", methods=["POST"])
+def api_mcp_preview_select(token: str):
+    """Store the user's image selection for a session token."""
+    with _preview_sessions_lock:
+        sess = _preview_sessions.get(token)
+    if not sess:
+        return jsonify({"error": "Session not found or expired"}), 404
+
+    data = request.get_json(force=True) or {}
+    selected = data.get("selected", [])
+    if not isinstance(selected, list):
+        return jsonify({"error": "selected must be an array"}), 400
+
+    with _preview_sessions_lock:
+        if token in _preview_sessions:
+            _preview_sessions[token]["selection"] = selected
+            _preview_sessions[token]["selected_at"] = time.time()
+
+    return jsonify({"ok": True, "count": len(selected)})
+
+
+@app.route("/api/mcp/preview/<token>/selection", methods=["GET"])
+def api_mcp_preview_get_selection(token: str):
+    """Retrieve the stored selection for a session token (called by MCP tool)."""
+    secret = Config.MCP_INTERNAL_SECRET
+    provided = request.headers.get("X-MCP-Secret") or request.args.get("secret")
+    if not secret or provided != secret:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    with _preview_sessions_lock:
+        sess = _preview_sessions.get(token)
+    if not sess:
+        return jsonify({"error": "Session not found or expired"}), 404
+
+    return jsonify({
+        "article_title": sess["article_title"],
+        "selected": sess.get("selection"),
+        "ready": sess.get("selection") is not None,
+    })
+
+
 @app.route("/api/download-image")
 @login_required
 def api_download_image():
