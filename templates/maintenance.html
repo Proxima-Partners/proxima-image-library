@@ -4308,11 +4308,10 @@
     });
 
     function openTagManager() {
-      const panel = document.getElementById('tm-panel');
-      panel.classList.remove('is-collapsed');
-      document.getElementById('tm-toggle-icon').textContent = '▼';
+      setActiveWorkstream('correct');
+      openToolPanel('correct', 'Tag Manager');
       if (!_tmLoaded) { _tmLoaded = true; tmLoadLibrary().then(tmLoadSuggestions); }
-      setTimeout(() => panel.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+      setTimeout(() => document.getElementById('tm-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
     }
 
     // Auto-open if navigated via anchor (then clear hash so refresh doesn't re-open)
