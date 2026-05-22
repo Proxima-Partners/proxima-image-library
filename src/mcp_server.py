@@ -254,6 +254,24 @@ async def list_tools() -> list[types.Tool]:
             },
         ),
         types.Tool(
+            name="get_image_url",
+            description=(
+                "Return a public thumbnail URL for an image in the Proxima library. "
+                "Use this to embed library images as markdown images in chat. "
+                "Pass the location field from a search_image_library result."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "location": {
+                        "type": "string",
+                        "description": "The image location path from a search_image_library result.",
+                    },
+                },
+                "required": ["location"],
+            },
+        ),
+        types.Tool(
             name="catalog_image_from_file",
             description=(
                 "Catalog an image file that the user has attached to this conversation. "
@@ -296,6 +314,8 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextCont
         return await _catalog_stock_image(arguments)
     if name == "get_selected_images":
         return await _get_selected_images(arguments)
+    if name == "get_image_url":
+        return await _get_image_url(arguments)
     if name == "catalog_image_from_file":
         return await _catalog_image_from_file(arguments)
     return [types.TextContent(type="text", text=json.dumps({"error": f"Unknown tool: {name}"}))]
@@ -855,6 +875,19 @@ async def _catalog_stock_image(args: dict) -> list[types.TextContent]:
         return [types.TextContent(type="text", text=json.dumps(result, indent=2, ensure_ascii=False))]
     except Exception:
         return [types.TextContent(type="text", text=json.dumps({"error": "Cataloging failed"}, ensure_ascii=False))]
+
+
+async def _get_image_url(args: dict) -> list[types.TextContent]:
+    from urllib.parse import quote
+    location = args.get("location", "").strip()
+    if not location:
+        return [types.TextContent(type="text", text=json.dumps({"error": "location is required"}))]
+    secret = Config.MCP_INTERNAL_SECRET
+    if not secret:
+        return [types.TextContent(type="text", text=json.dumps({"error": "MCP_INTERNAL_SECRET not configured"}))]
+    base = "https://library.liveproxima.org"
+    url = f"{base}/api/mcp/thumbnail?path={quote(location)}&key={quote(secret)}"
+    return [types.TextContent(type="text", text=json.dumps({"url": url, "location": location}))]
 
 
 async def _catalog_image_from_file(args: dict) -> list[types.TextContent]:

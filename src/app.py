@@ -1915,6 +1915,20 @@ def _serve_image(thumb: bool) -> Response:
         return Response(f"Error reading image: {e}", status=500)
 
 
+@app.route("/api/mcp/thumbnail")
+def api_mcp_thumbnail():
+    """Public thumbnail endpoint for MCP skill use.
+
+    Authenticated by ?key=<MCP_INTERNAL_SECRET> so the skill can embed
+    images as markdown ![](url) in Claude.ai chat without MSAL.
+    """
+    secret = Config.MCP_INTERNAL_SECRET
+    key = request.args.get("key", "")
+    if not secret or key != secret:
+        return Response("Unauthorized", status=401)
+    return _serve_image(thumb=True)
+
+
 # ------------------------------------------------------------------
 # Tag library
 # ------------------------------------------------------------------
