@@ -312,7 +312,7 @@
 
     /* ── Tag strip ── */
     #tag-strip {
-      background: var(--surface); border-bottom: 1px solid var(--border);
+      background: var(--surface); border-top: 1px solid var(--border);
       padding: 10px 16px; display: flex; flex-wrap: wrap;
       gap: 6px; align-items: center; min-height: 48px;
     }
@@ -324,6 +324,10 @@
     }
     .tag-chip:hover { border-color: var(--accent); }
     .tag-chip.active { background: var(--tag-sel-bg); color: var(--tag-sel-color); }
+    .tag-count {
+      display: inline-block; margin-left: 5px; font-size: 10px;
+      opacity: 0.6; font-weight: 600;
+    }
     .tag-clear {
       font-size: 12px; color: var(--muted); cursor: pointer;
       padding: 4px 8px; border-radius: 20px; border: 1px solid var(--border);
@@ -513,10 +517,11 @@
     <a href="/" class="header-link">Home</a>
     <a href="/upload" class="header-link">Upload</a>
     <a href="/stock-search" class="header-link">Stock</a>
+    <a href="/tags" class="header-link">Tags</a>
     {% if is_admin %}
     <a href="/maintenance" class="header-link">Maintenance</a>
-    {% endif %}
     <a href="/review" class="header-link" id="review-link">Review<span id="review-badge" style="display:none;margin-left:6px;background:#EEB11E;color:#fff;font-size:11px;font-weight:700;padding:1px 6px;border-radius:20px;vertical-align:middle;"></span></a>
+    {% endif %}
     <button class="help-btn" id="help-btn" title="Help">?</button>
     <div class="user-chip">
       <div class="user-avatar">{{ (user.name or user.preferred_username or '?')[0] | upper }}</div>
@@ -620,7 +625,6 @@
       </div>
     </nav>
     <div id="main">
-      <div id="tag-strip"><span id="tag-strip-empty">Loading tags…</span></div>
       <div id="grid">
         <div id="grid-status"><div class="spinner"></div>Loading library…</div>
       </div>
@@ -628,6 +632,7 @@
         <span id="grid-load-info"></span>
         <button id="grid-load-more" type="button">Load more</button>
       </div>
+      <div id="tag-strip"></div>
     </div>
   </div>
 </div>
@@ -924,9 +929,9 @@
       return;
     }
     let html = activeTags.size ? `<button class="tag-clear" id="tag-clear-btn">Clear filters</button>` : '';
-    tags.forEach(t => {
+    tags.forEach(({ name: t, count }) => {
       const active = activeTags.has(t) ? ' active' : '';
-      html += `<span class="tag-chip${active}" data-tag="${esc(t)}">${esc(t)}</span>`;
+      html += `<span class="tag-chip${active}" data-tag="${esc(t)}">${esc(t)}<span class="tag-count">${count}</span></span>`;
     });
     el.innerHTML = html;
     el.querySelectorAll('.tag-chip').forEach(chip => {
@@ -939,7 +944,12 @@
     });
     const clearBtn = document.getElementById('tag-clear-btn');
     if (clearBtn) clearBtn.addEventListener('click', () => {
-      activeTags.clear(); renderTagStrip(tags); renderGrid();
+      activeTags.clear();
+      searchQ = '';
+      syncHeaderSearch('');
+      document.getElementById('browse-active-filter').textContent = '';
+      renderTagStrip(tags);
+      renderGrid();
     });
   }
 
@@ -975,7 +985,8 @@
     const pager = document.getElementById('grid-pagination');
     const pagerInfo = document.getElementById('grid-load-info');
     if (!n) {
-      grid.innerHTML = '<div id="grid-status">No images match your search.</div>';
+      const stockUrl = '/stock-search' + (searchQ ? '?q=' + encodeURIComponent(searchQ) : '');
+      grid.innerHTML = `<div id="grid-status">No images match your search.<div style="margin-top:12px;font-size:14px;color:var(--muted)">Try searching stock photo libraries instead? <a href="${stockUrl}" style="color:var(--accent);font-weight:600;margin-left:6px">Search Stock Images →</a></div></div>`;
       pager.classList.add('hidden');
       return;
     }

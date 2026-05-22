@@ -60,11 +60,45 @@
     .breadcrumb .crumb:hover { text-decoration: underline; }
     .breadcrumb .sep { color: var(--border); }
 
+    /* ── Search bar panel ── */
+    .search-wrap {
+      max-width: 860px;
+      margin: 36px auto 0;
+      padding: 28px 32px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+    }
+    .search-wrap h2 {
+      font-family: 'Montserrat', sans-serif;
+      font-size: 18px;
+      font-weight: 700;
+      margin-bottom: 16px;
+    }
+    .search-row {
+      display: flex;
+      gap: 10px;
+    }
+    .search-row input {
+      flex: 1;
+      padding: 10px 16px;
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      font-size: 14px;
+      font-family: inherit;
+      color: var(--text);
+      background: var(--surface);
+      transition: border-color 0.15s;
+    }
+    .search-row input:focus { outline: none; border-color: var(--accent); }
+    .search-row input::placeholder { color: #9ca3af; }
+
     /* ── Panels ── */
     .panel {
       max-width: 860px;
-      margin: 40px auto;
-      padding: 36px 32px;
+      margin: 24px auto;
+      padding: 28px 32px;
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: var(--radius);
@@ -74,55 +108,6 @@
     .panel .subtitle { font-size: 13px; color: var(--muted); margin-bottom: 24px; line-height: 1.5; }
 
     .hidden { display: none !important; }
-
-    /* ── Upload / Drop zone ── */
-    .drop-zone {
-      border: 2px dashed var(--border);
-      border-radius: var(--radius);
-      padding: 36px 24px;
-      text-align: center;
-      cursor: pointer;
-      transition: border-color 0.15s, background 0.15s;
-      margin-bottom: 16px;
-    }
-    .drop-zone:hover, .drop-zone.drag-over {
-      border-color: var(--accent);
-      background: #e6f4f8;
-    }
-    .drop-zone .drop-icon { font-size: 36px; margin-bottom: 10px; }
-    .drop-zone .drop-label { font-size: 14px; color: var(--muted); }
-    .drop-zone input[type="file"] { display: none; }
-
-    .divider {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      margin: 16px 0;
-      font-size: 12px;
-      color: var(--muted);
-    }
-    .divider::before, .divider::after {
-      content: '';
-      flex: 1;
-      height: 1px;
-      background: var(--border);
-    }
-
-    textarea {
-      width: 100%;
-      padding: 12px;
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      font-family: "SF Mono", "Fira Code", Menlo, monospace;
-      font-size: 13px;
-      line-height: 1.6;
-      resize: vertical;
-      color: var(--text);
-      background: var(--surface);
-      margin-bottom: 16px;
-    }
-    textarea:focus { outline: none; border-color: var(--accent); }
-    textarea::placeholder { color: #9ca3af; }
 
     /* ── Buttons ── */
     .btn {
@@ -135,6 +120,7 @@
       font-weight: 600;
       cursor: pointer;
       transition: background 0.15s;
+      white-space: nowrap;
     }
     .btn:hover    { background: var(--accent-hover); }
     .btn:disabled { background: #7ab8c8; cursor: not-allowed; }
@@ -151,59 +137,6 @@
       transition: border-color 0.15s, color 0.15s;
     }
     .btn-outline:hover { border-color: var(--accent); color: var(--accent); }
-
-    /* ── Phrase chips ── */
-    .chip-grid {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      margin-bottom: 20px;
-    }
-    .chip {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      padding: 6px 12px;
-      background: #e6f4f8;
-      color: #045f77;
-      border-radius: 20px;
-      font-size: 13px;
-      font-weight: 500;
-    }
-    .chip-remove {
-      background: none;
-      border: none;
-      cursor: pointer;
-      color: #7ab8c8;
-      font-size: 14px;
-      line-height: 1;
-      padding: 0;
-      display: flex;
-      align-items: center;
-    }
-    .chip-remove:hover { color: #045f77; }
-
-    .add-phrase-row {
-      display: flex;
-      gap: 8px;
-      margin-bottom: 20px;
-    }
-    .add-phrase-row input {
-      flex: 1;
-      padding: 8px 14px;
-      border: 1px solid var(--border);
-      border-radius: 20px;
-      font-size: 13px;
-      color: var(--text);
-    }
-    .add-phrase-row input:focus { outline: none; border-color: var(--accent); }
-
-    .action-row {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      flex-wrap: wrap;
-    }
 
     /* ── Loading ── */
     .loading-wrap {
@@ -227,34 +160,17 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
-      margin-bottom: 28px;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+      gap: 8px;
     }
     .results-header h2 { font-size: 20px; font-weight: 600; }
-
-    .phrase-block {
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      margin-bottom: 24px;
-      overflow: hidden;
-    }
-
-    .phrase-label {
-      padding: 14px 20px;
-      background: #f8fafc;
-      border-bottom: 1px solid var(--border);
-      font-size: 14px;
-      font-weight: 600;
-      color: var(--text);
-    }
-    .phrase-label em {
-      font-style: normal;
-      color: var(--accent);
-    }
 
     .lib-tabs {
       display: flex;
       border-bottom: 1px solid var(--border);
       background: var(--surface);
+      margin-bottom: 0;
     }
     .lib-tab {
       flex: 1;
@@ -273,7 +189,7 @@
     .lib-tab.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
     .lib-tab.unconfigured { color: #d1d5db; cursor: default; }
 
-    .lib-panel { padding: 16px 20px 20px; }
+    .lib-panel { padding: 16px 0 4px; }
 
     .lib-message {
       font-size: 13px;
@@ -525,24 +441,11 @@
       max-width: 420px; width: 100%; box-shadow: 0 8px 32px rgba(0,0,0,0.2);
     }
     #cat-header { font-size: 16px; font-weight: 700; color: #111; margin-bottom: 10px; font-family: 'Montserrat', sans-serif; }
-    #cat-status-wrap {
-      margin-bottom: 12px;
-    }
-    #cat-status-text {
-      font-size: 12px;
-      color: #6b7280;
-      margin-bottom: 8px;
-    }
-    #cat-status-bar {
-      height: 8px;
-      border-radius: 999px;
-      background: #e5e7eb;
-      overflow: hidden;
-    }
+    #cat-status-wrap { margin-bottom: 12px; }
+    #cat-status-text { font-size: 12px; color: #6b7280; margin-bottom: 8px; }
+    #cat-status-bar { height: 8px; border-radius: 999px; background: #e5e7eb; overflow: hidden; }
     #cat-status-fill {
-      height: 100%;
-      width: 0%;
-      border-radius: 999px;
+      height: 100%; width: 0%; border-radius: 999px;
       background: linear-gradient(90deg, #05718D, #2ea0ba);
       transition: width 0.25s ease;
     }
@@ -551,12 +454,7 @@
     #cat-result { margin-top: 16px; }
     #cat-result.hidden { display: none; }
     #cat-result-inner { font-size: 13px; color: #111; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 6px; padding: 10px 14px; margin-bottom: 12px; line-height: 1.6; }
-    #cat-actions {
-      display: flex;
-      justify-content: flex-end;
-      gap: 10px;
-      flex-wrap: wrap;
-    }
+    #cat-actions { display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap; }
     #cat-add-others { padding: 8px 20px; border-radius: 20px; border: 1px solid var(--border); background: #fff; color: #374151; font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit; }
     #cat-close { padding: 8px 20px; border-radius: 20px; border: none; background: var(--accent); color: #fff; font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit; }
 
@@ -583,302 +481,134 @@
 
   <div id="download-toast" aria-live="polite"></div>
 
-<div id="preview-overlay">
-  <div id="preview-modal">
-    <button class="preview-close" id="preview-close" type="button" aria-label="Close preview">&#x2715;</button>
-    <div id="preview-stage">
-      <img id="preview-image" src="" alt="" />
-    </div>
-    <div class="preview-modal-actions">
-      <div id="preview-caption"></div>
-    </div>
-  </div>
-</div>
-
-<!-- Download confirmation modal -->
-<div id="dl-overlay">
-  <div id="dl-modal">
-    <button class="modal-close-x" id="dl-close-x" type="button" aria-label="Close">&#x2715;</button>
-    <div id="dl-color-strip"></div>
-    <img id="dl-preview" src="" alt="" />
-    <div id="dl-body">
-      <div class="dl-header-row">
-        <span class="dl-source-badge" id="dl-source-badge"></span>
-        <span class="dl-editorial-badge hidden" id="dl-editorial">Editorial use only</span>
+  <div id="preview-overlay">
+    <div id="preview-modal">
+      <button class="preview-close" id="preview-close" type="button" aria-label="Close preview">&#x2715;</button>
+      <div id="preview-stage">
+        <img id="preview-image" src="" alt="" />
       </div>
-      <div id="dl-title"></div>
-      <div id="dl-photographer"></div>
-      <div id="dl-meta-grid"></div>
-      <div id="dl-tags"></div>
-    </div>
-    <div class="dl-modal-actions">
-      <button class="dl-cancel" id="dl-cancel" type="button">Cancel</button>
-      <button class="modal-preview-btn" id="dl-large-preview" type="button">Preview Larger</button>
-      <button class="dl-download" id="dl-download" type="button">Download</button>
-      <button class="dl-confirm" id="dl-confirm" type="button">Add to Library</button>
-    </div>
-  </div>
-</div>
-
-<!-- Catalog progress overlay -->
-<div id="cat-overlay">
-  <div id="cat-modal">
-    <div id="cat-header">Adding to Library…</div>
-    <div id="cat-status-wrap">
-      <div id="cat-status-text">Preparing download…</div>
-      <div id="cat-status-bar"><div id="cat-status-fill"></div></div>
-    </div>
-    <div id="cat-log"></div>
-    <div id="cat-result" class="hidden">
-      <div id="cat-result-inner"></div>
-      <div id="cat-actions">
-        <button id="cat-add-others" type="button">Add Others</button>
-        <button id="cat-close" type="button">Return</button>
+      <div class="preview-modal-actions">
+        <div id="preview-caption"></div>
       </div>
     </div>
   </div>
-</div>
 
-<!-- Shutterstock quota modal -->
-<div id="ss-overlay">
-  <div id="ss-modal">
-    <button class="modal-close-x" id="ss-close-x" type="button" aria-label="Close">&#x2715;</button>
-    <div id="ss-img-section" class="hidden">
-      <img id="ss-preview" src="" alt="" />
-      <div id="ss-img-meta">
-        <div id="ss-img-title"></div>
-        <div id="ss-img-cats"></div>
-        <div id="ss-img-keywords"></div>
-        <div class="ss-editorial hidden" id="ss-img-editorial">Editorial use only</div>
+  <!-- Download confirmation modal -->
+  <div id="dl-overlay">
+    <div id="dl-modal">
+      <button class="modal-close-x" id="dl-close-x" type="button" aria-label="Close">&#x2715;</button>
+      <div id="dl-color-strip"></div>
+      <img id="dl-preview" src="" alt="" />
+      <div id="dl-body">
+        <div class="dl-header-row">
+          <span class="dl-source-badge" id="dl-source-badge"></span>
+          <span class="dl-editorial-badge hidden" id="dl-editorial">Editorial use only</span>
+        </div>
+        <div id="dl-title"></div>
+        <div id="dl-photographer"></div>
+        <div id="dl-meta-grid"></div>
+        <div id="dl-tags"></div>
+      </div>
+      <div class="dl-modal-actions">
+        <button class="dl-cancel" id="dl-cancel" type="button">Cancel</button>
+        <button class="modal-preview-btn" id="dl-large-preview" type="button">Preview Larger</button>
+        <button class="dl-download" id="dl-download" type="button">Download</button>
+        <button class="dl-confirm" id="dl-confirm" type="button">Add to Library</button>
       </div>
     </div>
-    <h3>Open on Shutterstock</h3>
-    <p>Proxima has a <strong>10 download limit per month</strong> on Shutterstock. This counter tracks link-outs — please only download images you intend to use.</p>
-    <div class="ss-quota-bar"><div class="ss-quota-fill" id="ss-quota-fill"></div></div>
-    <div class="ss-quota-label" id="ss-quota-label"></div>
-    <div class="ss-modal-actions">
-      <button class="ss-cancel" id="ss-cancel" type="button">Cancel</button>
-      <button class="modal-preview-btn" id="ss-large-preview" type="button">Preview Larger</button>
-      <button class="ss-confirm" id="ss-confirm" type="button">Open Shutterstock</button>
+  </div>
+
+  <!-- Catalog progress overlay -->
+  <div id="cat-overlay">
+    <div id="cat-modal">
+      <div id="cat-header">Adding to Library…</div>
+      <div id="cat-status-wrap">
+        <div id="cat-status-text">Preparing download…</div>
+        <div id="cat-status-bar"><div id="cat-status-fill"></div></div>
+      </div>
+      <div id="cat-log"></div>
+      <div id="cat-result" class="hidden">
+        <div id="cat-result-inner"></div>
+        <div id="cat-actions">
+          <button id="cat-add-others" type="button">Add Others</button>
+          <button id="cat-close" type="button">Return</button>
+        </div>
+      </div>
     </div>
   </div>
-</div>
+
+  <!-- Shutterstock quota modal -->
+  <div id="ss-overlay">
+    <div id="ss-modal">
+      <button class="modal-close-x" id="ss-close-x" type="button" aria-label="Close">&#x2715;</button>
+      <div id="ss-img-section" class="hidden">
+        <img id="ss-preview" src="" alt="" />
+        <div id="ss-img-meta">
+          <div id="ss-img-title"></div>
+          <div id="ss-img-cats"></div>
+          <div id="ss-img-keywords"></div>
+          <div class="ss-editorial hidden" id="ss-img-editorial">Editorial use only</div>
+        </div>
+      </div>
+      <h3>Open on Shutterstock</h3>
+      <p>Proxima has a <strong>10 download limit per month</strong> on Shutterstock. This counter tracks link-outs — please only download images you intend to use.</p>
+      <div class="ss-quota-bar"><div class="ss-quota-fill" id="ss-quota-fill"></div></div>
+      <div class="ss-quota-label" id="ss-quota-label"></div>
+      <div class="ss-modal-actions">
+        <button class="ss-cancel" id="ss-cancel" type="button">Cancel</button>
+        <button class="modal-preview-btn" id="ss-large-preview" type="button">Preview Larger</button>
+        <button class="ss-confirm" id="ss-confirm" type="button">Open Shutterstock</button>
+      </div>
+    </div>
+  </div>
 
   <header>
     <a href="/"><img src="/static/logo.png" alt="Proxima" style="height:36px;width:36px;border-radius:50%;object-fit:cover;flex-shrink:0;" /></a>
     <h1>Stock Photo Search</h1>
     <div class="breadcrumb">
-      <span class="crumb" onclick="location.href='/'">Home</span>
+      <a href="/" class="crumb">← Library</a>
       <span class="sep">›</span>
       <span>Stock Photo Search</span>
     </div>
   </header>
 
-  <!-- Step 1 — Upload / Paste -->
-  <div class="panel" id="step-upload">
-    <h2>Upload Skill Output</h2>
-    <p class="subtitle">
-      Upload a blog post, article, or email skill output file (Markdown or plain text).
-      Photo suggestion phrases will be extracted automatically from the <strong>Photo Suggestion</strong> section.
-    </p>
-
-    <textarea id="paste-input" rows="6"
-      placeholder="Paste your full skill output here, or just list phrases one per line:&#10;&#10;man alone grandstand&#10;spectators outdoor sporting event&#10;two friends city sidewalk"></textarea>
-
-    <div class="divider">or drop a file directly</div>
-
-    <div class="drop-zone" id="drop-zone" onclick="document.getElementById('file-input').click()">
-      <div class="drop-icon">📄</div>
-      <p class="drop-label">Drop a .md or .txt file here, or click to browse</p>
-      <input type="file" id="file-input" accept=".md,.txt,text/plain,text/markdown"
-             onchange="handleFileInput(this)" />
-    </div>
-
-    <button class="btn" type="button" onclick="parseContent()">Extract Phrases</button>
-  </div>
-
-  <!-- Step 2 — Review phrases -->
-  <div class="panel hidden" id="step-phrases">
-    <h2>Photo Phrases</h2>
-    <p class="subtitle" id="phrases-caption"></p>
-
-    <div class="chip-grid" id="phrase-chips"></div>
-
-    <div class="add-phrase-row">
-      <input type="text" id="add-input" placeholder="Add a phrase…" maxlength="80"
-             onkeydown="if(event.key==='Enter') addPhrase()" />
-      <button class="btn-outline" type="button" onclick="addPhrase()">Add</button>
-    </div>
-
-    <div class="action-row">
-      <button class="btn" id="btn-search" type="button" onclick="searchAll()">Search All Libraries</button>
-      <button class="btn-outline" type="button" onclick="resetToUpload()">← Upload Different File</button>
+  <!-- Search bar -->
+  <div class="search-wrap">
+    <h2>Search Stock Photos</h2>
+    <div class="search-row">
+      <input type="text" id="search-input" placeholder="e.g. two people walking in the rain at night" autocomplete="off" />
+      <button class="btn" id="search-btn" type="button">Search</button>
     </div>
   </div>
 
   <!-- Loading -->
   <div class="loading-wrap hidden" id="step-loading">
     <div class="spinner"></div>
-    <p class="loading-msg" id="loading-msg">Searching Pexels, Shutterstock, and Unsplash…</p>
+    <p class="loading-msg" id="loading-msg">Searching Pexels, Shutterstock, Unsplash, and Pixabay…</p>
   </div>
 
-  <!-- Step 3 — Results -->
+  <!-- Results -->
   <div class="panel hidden" id="step-results">
     <div class="results-header">
-      <h2>Results</h2>
+      <h2 id="results-title">Results</h2>
       <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;align-items:center;">
         <button class="btn-outline" type="button" id="btn-more-photos" onclick="loadMoreResults()">Show Another 25</button>
-        <button class="btn-outline" type="button" onclick="goBackToPhrases()">← Edit Phrases</button>
       </div>
     </div>
-    <p class="subtitle" id="results-page-caption" style="margin-top:4px;"></p>
-    <div id="results-container"></div>
+    <p class="subtitle" id="results-page-caption" style="margin-top:0;margin-bottom:16px;"></p>
+    <div id="results-tabs"></div>
+    <div id="results-panels"></div>
   </div>
 
   <script>
     window.PROXIMA_CSRF_TOKEN = {{ csrf_token|tojson }};
 
     // ── State ────────────────────────────────────────────────────────────
-    let phrases = [];
-    let currentResultPage = 1;
+    let currentQuery       = '';
+    let currentResultPage  = 1;
     let currentResultLimit = 25;
+    let currentLibResults  = {};  // { pexels: {...}, unsplash: {...}, ... }
 
-    // ── Show/hide panels ─────────────────────────────────────────────────
-    function showOnly(id) {
-      ['step-upload','step-phrases','step-loading','step-results'].forEach(p => {
-        document.getElementById(p).classList.toggle('hidden', p !== id);
-      });
-    }
-
-    // ── File input ───────────────────────────────────────────────────────
-    function handleFileInput(input) {
-      if (input.files && input.files[0]) readFile(input.files[0]);
-    }
-
-    function readFile(file) {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        document.getElementById('paste-input').value = e.target.result;
-        parseContent();
-      };
-      reader.readAsText(file);
-    }
-
-    // Drag-and-drop support
-    const dropZone = document.getElementById('drop-zone');
-    dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('drag-over'); });
-    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
-    dropZone.addEventListener('drop', (e) => {
-      e.preventDefault();
-      dropZone.classList.remove('drag-over');
-      const file = e.dataTransfer.files[0];
-      if (file) readFile(file);
-    });
-
-    // ── Parse phrases via API ────────────────────────────────────────────
-    async function parseContent() {
-      const content = document.getElementById('paste-input').value.trim();
-      if (!content) { alert('Please upload a file or paste content first.'); return; }
-
-      const res  = await fetch('/api/parse-suggestions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content }),
-      });
-      const data = await res.json();
-
-      if (data.error || !data.phrases || !data.phrases.length) {
-        alert('No photo suggestion phrases found. Try pasting phrases one per line.');
-        return;
-      }
-
-      phrases = data.phrases;
-      renderPhraseChips();
-      document.getElementById('phrases-caption').textContent =
-        `${phrases.length} phrase${phrases.length !== 1 ? 's' : ''} found. Remove any you don't need, then click Search.`;
-      showOnly('step-phrases');
-    }
-
-    // ── Phrase chip management ───────────────────────────────────────────
-    function renderPhraseChips() {
-      const grid = document.getElementById('phrase-chips');
-      grid.innerHTML = '';
-      phrases.forEach((phrase, i) => {
-        const chip = document.createElement('div');
-        chip.className = 'chip';
-        chip.innerHTML = `
-          <span>${escHtml(phrase)}</span>
-          <button class="chip-remove" type="button" title="Remove" onclick="removePhrase(${i})">×</button>`;
-        grid.appendChild(chip);
-      });
-    }
-
-    function removePhrase(index) {
-      phrases.splice(index, 1);
-      if (!phrases.length) { resetToUpload(); return; }
-      renderPhraseChips();
-      document.getElementById('phrases-caption').textContent =
-        `${phrases.length} phrase${phrases.length !== 1 ? 's' : ''}. Click Search when ready.`;
-    }
-
-    function addPhrase() {
-      const input = document.getElementById('add-input');
-      const val = input.value.trim();
-      if (!val) return;
-      phrases.push(val);
-      input.value = '';
-      renderPhraseChips();
-      document.getElementById('phrases-caption').textContent =
-        `${phrases.length} phrase${phrases.length !== 1 ? 's' : ''}. Click Search when ready.`;
-    }
-
-    // ── Search all libraries ─────────────────────────────────────────────
-    async function searchAll(page = 1) {
-      if (!phrases.length) { alert('Add at least one phrase.'); return; }
-
-      document.getElementById('loading-msg').textContent =
-        `Searching page ${page} for ${phrases.length} phrase${phrases.length !== 1 ? 's' : ''} across Pexels, Shutterstock, Unsplash, and Pixabay…`;
-      showOnly('step-loading');
-
-      try {
-        const res  = await fetch('/api/stock-search', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ phrases, limit: currentResultLimit, page }),
-        });
-        const data = await res.json();
-        if (data.error) throw new Error(data.error);
-        currentResultPage = data.page || page;
-        renderResults(data.results);
-        updateMoreButtonState(data.results);
-        showOnly('step-results');
-      } catch (err) {
-        showOnly('step-phrases');
-        alert(`Search failed: ${err.message}`);
-      }
-    }
-
-    async function loadMoreResults() {
-      await searchAll(currentResultPage + 1);
-    }
-
-    function updateMoreButtonState(results) {
-      const btn = document.getElementById('btn-more-photos');
-      const caption = document.getElementById('results-page-caption');
-      const hasAnyResults = (results || []).some(item =>
-        LIBS.some(({ key }) => ((item[key] && item[key].results) || []).length > 0)
-      );
-      const hasPotentialMore = (results || []).some(item =>
-        LIBS.some(({ key }) => ((item[key] && item[key].results) || []).length === currentResultLimit)
-      );
-
-      btn.disabled = !hasPotentialMore;
-      btn.title = hasPotentialMore ? '' : 'No additional results reported by providers for this page size.';
-      caption.textContent = `Showing page ${currentResultPage} (${currentResultLimit} per library per phrase).`
-        + (hasAnyResults ? '' : ' No results found for this page.');
-    }
-
-    // ── Render results ───────────────────────────────────────────────────
     const LIBS = [
       { key: 'pexels',       label: 'Pexels'       },
       { key: 'shutterstock', label: 'Shutterstock' },
@@ -886,190 +616,208 @@
       { key: 'pixabay',      label: 'Pixabay'      },
     ];
 
-    function renderResults(results) {
-      const container = document.getElementById('results-container');
-      container.innerHTML = '';
+    // ── Search ───────────────────────────────────────────────────────────
+    const searchInput = document.getElementById('search-input');
+    const searchBtn   = document.getElementById('search-btn');
 
-      results.forEach(item => {
-        const block = document.createElement('div');
-        block.className = 'phrase-block';
+    searchBtn.addEventListener('click', () => doSearch());
+    searchInput.addEventListener('keydown', e => { if (e.key === 'Enter') doSearch(); });
 
-        // Phrase heading
-        const heading = document.createElement('div');
-        heading.className = 'phrase-label';
-        heading.innerHTML = `"<em>${escHtml(item.phrase)}</em>"`;
-        block.appendChild(heading);
+    // Pre-fill from ?q= and auto-search if present
+    const _qs = new URLSearchParams(window.location.search).get('q');
+    if (_qs) { searchInput.value = _qs; doSearch(); }
 
-        // Tabs
-        const tabs = document.createElement('div');
-        tabs.className = 'lib-tabs';
+    async function doSearch(page = 1) {
+      const q = searchInput.value.trim();
+      if (!q) { searchInput.focus(); return; }
+      currentQuery = q;
+      currentResultPage = page;
 
-        // Panels
-        const panelWrap = document.createElement('div');
+      document.getElementById('loading-msg').textContent =
+        `Searching Pexels, Shutterstock, Unsplash, and Pixabay…`;
+      document.getElementById('step-results').classList.add('hidden');
+      document.getElementById('step-loading').classList.remove('hidden');
 
-        LIBS.forEach(({ key, label }, i) => {
-          const libData = item[key] || { results: [], error: 'No data returned' };
-          const count   = (libData.results || []).length;
-          const unconfigured = libData.error && libData.error.includes('not configured');
-
-          // Tab button
-          const tab = document.createElement('button');
-          tab.className  = 'lib-tab' + (i === 0 ? ' active' : '') + (unconfigured ? ' unconfigured' : '');
-          tab.dataset.key = key;
-          tab.textContent = label + (count ? ` (${count})` : '');
-          tab.onclick = () => switchTab(block, key);
-          tabs.appendChild(tab);
-
-          // Panel
-          const panel = document.createElement('div');
-          panel.className  = 'lib-panel' + (i !== 0 ? ' hidden' : '');
-          panel.dataset.lib = key;
-
-          if (!count) {
-            const msg = document.createElement('div');
-            msg.className = 'lib-message' + (libData.error ? ' error' : '');
-            msg.textContent = libData.error || 'No results found.';
-            panel.appendChild(msg);
-          } else {
-            const grid = document.createElement('div');
-            grid.className = 'thumb-grid';
-            libData.results.forEach(img => {
-              const tile = document.createElement('div');
-              tile.className = 'thumb-tile';
-
-              const a = document.createElement('a');
-              a.href   = img.link || '#';
-              a.target = '_blank';
-              a.rel    = 'noopener noreferrer';
-              a.className = 'thumb-card';
-              const previewUrl = img.preview_url || img.download_url || img.thumb || '';
-              const previewCaption = img.title || img.photographer || `${label} preview`;
-              if (previewUrl) {
-                tile.dataset.previewUrl = previewUrl;
-                tile.dataset.previewCaption = previewCaption;
-              }
-              if (key === 'shutterstock') {
-                tile.dataset.ssLink       = img.link || '#';
-                tile.dataset.ssThumb      = img.thumb || '';
-                tile.dataset.ssTitle      = img.title || '';
-                tile.dataset.ssCategories = JSON.stringify(img.categories || []);
-                tile.dataset.ssKeywords   = JSON.stringify(img.keywords || []);
-                tile.dataset.ssEditorial  = img.is_editorial ? '1' : '';
-              } else if (img.download_url) {
-                tile.dataset.downloadUrl           = img.download_url;
-                tile.dataset.downloadTitle         = img.title || img.photographer || key;
-                tile.dataset.downloadSource        = key;
-                tile.dataset.downloadPhotographer  = img.photographer || '';
-                tile.dataset.downloadPhotographerUrl = img.photographer_url || '';
-                tile.dataset.downloadWidth         = img.width || '';
-                tile.dataset.downloadHeight        = img.height || '';
-                tile.dataset.downloadColor         = img.color || '';
-                tile.dataset.downloadLikes         = img.likes != null ? img.likes : '';
-                tile.dataset.downloadViews         = img.views != null ? img.views : '';
-                tile.dataset.downloadDownloads     = img.downloads != null ? img.downloads : '';
-                tile.dataset.downloadImageSize     = img.image_size || '';
-                tile.dataset.downloadUser          = img.user || '';
-                tile.dataset.downloadType          = img.type || '';
-                tile.dataset.downloadTags          = JSON.stringify(img.tags || []);
-                if (img.download_location) tile.dataset.downloadLocation = img.download_location;
-              }
-
-              const imgEl = document.createElement('img');
-              imgEl.src     = img.thumb;
-              imgEl.alt     = img.title || '';
-              imgEl.loading = 'lazy';
-              imgEl.onerror = () => { a.style.display = 'none'; };
-              a.appendChild(imgEl);
-
-              tile.appendChild(a);
-
-              grid.appendChild(tile);
-            });
-            panel.appendChild(grid);
-          }
-
-          panelWrap.appendChild(panel);
+      try {
+        const res  = await fetch('/api/stock-search', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ phrases: [q], limit: currentResultLimit, page }),
         });
+        const data = await res.json();
+        if (data.error) throw new Error(data.error);
+        const item = (data.results || [])[0] || {};
+        currentLibResults = item;
+        renderResults(item, data.page || page);
+        document.getElementById('step-loading').classList.add('hidden');
+        document.getElementById('step-results').classList.remove('hidden');
+      } catch (err) {
+        document.getElementById('step-loading').classList.add('hidden');
+        alert(`Search failed: ${err.message}`);
+      }
+    }
 
-        block.appendChild(tabs);
-        block.appendChild(panelWrap);
-        container.appendChild(block);
+    async function loadMoreResults() {
+      await doSearch(currentResultPage + 1);
+    }
+
+    // ── Render results ───────────────────────────────────────────────────
+    function renderResults(item, page) {
+      document.getElementById('results-title').textContent =
+        `Results for "${currentQuery}"`;
+
+      const hasAnyResults = LIBS.some(({ key }) => ((item[key] && item[key].results) || []).length > 0);
+      const hasPotentialMore = LIBS.some(({ key }) => ((item[key] && item[key].results) || []).length === currentResultLimit);
+      const btn = document.getElementById('btn-more-photos');
+      btn.disabled = !hasPotentialMore;
+      document.getElementById('results-page-caption').textContent =
+        `Page ${page} · ${currentResultLimit} per library` +
+        (hasAnyResults ? '' : ' · No results found.');
+
+      // Tabs
+      const tabsEl   = document.getElementById('results-tabs');
+      const panelsEl = document.getElementById('results-panels');
+      tabsEl.innerHTML   = '';
+      panelsEl.innerHTML = '';
+
+      tabsEl.className = 'lib-tabs';
+
+      LIBS.forEach(({ key, label }, i) => {
+        const libData    = item[key] || { results: [], error: 'No data returned' };
+        const count      = (libData.results || []).length;
+        const unconfigured = libData.error && libData.error.includes('not configured');
+
+        // Tab
+        const tab = document.createElement('button');
+        tab.className   = 'lib-tab' + (i === 0 ? ' active' : '') + (unconfigured ? ' unconfigured' : '');
+        tab.dataset.key = key;
+        tab.textContent = label + (count ? ` (${count})` : '');
+        tab.onclick     = () => switchTab(key);
+        tabsEl.appendChild(tab);
+
+        // Panel
+        const panel = document.createElement('div');
+        panel.className  = 'lib-panel' + (i !== 0 ? ' hidden' : '');
+        panel.dataset.lib = key;
+
+        if (!count) {
+          const msg = document.createElement('div');
+          msg.className   = 'lib-message' + (libData.error ? ' error' : '');
+          msg.textContent = libData.error || 'No results found.';
+          panel.appendChild(msg);
+        } else {
+          const grid = document.createElement('div');
+          grid.className = 'thumb-grid';
+          libData.results.forEach(img => {
+            const tile = document.createElement('div');
+            tile.className = 'thumb-tile';
+
+            const a = document.createElement('a');
+            a.href      = img.link || '#';
+            a.target    = '_blank';
+            a.rel       = 'noopener noreferrer';
+            a.className = 'thumb-card';
+
+            const previewUrl     = img.preview_url || img.download_url || img.thumb || '';
+            const previewCaption = img.title || img.photographer || `${label} preview`;
+            if (previewUrl) {
+              tile.dataset.previewUrl     = previewUrl;
+              tile.dataset.previewCaption = previewCaption;
+            }
+
+            if (key === 'shutterstock') {
+              tile.dataset.ssLink       = img.link || '#';
+              tile.dataset.ssThumb      = img.thumb || '';
+              tile.dataset.ssTitle      = img.title || '';
+              tile.dataset.ssCategories = JSON.stringify(img.categories || []);
+              tile.dataset.ssKeywords   = JSON.stringify(img.keywords || []);
+              tile.dataset.ssEditorial  = img.is_editorial ? '1' : '';
+            } else if (img.download_url) {
+              tile.dataset.downloadUrl            = img.download_url;
+              tile.dataset.downloadTitle          = img.title || img.photographer || key;
+              tile.dataset.downloadSource         = key;
+              tile.dataset.downloadPhotographer   = img.photographer || '';
+              tile.dataset.downloadPhotographerUrl= img.photographer_url || '';
+              tile.dataset.downloadWidth          = img.width || '';
+              tile.dataset.downloadHeight         = img.height || '';
+              tile.dataset.downloadColor          = img.color || '';
+              tile.dataset.downloadLikes          = img.likes != null ? img.likes : '';
+              tile.dataset.downloadViews          = img.views != null ? img.views : '';
+              tile.dataset.downloadDownloads      = img.downloads != null ? img.downloads : '';
+              tile.dataset.downloadImageSize      = img.image_size || '';
+              tile.dataset.downloadUser           = img.user || '';
+              tile.dataset.downloadType           = img.type || '';
+              tile.dataset.downloadTags           = JSON.stringify(img.tags || []);
+              if (img.download_location) tile.dataset.downloadLocation = img.download_location;
+            }
+
+            const imgEl   = document.createElement('img');
+            imgEl.src     = img.thumb;
+            imgEl.alt     = img.title || '';
+            imgEl.loading = 'lazy';
+            imgEl.onerror = () => { a.style.display = 'none'; };
+            a.appendChild(imgEl);
+            tile.appendChild(a);
+            grid.appendChild(tile);
+          });
+          panel.appendChild(grid);
+        }
+
+        panelsEl.appendChild(panel);
       });
     }
 
-    function switchTab(block, key) {
-      block.querySelectorAll('.lib-tab').forEach(t =>
+    function switchTab(key) {
+      document.getElementById('results-tabs').querySelectorAll('.lib-tab').forEach(t =>
         t.classList.toggle('active', t.dataset.key === key));
-      block.querySelectorAll('.lib-panel').forEach(p =>
+      document.getElementById('results-panels').querySelectorAll('.lib-panel').forEach(p =>
         p.classList.toggle('hidden', p.dataset.lib !== key));
-    }
-
-    // ── Navigation ───────────────────────────────────────────────────────
-    function resetToUpload() {
-      phrases = [];
-      document.getElementById('paste-input').value = '';
-      document.getElementById('file-input').value  = '';
-      showOnly('step-upload');
-    }
-
-    function goBackToPhrases() {
-      showOnly('step-phrases');
     }
 
     // ── Utilities ────────────────────────────────────────────────────────
     function escHtml(str) {
-      return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+      return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
     }
 
-    // ── Shutterstock quota gate ──────────────────────────────────────────
-    const ssOverlay = document.getElementById('ss-overlay');
-    const ssConfirm = document.getElementById('ss-confirm');
-    const ssCancel  = document.getElementById('ss-cancel');
-    const ssLargePreview = document.getElementById('ss-large-preview');
-    const ssLabel   = document.getElementById('ss-quota-label');
-    const ssFill    = document.getElementById('ss-quota-fill');
-    let pendingSsUrl = null;
-    let ssUsed = 0;
-    const SS_LIMIT = 10;
-
+    // ── Large preview overlay ────────────────────────────────────────────
     const previewOverlay = document.getElementById('preview-overlay');
-    const previewImage = document.getElementById('preview-image');
+    const previewImage   = document.getElementById('preview-image');
     const previewCaption = document.getElementById('preview-caption');
-    const previewClose = document.getElementById('preview-close');
+    const previewClose   = document.getElementById('preview-close');
 
     function openPreviewOverlay(url, caption) {
       if (!url) return;
       previewImage.src = url;
       previewImage.alt = caption || 'Large stock preview';
-      previewCaption.textContent = caption || 'Large stock preview';
+      previewCaption.textContent = caption || '';
       previewOverlay.classList.add('active');
     }
 
     function closePreviewOverlay() {
       previewOverlay.classList.remove('active');
       previewImage.src = '';
-      previewImage.alt = '';
-      previewCaption.textContent = '';
     }
 
     previewClose.addEventListener('click', closePreviewOverlay);
-    previewOverlay.addEventListener('click', e => {
-      if (e.target === previewOverlay) closePreviewOverlay();
-    });
+    previewOverlay.addEventListener('click', e => { if (e.target === previewOverlay) closePreviewOverlay(); });
     document.addEventListener('keydown', e => {
-      if (e.key === 'Escape' && previewOverlay.classList.contains('active')) {
-        closePreviewOverlay();
-      }
+      if (e.key === 'Escape' && previewOverlay.classList.contains('active')) closePreviewOverlay();
     });
 
-    // Fetch current quota on page load
-    fetch('/api/shutterstock/quota')
-      .then(r => r.json())
-      .then(d => { ssUsed = d.used || 0; })
-      .catch(() => {});
-
-    // Intercept Shutterstock card clicks
+    // ── Shutterstock quota gate ──────────────────────────────────────────
+    const ssOverlay      = document.getElementById('ss-overlay');
+    const ssConfirm      = document.getElementById('ss-confirm');
+    const ssCancel       = document.getElementById('ss-cancel');
+    const ssLargePreview = document.getElementById('ss-large-preview');
+    const ssLabel        = document.getElementById('ss-quota-label');
+    const ssFill         = document.getElementById('ss-quota-fill');
+    let pendingSsUrl  = null;
     let pendingSsMeta = {};
+    let ssUsed = 0;
+    const SS_LIMIT = 10;
+
+    fetch('/api/shutterstock/quota').then(r => r.json()).then(d => { ssUsed = d.used || 0; }).catch(() => {});
+
     document.addEventListener('click', e => {
       const card = e.target.closest('[data-ss-link]');
       if (!card) return;
@@ -1086,6 +834,61 @@
       showSsModal();
     });
 
+    function showSsModal() {
+      const ssImgSection   = document.getElementById('ss-img-section');
+      const ssPreview      = document.getElementById('ss-preview');
+      const ssImgTitle     = document.getElementById('ss-img-title');
+      const ssImgCats      = document.getElementById('ss-img-cats');
+      const ssImgKw        = document.getElementById('ss-img-keywords');
+      const ssImgEditorial = document.getElementById('ss-img-editorial');
+
+      if (pendingSsMeta.thumb) {
+        ssPreview.src = pendingSsMeta.thumb;
+        ssPreview.alt = pendingSsMeta.title || '';
+        ssImgTitle.textContent = pendingSsMeta.title || '';
+        ssImgCats.textContent  = pendingSsMeta.categories.length ? pendingSsMeta.categories.join(' · ') : '';
+        ssImgKw.innerHTML = pendingSsMeta.keywords.map(k => `<span class="ss-kw">${escHtml(k)}</span>`).join('');
+        ssImgEditorial.classList.toggle('hidden', !pendingSsMeta.editorial);
+        ssImgSection.classList.remove('hidden');
+      } else {
+        ssImgSection.classList.add('hidden');
+      }
+      ssLargePreview.classList.toggle('hidden', !pendingSsMeta.preview);
+
+      const remaining = Math.max(0, SS_LIMIT - ssUsed);
+      const pct = Math.min(100, (ssUsed / SS_LIMIT) * 100);
+      ssFill.style.width = pct + '%';
+      ssFill.className = 'ss-quota-fill' + (ssUsed >= 8 ? ' danger' : ssUsed >= 6 ? ' warn' : '');
+      if (ssUsed >= SS_LIMIT) {
+        ssLabel.textContent    = `Quota reached — ${SS_LIMIT}/${SS_LIMIT} used this month.`;
+        ssConfirm.disabled     = true;
+        ssConfirm.textContent  = 'Limit reached';
+      } else {
+        ssLabel.textContent    = `${ssUsed} of ${SS_LIMIT} used this month — ${remaining} remaining.`;
+        ssConfirm.disabled     = false;
+        ssConfirm.textContent  = 'Open Shutterstock';
+      }
+      ssOverlay.classList.add('active');
+    }
+
+    ssCancel.addEventListener('click', () => { ssOverlay.classList.remove('active'); pendingSsUrl = null; });
+    document.getElementById('ss-close-x').addEventListener('click', () => { ssOverlay.classList.remove('active'); pendingSsUrl = null; });
+    ssOverlay.addEventListener('click', e => { if (e.target === ssOverlay) { ssOverlay.classList.remove('active'); pendingSsUrl = null; } });
+
+    ssConfirm.addEventListener('click', () => {
+      if (!pendingSsUrl || ssUsed >= SS_LIMIT) return;
+      ssOverlay.classList.remove('active');
+      fetch('/api/shutterstock/track', { method: 'POST' })
+        .then(r => r.json()).then(d => { ssUsed = d.used || ssUsed + 1; }).catch(() => { ssUsed++; });
+      window.open(pendingSsUrl, '_blank', 'noopener,noreferrer');
+      pendingSsUrl = null;
+    });
+
+    ssLargePreview.addEventListener('click', () => {
+      if (!pendingSsMeta.preview) return;
+      openPreviewOverlay(pendingSsMeta.preview, pendingSsMeta.title || 'Shutterstock preview');
+    });
+
     // ── Download confirmation modal ──────────────────────────────────────
     const dlOverlay      = document.getElementById('dl-overlay');
     const dlColorStrip   = document.getElementById('dl-color-strip');
@@ -1099,7 +902,7 @@
     const dlCancel       = document.getElementById('dl-cancel');
     const dlLargePreview = document.getElementById('dl-large-preview');
     const dlConfirm      = document.getElementById('dl-confirm');
-    let pendingDownload  = null;  // { url, filename, dl, source, title, tags, photographer, previewUrl }
+    let pendingDownload  = null;
 
     function fmtNum(n) { return Number(n).toLocaleString(); }
     function fmtBytes(b) {
@@ -1109,52 +912,44 @@
       return b + ' B';
     }
 
-    // Intercept free-library card clicks → show confirmation modal
     document.addEventListener('click', e => {
       const card = e.target.closest('[data-download-url]');
       if (!card) return;
       e.preventDefault();
 
-      const url             = card.dataset.downloadUrl;
-      const titleRaw        = card.dataset.downloadTitle || 'image';
-      const source          = card.dataset.downloadSource || '';
-      const photographer    = card.dataset.downloadPhotographer || '';
-      const photographerUrl = card.dataset.downloadPhotographerUrl || '';
-      const dlLocation      = card.dataset.downloadLocation || '';
-      const color           = card.dataset.downloadColor || '';
-      const width           = card.dataset.downloadWidth;
-      const height          = card.dataset.downloadHeight;
-      const likes           = card.dataset.downloadLikes;
-      const views           = card.dataset.downloadViews;
-      const dlCount         = card.dataset.downloadDownloads;
-      const imageSize       = card.dataset.downloadImageSize;
-      const user            = card.dataset.downloadUser;
-      const type            = card.dataset.downloadType;
-      const tags            = JSON.parse(card.dataset.downloadTags || '[]');
-      const thumbEl         = card.querySelector('img');
-      const previewUrl      = card.dataset.previewUrl || url || (thumbEl ? thumbEl.src : '');
+      const url              = card.dataset.downloadUrl;
+      const titleRaw         = card.dataset.downloadTitle || 'image';
+      const source           = card.dataset.downloadSource || '';
+      const photographer     = card.dataset.downloadPhotographer || '';
+      const photographerUrl  = card.dataset.downloadPhotographerUrl || '';
+      const dlLocation       = card.dataset.downloadLocation || '';
+      const color            = card.dataset.downloadColor || '';
+      const width            = card.dataset.downloadWidth;
+      const height           = card.dataset.downloadHeight;
+      const likes            = card.dataset.downloadLikes;
+      const views            = card.dataset.downloadViews;
+      const dlCount          = card.dataset.downloadDownloads;
+      const imageSize        = card.dataset.downloadImageSize;
+      const user             = card.dataset.downloadUser;
+      const type             = card.dataset.downloadType;
+      const tags             = JSON.parse(card.dataset.downloadTags || '[]');
+      const thumbEl          = card.querySelector('img');
+      const previewUrl       = card.dataset.previewUrl || url || (thumbEl ? thumbEl.src : '');
       const raw     = titleRaw.replace(/[^\w\s-]/g, '').trim().replace(/\s+/g, '-').slice(0, 60) || 'image';
       const ext     = url.split('?')[0].match(/\.(jpe?g|png|gif|webp)$/i)?.[1] || 'jpg';
       const filename = `${raw}.${ext}`;
 
-      // Color strip
       dlColorStrip.style.background = color || 'transparent';
       dlColorStrip.style.height     = color ? '4px' : '0';
-
-      // Image
       dlPreview.src = thumbEl ? thumbEl.src : '';
       dlPreview.alt = titleRaw;
       dlLargePreview.classList.toggle('hidden', !previewUrl);
 
-      // Badges
       dlSourceBadge.textContent = source.charAt(0).toUpperCase() + source.slice(1);
       dlSourceBadge.className   = `dl-source-badge ${source}`;
-      dlEditorial.classList.add('hidden'); // no editorial flag for free sources
-
-      // Title
+      dlEditorial.classList.add('hidden');
       dlTitle.textContent = titleRaw || '(no description)';
 
-      // Photographer / uploader
       let photoLine = '';
       if (photographer) {
         photoLine = photographerUrl
@@ -1167,14 +962,13 @@
       dlPhotographer.innerHTML = photoLine;
       dlPhotographer.style.marginBottom = photoLine ? '12px' : '0';
 
-      // Meta grid
       const metaItems = [];
       if (width && height) metaItems.push({ icon: '⬛', label: `${fmtNum(width)} × ${fmtNum(height)} px` });
       if (color)           metaItems.push({ swatch: color, label: color });
       if (likes != null && likes !== '') metaItems.push({ icon: '♡', label: `${fmtNum(likes)} likes` });
       if (views != null && views !== '') metaItems.push({ icon: '◎', label: `${fmtNum(views)} views` });
       if (dlCount != null && dlCount !== '') metaItems.push({ icon: '↓', label: `${fmtNum(dlCount)} downloads` });
-      if (imageSize)       metaItems.push({ icon: '▤', label: fmtBytes(imageSize) });
+      if (imageSize) metaItems.push({ icon: '▤', label: fmtBytes(imageSize) });
 
       dlMetaGrid.innerHTML = metaItems.map(m => {
         const iconPart = m.swatch
@@ -1183,7 +977,6 @@
         return `<span class="dl-meta-item">${iconPart}<span>${escHtml(m.label)}</span></span>`;
       }).join('');
 
-      // Tags
       dlTags.innerHTML = tags.map(t => `<span class="dl-tag">${escHtml(t)}</span>`).join('');
 
       pendingDownload = { url, filename, dl: dlLocation, source, title: titleRaw, tags, photographer, previewUrl };
@@ -1191,28 +984,17 @@
       dlOverlay.classList.add('active');
     });
 
-    dlCancel.addEventListener('click', () => {
+    function closeDlModal() {
       dlOverlay.classList.remove('active');
       pendingDownload = null;
       resetDownloadButtonState();
-    });
+    }
+    dlCancel.addEventListener('click', closeDlModal);
+    document.getElementById('dl-close-x').addEventListener('click', closeDlModal);
+    dlOverlay.addEventListener('click', e => { if (e.target === dlOverlay) closeDlModal(); });
 
-    document.getElementById('dl-close-x').addEventListener('click', () => {
-      dlOverlay.classList.remove('active');
-      pendingDownload = null;
-      resetDownloadButtonState();
-    });
-
-    dlOverlay.addEventListener('click', e => {
-      if (e.target === dlOverlay) {
-        dlOverlay.classList.remove('active');
-        pendingDownload = null;
-        resetDownloadButtonState();
-      }
-    });
-
-    const dlDownload = document.getElementById('dl-download');
-    const downloadToast = document.getElementById('download-toast');
+    const dlDownload      = document.getElementById('dl-download');
+    const downloadToast   = document.getElementById('download-toast');
     let downloadToastTimer = null;
 
     function resetDownloadButtonState() {
@@ -1222,13 +1004,10 @@
     }
 
     function showDownloadToast(message) {
-      if (!downloadToast) return;
       downloadToast.textContent = message;
       downloadToast.classList.add('active');
       if (downloadToastTimer) clearTimeout(downloadToastTimer);
-      downloadToastTimer = setTimeout(() => {
-        downloadToast.classList.remove('active');
-      }, 2200);
+      downloadToastTimer = setTimeout(() => downloadToast.classList.remove('active'), 2200);
     }
 
     dlDownload.addEventListener('click', () => {
@@ -1236,26 +1015,16 @@
       const { url, filename, dl } = pendingDownload;
       dlDownload.disabled = true;
       dlDownload.textContent = 'Downloading...';
-      dlDownload.classList.remove('done');
       dlDownload.classList.add('downloading');
-
       const href = `/api/download-image?url=${encodeURIComponent(url)}&filename=${encodeURIComponent(filename)}&dl=${encodeURIComponent(dl)}`;
       const a = document.createElement('a');
-      a.href = href;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
+      a.href = href; a.download = filename;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
       dlDownload.textContent = 'Downloaded';
       dlDownload.classList.remove('downloading');
       dlDownload.classList.add('done');
       showDownloadToast('Download started in your browser.');
-
-      setTimeout(() => {
-        dlOverlay.classList.remove('active');
-        pendingDownload = null;
-        resetDownloadButtonState();
-      }, 700);
+      setTimeout(() => closeDlModal(), 700);
     });
 
     dlLargePreview.addEventListener('click', () => {
@@ -1263,32 +1032,21 @@
       openPreviewOverlay(pendingDownload.previewUrl, pendingDownload.title || pendingDownload.filename);
     });
 
-    const catOverlay = document.getElementById('cat-overlay');
-    const catHeader  = document.getElementById('cat-header');
-    const catStatusText = document.getElementById('cat-status-text');
-    const catStatusFill = document.getElementById('cat-status-fill');
-    const catLog     = document.getElementById('cat-log');
-    const catResult  = document.getElementById('cat-result');
+    // ── Catalog progress overlay ─────────────────────────────────────────
+    const catOverlay     = document.getElementById('cat-overlay');
+    const catHeader      = document.getElementById('cat-header');
+    const catStatusText  = document.getElementById('cat-status-text');
+    const catStatusFill  = document.getElementById('cat-status-fill');
+    const catLog         = document.getElementById('cat-log');
+    const catResult      = document.getElementById('cat-result');
     const catResultInner = document.getElementById('cat-result-inner');
-    const catAddOthers = document.getElementById('cat-add-others');
-    const catClose   = document.getElementById('cat-close');
-    function getReturnPath() {
-      const fromParam = new URLSearchParams(window.location.search).get('return_to');
-      if (fromParam === '/upload' || fromParam === '/stock-search') return fromParam;
-      try {
-        const ref = new URL(document.referrer || '');
-        if (ref.origin === window.location.origin && (ref.pathname === '/upload' || ref.pathname === '/stock-search')) {
-          return ref.pathname;
-        }
-      } catch (_) {}
-      return '/stock-search';
-    }
+    const catAddOthers   = document.getElementById('cat-add-others');
+    const catClose       = document.getElementById('cat-close');
 
-    const stockReturnPath = getReturnPath();
-    catClose.textContent = stockReturnPath === '/upload' ? 'Return to Upload' : 'Return to Stock';
+    catClose.textContent = 'Return to Stock';
 
     function resetCatalogStatusUi() {
-      catHeader.textContent = 'Adding to Library…';
+      catHeader.textContent    = 'Adding to Library…';
       catStatusText.textContent = 'Preparing download…';
       catStatusFill.style.width = '10%';
       catStatusFill.style.background = 'linear-gradient(90deg, #05718D, #2ea0ba)';
@@ -1300,33 +1058,14 @@
 
     function updateCatalogProgress(msg) {
       const text = (msg || '').toLowerCase();
-      if (text.includes('download')) {
-        catStatusText.textContent = 'Downloading image…';
-        catStatusFill.style.width = '35%';
-        return;
-      }
-      if (text.includes('transform') || text.includes('webp') || text.includes('convert')) {
-        catStatusText.textContent = 'Preparing optimized file…';
-        catStatusFill.style.width = '55%';
-        return;
-      }
-      if (text.includes('claude') || text.includes('alt text') || text.includes('tag')) {
-        catStatusText.textContent = 'Generating metadata…';
-        catStatusFill.style.width = '75%';
-        return;
-      }
-      if (text.includes('sharepoint') || text.includes('record') || text.includes('save') || text.includes('stored')) {
-        catStatusText.textContent = 'Saving to library…';
-        catStatusFill.style.width = '90%';
-      }
+      if (text.includes('download'))                                    { catStatusText.textContent = 'Downloading image…';         catStatusFill.style.width = '35%'; return; }
+      if (text.includes('transform') || text.includes('webp'))         { catStatusText.textContent = 'Preparing optimized file…';  catStatusFill.style.width = '55%'; return; }
+      if (text.includes('claude') || text.includes('alt text'))        { catStatusText.textContent = 'Generating metadata…';        catStatusFill.style.width = '75%'; return; }
+      if (text.includes('sharepoint') || text.includes('save'))        { catStatusText.textContent = 'Saving to library…';          catStatusFill.style.width = '90%'; }
     }
 
-    catAddOthers.addEventListener('click', () => {
-      catOverlay.classList.remove('active');
-    });
-    catClose.addEventListener('click', () => {
-      window.location.href = stockReturnPath;
-    });
+    catAddOthers.addEventListener('click', () => catOverlay.classList.remove('active'));
+    catClose.addEventListener('click', () => { window.location.href = '/stock-search'; });
 
     dlConfirm.addEventListener('click', () => {
       if (!pendingDownload) return;
@@ -1334,7 +1073,6 @@
       dlOverlay.classList.remove('active');
       pendingDownload = null;
 
-      // Reset progress UI
       resetCatalogStatusUi();
       catOverlay.classList.add('active');
 
@@ -1363,22 +1101,22 @@
         if (msg === '[START]') return;
         if (msg === '[DONE]') {
           es.close();
-          catHeader.textContent = 'Complete';
+          catHeader.textContent     = 'Complete';
           catStatusText.textContent = 'Download and cataloging complete.';
           catStatusFill.style.width = '100%';
           return;
         }
         if (msg.startsWith('[ERROR]')) {
           es.close();
-          catHeader.textContent = 'Error';
-          catStatusText.textContent = 'Cataloging failed.';
-          catStatusFill.style.width = '100%';
+          catHeader.textContent      = 'Error';
+          catStatusText.textContent  = 'Cataloging failed.';
+          catStatusFill.style.width  = '100%';
           catStatusFill.style.background = '#ef4444';
           logLine(msg.slice(7).trim(), 'cat-err');
           catResult.classList.remove('hidden');
           catResultInner.style.cssText = 'background:#fef2f2;border-color:#fecaca;';
-          catResultInner.textContent = 'Something went wrong. Please try again.';
-          catAddOthers.textContent = 'Try Another';
+          catResultInner.textContent   = 'Something went wrong. Please try again.';
+          catAddOthers.textContent     = 'Try Another';
           return;
         }
         if (msg.startsWith('[RESULT] ')) {
@@ -1388,9 +1126,7 @@
             catAddOthers.textContent = 'Add Others';
             catResultInner.innerHTML =
               `<strong>Complete:</strong> ${escHtml(r.alt_text || r.filename)}<br>` +
-              `Slug: ${escHtml(r.slug)}<br>` +
-              `Tags: ${escHtml(r.tags)}<br>` +
-              `Status: ${escHtml(r.status)}`;
+              `Slug: ${escHtml(r.slug)}<br>Tags: ${escHtml(r.tags)}<br>Status: ${escHtml(r.status)}`;
           } catch (_) {}
           return;
         }
@@ -1401,92 +1137,15 @@
       es.onerror = () => {
         if (!catOverlay.classList.contains('active')) return;
         es.close();
-        catHeader.textContent = 'Connection Error';
-        catStatusText.textContent = 'Connection lost before completion.';
-        catStatusFill.style.width = '100%';
+        catHeader.textContent      = 'Connection Error';
+        catStatusText.textContent  = 'Connection lost before completion.';
+        catStatusFill.style.width  = '100%';
         catStatusFill.style.background = '#ef4444';
         logLine('Connection lost', 'cat-err');
         catResult.classList.remove('hidden');
         catResultInner.style.cssText = 'background:#fef2f2;border-color:#fecaca;';
-        catResultInner.textContent = 'Connection lost. You can return and retry.';
+        catResultInner.textContent   = 'Connection lost. You can return and retry.';
       };
-    });
-
-    function showSsModal() {
-      // Image metadata section
-      const ssImgSection  = document.getElementById('ss-img-section');
-      const ssPreview     = document.getElementById('ss-preview');
-      const ssImgTitle    = document.getElementById('ss-img-title');
-      const ssImgCats     = document.getElementById('ss-img-cats');
-      const ssImgKw       = document.getElementById('ss-img-keywords');
-      const ssImgEditorial = document.getElementById('ss-img-editorial');
-
-      if (pendingSsMeta.thumb) {
-        ssPreview.src = pendingSsMeta.thumb;
-        ssPreview.alt = pendingSsMeta.title || '';
-        ssImgTitle.textContent = pendingSsMeta.title || '';
-        ssImgCats.textContent  = pendingSsMeta.categories.length
-          ? pendingSsMeta.categories.join(' · ')
-          : '';
-        ssImgKw.innerHTML = pendingSsMeta.keywords
-          .map(k => `<span class="ss-kw">${escHtml(k)}</span>`)
-          .join('');
-        ssImgEditorial.classList.toggle('hidden', !pendingSsMeta.editorial);
-        ssImgSection.classList.remove('hidden');
-      } else {
-        ssImgSection.classList.add('hidden');
-      }
-      ssLargePreview.classList.toggle('hidden', !pendingSsMeta.preview);
-
-      // Quota bar
-      const remaining = Math.max(0, SS_LIMIT - ssUsed);
-      const pct = Math.min(100, (ssUsed / SS_LIMIT) * 100);
-      ssFill.style.width = pct + '%';
-      ssFill.className = 'ss-quota-fill' + (ssUsed >= 8 ? ' danger' : ssUsed >= 6 ? ' warn' : '');
-      if (ssUsed >= SS_LIMIT) {
-        ssLabel.textContent = `Quota reached — ${SS_LIMIT}/${SS_LIMIT} used this month.`;
-        ssConfirm.disabled = true;
-        ssConfirm.textContent = 'Limit reached';
-      } else {
-        ssLabel.textContent = `${ssUsed} of ${SS_LIMIT} used this month — ${remaining} remaining.`;
-        ssConfirm.disabled = false;
-        ssConfirm.textContent = 'Open Shutterstock';
-      }
-      ssOverlay.classList.add('active');
-    }
-
-    ssCancel.addEventListener('click', () => {
-      ssOverlay.classList.remove('active');
-      pendingSsUrl = null;
-    });
-
-    document.getElementById('ss-close-x').addEventListener('click', () => {
-      ssOverlay.classList.remove('active');
-      pendingSsUrl = null;
-    });
-
-    ssOverlay.addEventListener('click', e => {
-      if (e.target === ssOverlay) {
-        ssOverlay.classList.remove('active');
-        pendingSsUrl = null;
-      }
-    });
-
-    ssConfirm.addEventListener('click', () => {
-      if (!pendingSsUrl || ssUsed >= SS_LIMIT) return;
-      ssOverlay.classList.remove('active');
-      // Track server-side
-      fetch('/api/shutterstock/track', { method: 'POST' })
-        .then(r => r.json())
-        .then(d => { ssUsed = d.used || ssUsed + 1; })
-        .catch(() => { ssUsed++; });
-      window.open(pendingSsUrl, '_blank', 'noopener,noreferrer');
-      pendingSsUrl = null;
-    });
-
-    ssLargePreview.addEventListener('click', () => {
-      if (!pendingSsMeta.preview) return;
-      openPreviewOverlay(pendingSsMeta.preview, pendingSsMeta.title || 'Shutterstock preview');
     });
 
   </script>

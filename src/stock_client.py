@@ -18,6 +18,53 @@ def _slug(text: str, max_len: int = 60) -> str:
     return s[:max_len].rstrip("-")
 
 
+_STOP_WORDS = {
+    "a", "an", "and", "are", "as", "at", "be", "been", "being", "but", "by",
+    "for", "from", "had", "has", "have", "he", "her", "here", "hers", "him",
+    "his", "i", "if", "in", "into", "is", "it", "its", "just", "me", "my",
+    "of", "on", "or", "our", "she", "so", "some", "than", "that", "the",
+    "their", "them", "then", "there", "these", "they", "this", "those", "to",
+    "too", "us", "was", "we", "were", "what", "when", "where", "which", "who",
+    "why", "will", "with", "you", "your",
+}
+
+# Pixabay category map: if a cleaned keyword matches, pass the category param.
+_PIXABAY_CATEGORIES = {
+    "fashion": "fashion", "nature": "nature", "background": "backgrounds",
+    "backgrounds": "backgrounds", "science": "science", "education": "education",
+    "feeling": "feelings", "feelings": "feelings", "health": "health",
+    "people": "people", "person": "people", "religion": "religion",
+    "place": "places", "places": "places", "animal": "animals", "animals": "animals",
+    "industry": "industry", "computer": "computer", "food": "food", "sport": "sports",
+    "sports": "sports", "transportation": "transportation", "travel": "travel",
+    "building": "buildings", "buildings": "buildings", "business": "business",
+    "music": "music",
+}
+
+
+def _prepare_query(phrase: str) -> dict:
+    """Return per-API query strings derived from the user phrase."""
+    # Strip stop words and punctuation, cap at 5 keywords.
+    words = re.sub(r"[^\w\s]", "", phrase.lower()).split()
+    keywords = [w for w in words if w not in _STOP_WORDS and len(w) > 1][:5]
+    cleaned = " ".join(keywords) if keywords else phrase.strip()
+
+    # Pixabay: space-separated keywords, 100-char limit, optional category.
+    pixabay_q = cleaned[:100]
+    pixabay_category = next(
+        (_PIXABAY_CATEGORIES[w] for w in keywords if w in _PIXABAY_CATEGORIES),
+        None,
+    )
+
+    return {
+        "pexels": cleaned,
+        "unsplash": cleaned,
+        "shutterstock": cleaned,
+        "pixabay": pixabay_q,
+        "pixabay_category": pixabay_category,
+    }
+
+
 # ---------------------------------------------------------------------------
 # Per-library search functions
 # ---------------------------------------------------------------------------
@@ -29,7 +76,7 @@ def search_pexels(phrase: str, limit: int = 8, page: int = 1) -> dict:
         return {"results": [], "error": "PEXELS_API_KEY not configured"}
     try:
         headers = {"Authorization": api_key}
-        params = {"query": phrase, "per_page": limit, "page": max(1, int(page))}
+        params = {"query": _prepare_query(phrase)["pexels"], "per_page": limit, "page": max(1, int(page))}
         r = requests.get(
             "https://api.pexels.com/v1/search",
             params=params,
@@ -74,10 +121,11 @@ def search_shutterstock(phrase: str, limit: int = 8, page: int = 1) -> dict:
         credentials = base64.b64encode(f"{client_id}:{client_secret}".encode()).decode()
         headers = {"Authorization": f"Basic {credentials}"}
         params = {
-            "query": phrase,
+            "query": _prepare_query(phrase)["shutterstock"],
             "per_page": limit,
             "page": max(1, int(page)),
             "image_type": "photo",
+            "safe": "true",
         }
         r = requests.get(
             "https://api.shutterstock.com/v2/images/search",
@@ -124,14 +172,17 @@ def search_pixabay(phrase: str, limit: int = 8, page: int = 1) -> dict:
     if not api_key:
         return {"results": [], "error": "PIXABAY_API_KEY not configured"}
     try:
+        pq = _prepare_query(phrase)
         params = {
             "key": api_key,
-            "q": phrase,
+            "q": pq["pixabay"],
             "image_type": "photo",
             "per_page": limit,
             "page": max(1, int(page)),
             "safesearch": "true",
         }
+        if pq["pixabay_category"]:
+            params["category"] = pq["pixabay_category"]
         r = requests.get(
             "https://pixabay.com/api/",
             params=params,
@@ -171,7 +222,12 @@ def search_unsplash(phrase: str, limit: int = 8, page: int = 1) -> dict:
         return {"results": [], "error": "UNSPLASH_ACCESS_KEY not configured"}
     try:
         headers = {"Authorization": f"Client-ID {access_key}"}
-        params = {"query": phrase, "per_page": limit, "page": max(1, int(page))}
+        params = {
+            "query": _prepare_query(phrase)["unsplash"],
+            "per_page": limit,
+            "page": max(1, int(page)),
+            "content_filter": "high",
+        }
         r = requests.get(
             "https://api.unsplash.com/search/photos",
             params=params,

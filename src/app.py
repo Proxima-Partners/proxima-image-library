@@ -325,8 +325,11 @@ def enforce_maintenance_admin_access():
     if (
         path != "/maintenance"
         and path != "/tag-manager"
+        and path != "/review"
         and not path.startswith("/api/maintenance/")
         and not path.startswith("/api/tag-library/")
+        and not path.startswith("/api/image-status")
+        and not path.startswith("/api/image/delete")
         and not path.startswith("/run/")
     ):
         return None
@@ -1486,6 +1489,63 @@ def api_mcp_preview_get_selection(token: str):
     })
 
 
+@app.route("/api/mcp/preview/<token>/image")
+def api_mcp_preview_image(token: str):
+    """Serve an internal library image for a valid preview session (no MSAL required).
+
+    Used by mcp_preview.html so the gallery can display internal images without
+    requiring the viewer to have an MSAL session cookie.
+    """
+    with _preview_sessions_lock:
+        sess = _preview_sessions.get(token)
+    if not sess:
+        return Response("Session not found or expired", status=404)
+
+    location = unquote(request.args.get("path", "")).strip()
+    if not location:
+        return Response("Missing path", status=400)
+
+    # Validate the requested location is actually in this session's shortlist
+    allowed = {
+        str(item.get("location", "")).strip()
+        for item in sess.get("shortlisted", [])
+        if item.get("type") == "internal"
+    }
+    if location not in allowed:
+        return Response("Not authorized for this path", status=403)
+
+    if Config.STORAGE_MODE == "sharepoint":
+        try:
+            root = Config.SHAREPOINT_IMAGE_FOLDER
+            sp_path = f"{root}/WebP/{location}" if root else f"WebP/{location}"
+            url = _get_sp_url(sp_path, thumb=True)
+            return redirect(url)
+        except Exception:
+            return Response("Internal server error", status=500)
+
+    # Local mode — serve directly
+    image_folder = Path(Config.IMAGE_FOLDER).resolve()
+    full_path = None
+    for candidate in [image_folder / "WebP" / location, image_folder / location]:
+        resolved = candidate.resolve()
+        if str(resolved).startswith(str(image_folder)) and resolved.exists():
+            full_path = resolved
+            break
+
+    if full_path is None:
+        return Response("Image not found", status=404)
+
+    try:
+        img = PILImage.open(full_path)
+        img.thumbnail((240, 240))
+        buf = BytesIO()
+        img.save(buf, format="WEBP")
+        return Response(buf.getvalue(), mimetype="image/webp",
+                        headers={"Cache-Control": "private, max-age=3600"})
+    except Exception:
+        return Response("Internal server error", status=500)
+
+
 @app.route("/api/download-image")
 @login_required
 def api_download_image():
@@ -1572,7 +1632,7 @@ def api_folders():
 def api_tags():
     folder = request.args.get("folder", "")
     records = get_all_records()
-    tag_set: set = set()
+    tag_counts: dict = {}
     for rec in records:
         fields = rec.get("fields", {})
         if folder:
@@ -1584,8 +1644,9 @@ def api_tags():
         for tag in tags_str.split(","):
             tag = tag.strip()
             if tag:
-                tag_set.add(tag)
-    return jsonify({"tags": sorted(tag_set, key=str.lower)})
+                tag_counts[tag] = tag_counts.get(tag, 0) + 1
+    tags = [{"name": t, "count": tag_counts[t]} for t in sorted(tag_counts, key=str.lower)]
+    return jsonify({"tags": tags})
 
 
 @app.route("/api/images")
@@ -1857,6 +1918,14 @@ def _serve_image(thumb: bool) -> Response:
 # ------------------------------------------------------------------
 # Tag library
 # ------------------------------------------------------------------
+
+@app.route("/tags")
+@login_required
+def tags_page():
+    user = session.get("user", {})
+    is_admin = _is_maintenance_admin_user(user)
+    return render_template("tags.html", user=user, is_admin=is_admin)
+
 
 @app.route("/tag-manager")
 @login_required

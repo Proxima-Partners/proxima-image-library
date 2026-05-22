@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tags — Proxima Image Library</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Montserrat:wght@600;700;800&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #f5f5f5;
+      --surface: #ffffff;
+      --border: #e0e0e0;
+      --accent: #05718D;
+      --accent-hover: #045f77;
+      --text: #111827;
+      --muted: #6b7280;
+      --tag-bg: #e6f4f8;
+      --tag-color: #045f77;
+      --radius: 8px;
+      --shadow: 0 1px 3px rgba(0,0,0,0.10);
+      --shadow-md: 0 4px 14px rgba(0,0,0,0.10);
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── Header ── */
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 0 20px;
+      height: 52px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      box-shadow: var(--shadow);
+      flex-shrink: 0;
+    }
+    .header-logo { display: flex; align-items: center; gap: 9px; text-decoration: none; flex-shrink: 0; }
+    .header-logo img { height: 30px; width: 30px; border-radius: 50%; object-fit: cover; }
+    .header-logo span {
+      font-family: 'Montserrat', sans-serif;
+      font-size: 15px; font-weight: 700;
+      color: var(--accent); white-space: nowrap;
+    }
+    .header-link {
+      font-size: 13px; color: var(--muted); text-decoration: none;
+      white-space: nowrap; padding: 5px 11px;
+      border: 1px solid var(--border); border-radius: 6px;
+      background: var(--surface); transition: background 0.15s;
+      flex-shrink: 0;
+    }
+    .header-link:hover { background: var(--bg); color: var(--accent); border-color: var(--accent); }
+    .header-link.active { color: var(--accent); border-color: var(--accent); font-weight: 600; }
+    .user-chip {
+      display: flex; align-items: center; gap: 8px;
+      font-size: 13px; color: var(--muted); margin-left: 4px; flex-shrink: 0;
+    }
+    .user-avatar {
+      width: 28px; height: 28px; border-radius: 50%;
+      background: var(--accent); color: #fff;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 12px; font-weight: 700;
+    }
+    .user-name { max-width: 110px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .logout-link { font-size: 12px; color: var(--muted); text-decoration: none; }
+    .logout-link:hover { color: var(--accent); }
+    .help-btn {
+      width: 26px; height: 26px; border-radius: 50%;
+      border: 1px solid var(--border); background: var(--surface);
+      color: var(--muted); font-size: 13px; font-weight: 700;
+      cursor: pointer; display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .help-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+    /* ── Page body ── */
+    .page-body { flex: 1; padding: 32px 24px 48px; max-width: 1100px; width: 100%; margin: 0 auto; }
+
+    .page-title {
+      font-family: 'Montserrat', sans-serif;
+      font-size: 22px; font-weight: 800; color: var(--text); margin-bottom: 4px;
+    }
+    .page-subtitle { font-size: 14px; color: var(--muted); margin-bottom: 28px; }
+
+    /* ── Tag list view ── */
+    #view-list { }
+    #view-list.hidden { display: none; }
+
+    .category-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 16px;
+    }
+    .category-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 16px;
+      box-shadow: var(--shadow);
+    }
+    .category-name {
+      font-size: 11px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.08em; color: var(--muted); margin-bottom: 12px;
+    }
+    .tag-list { display: flex; flex-wrap: wrap; gap: 7px; }
+    .tag-btn {
+      display: inline-flex; align-items: center; gap: 5px;
+      background: var(--tag-bg); color: var(--tag-color);
+      border: 1px solid transparent;
+      font-size: 13px; font-weight: 500;
+      padding: 5px 12px; border-radius: 99px;
+      cursor: pointer; transition: all 0.12s;
+    }
+    .tag-btn:hover { border-color: var(--accent); background: #d0eaf1; }
+    .tag-count {
+      font-size: 11px; font-weight: 700; opacity: 0.65;
+      background: rgba(5,113,141,0.12); border-radius: 99px;
+      padding: 1px 6px;
+    }
+
+    /* ── Image grid view ── */
+    #view-images { }
+    #view-images.hidden { display: none; }
+
+    .back-bar {
+      display: flex; align-items: center; gap: 12px; margin-bottom: 24px;
+    }
+    .back-btn {
+      display: inline-flex; align-items: center; gap: 6px;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 6px; padding: 7px 14px;
+      font-size: 13px; font-weight: 600; color: var(--accent);
+      cursor: pointer; text-decoration: none; transition: all 0.12s;
+    }
+    .back-btn:hover { background: #eef8fb; border-color: var(--accent); }
+    .tag-heading {
+      font-family: 'Montserrat', sans-serif;
+      font-size: 18px; font-weight: 800; color: var(--text);
+    }
+    .tag-heading span { color: var(--muted); font-size: 13px; font-weight: 500; margin-left: 8px; }
+
+    .img-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 14px;
+    }
+    .img-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); overflow: hidden;
+      box-shadow: var(--shadow); cursor: pointer;
+      transition: transform 0.15s, box-shadow 0.15s;
+    }
+    .img-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
+    .img-card img {
+      width: 100%; aspect-ratio: 1; object-fit: cover; display: block; background: var(--bg);
+    }
+    .img-card-label {
+      padding: 6px 8px; font-size: 11px; color: var(--muted);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      border-top: 1px solid var(--border);
+    }
+
+    .status-msg { color: var(--muted); font-size: 14px; padding: 40px 0; text-align: center; }
+
+    /* ── Detail modal (same style as index.html) ── */
+    #detail-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.55);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 200; padding: 20px;
+    }
+    #detail-overlay.hidden { display: none; }
+    #detail-modal {
+      background: var(--surface); border-radius: 12px;
+      max-width: 720px; width: 100%; max-height: 90vh; overflow-y: auto;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    }
+    #detail-img-wrap {
+      background: #000; border-radius: 12px 12px 0 0; overflow: hidden;
+      max-height: 400px; display: flex; align-items: center; justify-content: center;
+    }
+    #detail-img-wrap img { max-width: 100%; max-height: 400px; object-fit: contain; display: block; }
+    #detail-body { padding: 20px 24px 24px; display: flex; flex-direction: column; gap: 14px; }
+    .detail-row { display: flex; gap: 8px; align-items: flex-start; }
+    .detail-label { font-size: 11px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.06em; color: var(--muted); min-width: 70px; padding-top: 2px; }
+    .detail-val { font-size: 13px; color: var(--text); flex: 1; word-break: break-all; }
+    .detail-tags { display: flex; flex-wrap: wrap; gap: 5px; }
+    .detail-tag { background: var(--tag-bg); color: var(--tag-color);
+      font-size: 12px; padding: 3px 10px; border-radius: 99px; }
+    .detail-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 4px; }
+    .btn-copy, .btn-download, .btn-close {
+      padding: 8px 18px; border-radius: 6px; font-size: 13px;
+      font-weight: 600; cursor: pointer; border: none; font-family: inherit;
+    }
+    .btn-copy { background: var(--accent); color: #fff; }
+    .btn-copy:hover { background: var(--accent-hover); }
+    .btn-download { background: var(--bg); border: 1px solid var(--border); color: var(--text); }
+    .btn-download:hover { border-color: var(--accent); color: var(--accent); }
+    .btn-close { background: none; border: 1px solid var(--border); color: var(--muted); margin-left: auto; }
+    .btn-close:hover { border-color: #999; color: var(--text); }
+
+    .spinner {
+      width: 24px; height: 24px; border: 3px solid var(--border);
+      border-top-color: var(--accent); border-radius: 50%;
+      animation: spin 0.7s linear infinite; display: inline-block;
+      vertical-align: middle; margin-right: 8px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+
+<header>
+  <a href="/" class="header-logo">
+    <img src="/static/logo.png" alt="Proxima" />
+    <span>Image Library</span>
+  </a>
+  <div style="margin-left:auto;display:flex;align-items:center;gap:10px;">
+    <a href="/" class="header-link">Home</a>
+    <a href="/upload" class="header-link">Upload</a>
+    <a href="/stock-search" class="header-link">Stock</a>
+    <a href="/tags" class="header-link active">Tags</a>
+    {% if is_admin %}
+    <a href="/maintenance" class="header-link">Maintenance</a>
+    <a href="/review" class="header-link">Review</a>
+    {% endif %}
+    <button class="help-btn" title="Help">?</button>
+    <div class="user-chip">
+      <div class="user-avatar">{{ (user.name or user.preferred_username or '?')[0] | upper }}</div>
+      <span class="user-name" title="{{ user.name or user.preferred_username or '' }}">{{ user.name or user.preferred_username or 'User' }}</span>
+      <a href="/logout" class="logout-link">Sign out</a>
+    </div>
+  </div>
+</header>
+
+<div class="page-body">
+
+  <!-- ── Tag list ── -->
+  <div id="view-list">
+    <div class="page-title">Tags</div>
+    <div class="page-subtitle" id="tag-subtitle">Browse images by tag</div>
+    <div class="category-grid" id="category-grid">
+      <div class="status-msg"><span class="spinner"></span>Loading tags…</div>
+    </div>
+  </div>
+
+  <!-- ── Image grid for a tag ── -->
+  <div id="view-images" class="hidden">
+    <div class="back-bar">
+      <button class="back-btn" id="back-btn">← Back to tags</button>
+      <div class="tag-heading" id="tag-heading"></div>
+    </div>
+    <div class="img-grid" id="img-grid"></div>
+  </div>
+
+</div>
+
+<!-- ── Detail modal ── -->
+<div id="detail-overlay" class="hidden">
+  <div id="detail-modal">
+    <div id="detail-img-wrap"><img id="detail-img" src="" alt="" /></div>
+    <div id="detail-body">
+      <div class="detail-row">
+        <span class="detail-label">Filename</span>
+        <span class="detail-val" id="d-filename"></span>
+      </div>
+      <div class="detail-row">
+        <span class="detail-label">Alt text</span>
+        <span class="detail-val" id="d-alt"></span>
+      </div>
+      <div class="detail-row">
+        <span class="detail-label">Category</span>
+        <span class="detail-val" id="d-category"></span>
+      </div>
+      <div class="detail-row">
+        <span class="detail-label">Tags</span>
+        <div class="detail-tags" id="d-tags"></div>
+      </div>
+      <div class="detail-actions">
+        <button class="btn-copy" id="d-copy-btn">Copy path</button>
+        <button class="btn-download" id="d-download-btn">Download</button>
+        <button class="btn-close" id="d-close-btn">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const esc = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+
+  let allImages = [];
+  let currentTag = null;
+
+  // ── Boot ──────────────────────────────────────────────────────────────────
+  Promise.all([
+    fetch('/api/tag-library').then(r => r.json()),
+    fetch('/api/tags').then(r => r.json()),
+    fetch('/api/images').then(r => r.json()),
+  ]).then(([library, tagData, imageData]) => {
+    allImages = imageData.images || [];
+    const tagCounts = {};
+    (tagData.tags || []).forEach(({ name, count }) => { tagCounts[name] = count; });
+    renderTagList(library, tagCounts);
+  }).catch(() => {
+    document.getElementById('category-grid').innerHTML = '<div class="status-msg">Could not load tags.</div>';
+  });
+
+  function renderTagList(library, tagCounts) {
+    const grid = document.getElementById('category-grid');
+    const entries = Object.entries(library);
+    if (!entries.length) {
+      grid.innerHTML = '<div class="status-msg">No tags in vocabulary yet.</div>';
+      return;
+    }
+    // Tally total unique tags
+    const total = Object.values(library).reduce((s, tags) => s + tags.length, 0);
+    document.getElementById('tag-subtitle').textContent = `${total} tags across ${entries.length} categories`;
+
+    grid.innerHTML = entries.map(([cat, tags]) => {
+      const tagHtml = tags.map(t => {
+        const count = tagCounts[t] || 0;
+        return `<button class="tag-btn" data-tag="${esc(t)}">${esc(t)}<span class="tag-count">${count}</span></button>`;
+      }).join('');
+      return `<div class="category-card">
+        <div class="category-name">${esc(cat)}</div>
+        <div class="tag-list">${tagHtml || '<span style="font-size:12px;color:var(--muted)">Empty</span>'}</div>
+      </div>`;
+    }).join('');
+
+    grid.querySelectorAll('.tag-btn').forEach(btn => {
+      btn.addEventListener('click', () => showTagImages(btn.dataset.tag, tagCounts[btn.dataset.tag] || 0));
+    });
+  }
+
+  // ── Show images for a tag ─────────────────────────────────────────────────
+  function showTagImages(tag, count) {
+    currentTag = tag;
+    document.getElementById('view-list').classList.add('hidden');
+    document.getElementById('view-images').classList.remove('hidden');
+
+    document.getElementById('tag-heading').innerHTML =
+      `#${esc(tag)}<span>${count} image${count !== 1 ? 's' : ''}</span>`;
+
+    const matches = allImages.filter(img => {
+      const tags = (img.tags || '').split(',').map(t => t.trim());
+      return tags.includes(tag);
+    }).filter(img => img.location && !['rejected', 'archived'].includes(img.status));
+
+    const grid = document.getElementById('img-grid');
+    if (!matches.length) {
+      grid.innerHTML = '<div class="status-msg">No images with this tag.</div>';
+      return;
+    }
+    grid.innerHTML = matches.map((img, i) =>
+      `<div class="img-card" data-idx="${i}">
+        <img src="/thumbnail?path=${encodeURIComponent(img.location)}" alt="${esc(img.alt_text || '')}" loading="lazy"
+             onerror="this.style.background='#e5e7eb'" />
+        <div class="img-card-label">${esc(img.filename || img.location)}</div>
+      </div>`
+    ).join('');
+
+    grid.querySelectorAll('.img-card').forEach(card => {
+      card.addEventListener('click', () => openDetail(matches[+card.dataset.idx]));
+    });
+  }
+
+  // ── Back to list ──────────────────────────────────────────────────────────
+  document.getElementById('back-btn').addEventListener('click', () => {
+    document.getElementById('view-images').classList.add('hidden');
+    document.getElementById('view-list').classList.remove('hidden');
+    currentTag = null;
+  });
+
+  // ── Detail modal ──────────────────────────────────────────────────────────
+  let currentImage = null;
+
+  function openDetail(img) {
+    currentImage = img;
+    document.getElementById('detail-img').src = img.location
+      ? `/image?path=${encodeURIComponent(img.location)}`
+      : '';
+    document.getElementById('d-filename').textContent = img.filename || img.location || '—';
+    document.getElementById('d-alt').textContent = img.alt_text || '—';
+    document.getElementById('d-category').textContent = img.category || '—';
+    const tags = (img.tags || '').split(',').map(t => t.trim()).filter(Boolean);
+    document.getElementById('d-tags').innerHTML = tags.map(t =>
+      `<span class="detail-tag">${esc(t)}</span>`).join('') || '—';
+    document.getElementById('detail-overlay').classList.remove('hidden');
+  }
+
+  document.getElementById('d-close-btn').addEventListener('click', closeDetail);
+  document.getElementById('detail-overlay').addEventListener('click', e => {
+    if (e.target === document.getElementById('detail-overlay')) closeDetail();
+  });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeDetail(); });
+
+  function closeDetail() {
+    document.getElementById('detail-overlay').classList.add('hidden');
+    currentImage = null;
+  }
+
+  document.getElementById('d-copy-btn').addEventListener('click', () => {
+    if (!currentImage?.location) return;
+    navigator.clipboard.writeText(currentImage.location).then(() => {
+      const btn = document.getElementById('d-copy-btn');
+      btn.textContent = 'Copied!';
+      setTimeout(() => { btn.textContent = 'Copy path'; }, 1800);
+    });
+  });
+
+  document.getElementById('d-download-btn').addEventListener('click', () => {
+    if (!currentImage?.location) return;
+    const a = document.createElement('a');
+    a.href = `/image?path=${encodeURIComponent(currentImage.location)}`;
+    a.download = currentImage.filename || 'image';
+    a.click();
+  });
+</script>
+
+</body>
+</html>

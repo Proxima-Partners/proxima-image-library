@@ -644,6 +644,14 @@
     lightbox.addEventListener('click', (e) => { if (e.target === lightbox) closeLightbox(); });
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeLightbox(); });
 
+    // ── Resolve image src (internal images use session-scoped proxy) ─────
+    function resolvedSrc(item) {
+      if ((item.type === 'internal' || item.library === 'internal') && item.location && SESSION_TOKEN) {
+        return `/api/mcp/preview/${SESSION_TOKEN}/image?path=${encodeURIComponent(item.location)}`;
+      }
+      return item.download_url || item.thumb || '';
+    }
+
     // ── Initialize ───────────────────────────────────────────────────────
     function init() {
       updateCounter();
@@ -651,6 +659,24 @@
       document.getElementById('select-all').addEventListener('change', handleSelectAll);
       document.getElementById('catalog-btn').addEventListener('click', handleCatalog);
       document.getElementById('catalog-cancel').addEventListener('click', closeCatalogModal);
+
+      // Fix internal image srcs to use session-scoped proxy (avoids MSAL auth requirement)
+      if (SESSION_TOKEN) {
+        images.forEach((item, idx) => {
+          if (item.type === 'internal' || item.library === 'internal') {
+            const src = resolvedSrc(item);
+            const tile = document.querySelector(`.image-tile[data-index="${idx}"]`);
+            if (tile) {
+              const img = tile.querySelector('.image-container img');
+              const container = tile.querySelector('.image-container');
+              if (img) img.src = src;
+              if (container) {
+                container.dataset.src = src;
+              }
+            }
+          }
+        });
+      }
 
       // Attach lightbox to all image containers
       document.querySelectorAll('.image-container[data-src]').forEach(el => {

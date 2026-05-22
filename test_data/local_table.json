@@ -778,5 +778,18 @@
       "High-Res Location": "Internal/young-woman-in-black-sitting-on-stone-stairs-hugging-her-kne-original.jpeg",
       "Source": "Internal"
     }
+  },
+  {
+    "id": "loc_641ff4259ff047",
+    "fields": {
+      "Filename": "two-smiling-older-men-in-blue-shirts-sitting-together-in-a-s.webp",
+      "Alt Text": "Two smiling older men in blue shirts sitting together in a stadium, one wearing a cap and glasses, the other with a lanyard.",
+      "Tags": "",
+      "Status": "approved",
+      "Slug": "two-smiling-older-men-in-blue-shirts-sitting-together-in-a-s",
+      "Location": "Community/two-smiling-older-men-in-blue-shirts-sitting-together-in-a-s.webp",
+      "High-Res Location": "Internal/two-smiling-older-men-in-blue-shirts-sitting-together-in-a-s-original.jpeg",
+      "Source": "Internal"
+    }
   }
 ]

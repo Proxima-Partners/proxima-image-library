@@ -749,7 +749,9 @@
       <a href="/" class="header-link">Home</a>
       <a href="/upload" class="header-link">Upload</a>
       <a href="/stock-search" class="header-link">Stock</a>
+      <a href="/tags" class="header-link">Tags</a>
       <a href="/review" class="header-link">Review</a>
+      <!-- maintenance.html is already admin-only so Review link is always shown here -->
       {% if is_admin %}
       <a href="/maintenance" class="header-link">Maintenance</a>
       {% endif %}
@@ -761,7 +763,7 @@
     <section class="panel">
       <h1 class="hub-title">Maintenance Console</h1>
       <p class="sub hub-sub">
-        Use workstreams to focus on one maintenance phase at a time. Search narrows visible tools in the active workstream.
+        Use tabs to switch between Health checks and Tools.
       </p>
 
       <div class="hub-metrics">
@@ -769,11 +771,11 @@
           <div class="hub-metric-label">Images Pending Review</div>
           <div id="metric-pending" class="hub-metric-value">--</div>
         </a>
-        <a class="hub-metric" href="#correct">
+        <a class="hub-metric" href="#tools">
           <div class="hub-metric-label">Rejected Candidates</div>
           <div id="metric-rejected" class="hub-metric-value">--</div>
         </a>
-        <a class="hub-metric" href="#cleanup">
+        <a class="hub-metric" href="#tools">
           <div class="hub-metric-label">Archived Candidates</div>
           <div id="metric-archived" class="hub-metric-value">--</div>
         </a>
@@ -784,20 +786,16 @@
       </div>
 
       <div class="hub-controls">
-        <label for="tool-search">Search tools</label>
-        <input id="tool-search" class="control-input" type="text" placeholder="sync, purge, duplicate, export" />
         <button id="refresh-metrics-btn" class="btn">Refresh Metrics</button>
       </div>
 
       <div class="workstream-tabs" role="tablist" aria-label="Maintenance workstreams">
-        <button type="button" class="workstream-tab is-active" data-workstream="diagnose">Diagnose</button>
-        <button type="button" class="workstream-tab" data-workstream="correct">Correct</button>
-        <button type="button" class="workstream-tab" data-workstream="cleanup">Cleanup</button>
-        <button type="button" class="workstream-tab" data-workstream="reporting">Reporting and Roadmap</button>
+        <button type="button" class="workstream-tab is-active" data-workstream="health">Health</button>
+        <button type="button" class="workstream-tab" data-workstream="tools">Tools</button>
       </div>
     </section>
 
-    <section class="panel tool-panel" data-workstream="diagnose" data-title="Maintenance Sync">
+    <section class="panel tool-panel" data-workstream="health" data-title="Maintenance Sync">
       <h1>Maintenance Sync</h1>
       <p class="sub">
         Scans High-Res source folders, catalogs files with no metadata record, and reports WebP files that do not have a matching record.
@@ -830,7 +828,7 @@
       </div>
     </section>
 
-    <section class="panel tool-panel" data-workstream="correct" data-title="Folder Ingest">
+    <section class="panel tool-panel" data-workstream="tools" data-title="Folder Ingest">
       <h1>Folder Ingest</h1>
       <p class="sub">
         The background poller automatically scans <code>Ingrest-images</code> every 5 minutes, processes new files, and deletes them after successful upload. Use the manual trigger below to run immediately.
@@ -873,7 +871,7 @@
       </div>
     </section>
 
-    <section class="panel tool-panel" data-workstream="cleanup" data-title="Record Purge by Status">
+    <section class="panel tool-panel" data-workstream="tools" data-title="Record Purge by Status">
       <div class="tool-risk tool-risk-high">Danger Zone</div>
       <h1>Record Purge by Status</h1>
       <p class="sub">
@@ -902,7 +900,7 @@
       <div id="purge-result" class="purge-result"></div>
     </section>
 
-    <section class="panel tool-panel" data-workstream="diagnose" data-title="Orphan File Finder">
+    <section class="panel tool-panel" data-workstream="health" data-title="Orphan File Finder">
       <h1>Orphan File Finder</h1>
       <p class="sub">
         Compares metadata records against storage files in both directions: files with no record and records with missing files.
@@ -968,7 +966,7 @@
       </div>
     </section>
 
-    <section class="panel tool-panel" data-workstream="correct" data-title="Bulk Re-Tag">
+    <section class="panel tool-panel" data-workstream="tools" data-title="Bulk Re-Tag">
       <h1>Bulk Re-Tag</h1>
       <p class="sub">
         Re-runs Claude metadata generation for filtered records. Updated records are moved to <strong>pending-review</strong> for human sign-off.
@@ -1043,7 +1041,7 @@
       </div>
     </section>
 
-    <section class="panel tool-panel" data-workstream="diagnose" data-title="Broken Thumbnail Checker">
+    <section class="panel tool-panel" data-workstream="health" data-title="Broken Thumbnail Checker">
       <h1>Broken Thumbnail Checker</h1>
       <p class="sub">
         Scans records and verifies that each thumbnail location can be loaded as an image. Use delete or relink actions to resolve broken entries.
@@ -1096,7 +1094,7 @@
       <div id="broken-list" class="duplicate-list"></div>
     </section>
 
-    <section class="panel tool-panel" data-workstream="correct" data-title="Status Reset">
+    <section class="panel tool-panel" data-workstream="tools" data-title="Status Reset">
       <h1>Status Reset</h1>
       <p class="sub">
         Bulk-set filtered records back to <strong>pending-review</strong>. Use preview first, then confirm reset.
@@ -1150,7 +1148,7 @@
       </div>
     </section>
 
-    <section class="panel tool-panel" data-workstream="reporting" data-title="Export CSV">
+    <section class="panel tool-panel" data-workstream="tools" data-title="Export CSV">
       <h1>Export CSV</h1>
       <p class="sub">
         Download library metadata as CSV. Optional filters limit rows by category and/or status.
@@ -1183,7 +1181,7 @@
       </div>
     </section>
 
-    <section class="panel tool-panel" data-workstream="diagnose" data-title="Duplicate Detector">
+    <section class="panel tool-panel" data-workstream="health" data-title="Duplicate Detector">
       <h1>Duplicate Detector</h1>
       <p class="sub">
         Detects duplicate records by filename, slug, exact alt text, and optional near-alt similarity clustering.
@@ -1236,8 +1234,12 @@
       <div id="duplicates-list" class="duplicate-list"></div>
     </section>
 
-    <section class="panel tool-panel" data-workstream="reporting" data-title="M10-M19 Operations">
-      <h1>M10-M19 Operations</h1>
+    <section class="panel tool-panel is-collapsed" data-workstream="tools" data-title="M10-M19 Operations">
+      <button type="button" class="tool-toggle" id="m-ops-toggle">
+        M10-M19 Operations
+        <span class="tool-toggle-icon" id="m-ops-toggle-icon">▶</span>
+      </button>
+      <div class="tool-body">
       <p class="sub">
         New here? Follow these steps from top to bottom. Each step explains what to click and why.
       </p>
@@ -1364,10 +1366,11 @@
 
       <div id="m-advanced-result" class="purge-preview">Results from the last action appear here. If something fails, read the message and retry the previous step.</div>
       <div id="m-advanced-output" class="duplicate-list" style="margin-top: 10px;"></div>
+      </div><!-- /tool-body -->
     </section>
 
     <!-- Tag Manager ──────────────────────────────────────────────── -->
-    <section class="panel tool-panel is-collapsed" id="tm-panel" data-workstream="correct" data-title="Tag Manager">
+    <section class="panel tool-panel is-collapsed" id="tm-panel" data-workstream="tools" data-title="Tag Manager">
       <button type="button" class="tool-toggle" id="tm-toggle">
         Tag Manager
         <span class="tool-toggle-icon" id="tm-toggle-icon">▶</span>
@@ -1616,12 +1619,10 @@
     let duplicateScanState = { groups: [] };
     let normalizationPreviewState = { candidates: [] };
     let driftQueueState = { candidates: [] };
-    let activeWorkstream = 'diagnose';
+    let activeWorkstream = 'health';
     const activeToolByWorkstream = {
-      diagnose: null,
-      correct: null,
-      cleanup: null,
-      reporting: null,
+      health: null,
+      tools: null,
     };
 
     function setPanelExpanded(panel, expanded) {
@@ -1631,7 +1632,7 @@
         icon.textContent = expanded ? 'Collapse' : 'Expand';
       }
       if (expanded) {
-        activeToolByWorkstream[panel.dataset.workstream || 'diagnose'] = panel.dataset.title || '';
+        activeToolByWorkstream[panel.dataset.workstream || 'health'] = panel.dataset.title || '';
       }
     }
 
@@ -1688,7 +1689,7 @@
         panel.classList.add('is-collapsed');
 
         toggle.addEventListener('click', () => {
-          const workstream = panel.dataset.workstream || 'diagnose';
+          const workstream = panel.dataset.workstream || 'health';
           const visiblePanels = visiblePanelsForWorkstream(workstream);
           const isExpanded = !panel.classList.contains('is-collapsed');
 
@@ -1711,7 +1712,7 @@
       let visibleCount = 0;
 
       toolPanels.forEach((panel) => {
-        const panelWorkstream = panel.dataset.workstream || 'diagnose';
+        const panelWorkstream = panel.dataset.workstream || 'health';
         const panelTitle = (panel.dataset.title || panel.querySelector('h1')?.textContent || '').toLowerCase();
         const always = panelWorkstream === 'always';
         const matchesWorkstream = always || panelWorkstream === activeWorkstream;
@@ -2861,7 +2862,7 @@
 
     workstreamTabs.forEach((tab) => {
       tab.addEventListener('click', () => {
-        setActiveWorkstream(tab.dataset.workstream || 'diagnose');
+        setActiveWorkstream(tab.dataset.workstream || 'health');
       });
     });
 
@@ -3552,7 +3553,7 @@
 
     if (retagOpenOrphansBtn) {
       retagOpenOrphansBtn.addEventListener('click', () => {
-        openToolPanel('diagnose', 'Orphan File Finder');
+        openToolPanel('health', 'Orphan File Finder');
       });
     }
 
@@ -4097,11 +4098,11 @@
     resetStatusResetUi('Run preview to see how many records match status reset filters.');
     resetDuplicateUi('Run duplicate scan to review candidate groups.');
     initializeToolAccordions();
-    setActiveWorkstream('diagnose');
+    setActiveWorkstream('health');
 
     function handleWorkstreamHash() {
       const hashWorkstream = window.location.hash.replace('#', '');
-      if (!['diagnose','correct','cleanup','reporting'].includes(hashWorkstream)) return;
+      if (!['health','tools'].includes(hashWorkstream)) return;
       setActiveWorkstream(hashWorkstream);
       const firstPanel = document.querySelector(`.tool-panel[data-workstream="${hashWorkstream}"]`);
       if (firstPanel) {
@@ -4307,9 +4308,20 @@
       if (!isCollapsed && !_tmLoaded) { _tmLoaded = true; tmLoadLibrary().then(tmLoadSuggestions); }
     });
 
+    document.getElementById('m-ops-toggle').addEventListener('click', () => {
+      const panel = document.getElementById('m-ops-toggle').closest('.tool-panel');
+      const visiblePanels = visiblePanelsForWorkstream('tools');
+      const isExpanded = !panel.classList.contains('is-collapsed');
+      if (isExpanded) {
+        setPanelExpanded(panel, false);
+      } else {
+        visiblePanels.forEach((other) => setPanelExpanded(other, other === panel));
+      }
+    });
+
     function openTagManager() {
-      setActiveWorkstream('correct');
-      openToolPanel('correct', 'Tag Manager');
+      setActiveWorkstream('tools');
+      openToolPanel('tools', 'Tag Manager');
       if (!_tmLoaded) { _tmLoaded = true; tmLoadLibrary().then(tmLoadSuggestions); }
       setTimeout(() => document.getElementById('tm-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
     }
@@ -4317,8 +4329,8 @@
     // Auto-open if navigated via anchor (then clear hash so refresh doesn't re-open)
     function handleTagManagerHash() {
       if (window.location.hash === '#tag-manager') {
-        setActiveWorkstream('correct');
-        openToolPanel('correct', 'Tag Manager');
+        setActiveWorkstream('tools');
+        openToolPanel('tools', 'Tag Manager');
         if (!_tmLoaded) { _tmLoaded = true; tmLoadLibrary().then(tmLoadSuggestions); }
         setTimeout(() => {
           document.getElementById('tm-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
