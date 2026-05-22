@@ -367,9 +367,15 @@ async def _search_image_library(args: dict) -> list[types.TextContent]:
 
     base_url = (Config.APP_BASE_URL or "http://localhost:5000").rstrip("/")
 
-    # Build thumbnail URLs — use /thumbnail route which proxies SharePoint
+    # Build thumbnail URLs — use public MCP thumbnail endpoint (no MSAL required)
+    secret = Config.MCP_INTERNAL_SECRET
+    from urllib.parse import quote as _quote
     def _thumb_url(location: str) -> str:
-        return f"{base_url}/thumbnail?path={location}" if location else ""
+        if not location:
+            return ""
+        if secret:
+            return f"{base_url}/api/mcp/thumbnail?path={_quote(location)}&key={_quote(secret)}"
+        return f"{base_url}/thumbnail?path={_quote(location)}"
 
     # Fetch thumbnails in parallel (inline in chat)
     def _get_thumb(item):
@@ -407,7 +413,6 @@ async def _search_image_library(args: dict) -> list[types.TextContent]:
         })
 
     # Create a preview session
-    secret = Config.MCP_INTERNAL_SECRET
     article_title = args.get("article_title", "Internal Library Results")
     preview_url = None
     token = None
