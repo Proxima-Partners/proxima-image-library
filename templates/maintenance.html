@@ -2404,6 +2404,7 @@
       button,
       disableButtons = [],
       setLoadingState,
+      timerEl,
       requestUrl,
       onSuccess,
       onFailure,
@@ -2417,6 +2418,16 @@
         setLoadingState();
       }
 
+      let elapsed = 0;
+      let ticker = null;
+      if (timerEl) {
+        ticker = setInterval(() => {
+          elapsed++;
+          const baseText = timerEl.textContent.replace(/ \(\d+s\)$/, '');
+          timerEl.textContent = `${baseText} (${elapsed}s)`;
+        }, 1000);
+      }
+
       try {
         const resp = await fetch(requestUrl);
         const data = await resp.json();
@@ -2427,6 +2438,7 @@
       } catch (err) {
         onFailure(err);
       } finally {
+        if (ticker) clearInterval(ticker);
         if (button) button.disabled = false;
       }
     }
@@ -2443,6 +2455,7 @@
           orphansSummaryEl.textContent = 'Scanning for orphan files and missing-file records...';
           orphansSummaryEl.classList.remove('line-err');
         },
+        timerEl: orphansSummaryEl,
         requestUrl: `/api/maintenance/orphans?${params.toString()}`,
         onSuccess: renderOrphanScan,
         onFailure: (err) => resetOrphanActions(err.message || 'Orphan scan failed.', true),
@@ -2462,6 +2475,7 @@
           brokenSummaryEl.classList.remove('line-err');
           brokenSummaryEl.textContent = 'Scanning records for broken thumbnails...';
         },
+        timerEl: brokenSummaryEl,
         requestUrl: `/api/maintenance/broken-thumbnails?${params.toString()}`,
         onSuccess: renderBrokenScan,
         onFailure: (err) => resetBrokenUi(err.message || 'Broken thumbnail scan failed.', true),
