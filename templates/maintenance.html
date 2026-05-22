@@ -172,6 +172,10 @@
     }
     .line-err { color: var(--danger); }
     .line-warn { color: #b45309; }
+    .log-status {
+      font-size: 12px; color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      margin-bottom: 4px;
+    }
     .line-ok { color: #16a34a; }
     .summary {
       margin-top: 12px;
@@ -819,6 +823,7 @@
         <button id="run" class="btn">Run Sync</button>
       </div>
 
+      <div id="log-status" class="log-status" style="display:none;"></div>
       <div id="log" class="log"></div>
 
       <div id="summary" class="summary">
@@ -844,6 +849,7 @@
         <button id="ingest-log-btn" class="btn btn-secondary" type="button">Refresh Poller Log</button>
       </div>
 
+      <div id="ingest-log-status" class="log-status" style="display:none;"></div>
       <div id="ingest-log" class="log"></div>
 
       <div id="ingest-summary" class="summary">
@@ -1034,7 +1040,8 @@
         Run preview to see how many records match your filters.
       </div>
 
-      <div id="retag-log" class="log" style="margin-top: 10px; min-height: 140px;"></div>
+      <div id="retag-log-status" class="log-status" style="display:none; margin-top:10px;"></div>
+      <div id="retag-log" class="log" style="margin-top: 4px; min-height: 140px;"></div>
 
       <div id="retag-result" class="purge-result" style="display:block;">
         No bulk re-tag run yet.
@@ -1456,6 +1463,8 @@
     const sourceSelect = document.getElementById('source');
     const dryRunInput = document.getElementById('dry-run');
     const logEl = document.getElementById('log');
+    const logStatusEl = document.getElementById('log-status');
+    let logLineCount = 0;
     const summaryEl = document.getElementById('summary');
     const summaryGridEl = document.getElementById('summary-grid');
     const orphanWrapEl = document.getElementById('orphan-wrap');
@@ -1464,6 +1473,8 @@
     const ingestCancelBtn = document.getElementById('ingest-cancel-btn');
     const ingestDryRunInput = document.getElementById('ingest-dry-run');
     const ingestLogEl = document.getElementById('ingest-log');
+    const ingestLogStatusEl = document.getElementById('ingest-log-status');
+    let ingestLogLineCount = 0;
     const ingestSummaryEl = document.getElementById('ingest-summary');
     const ingestSummaryGridEl = document.getElementById('ingest-summary-grid');
     const ingestFileListEl = document.getElementById('ingest-file-list');
@@ -1514,6 +1525,8 @@
     const retagOpenOrphansBtn = document.getElementById('retag-open-orphans-btn');
     const retagPreviewEl = document.getElementById('retag-preview');
     const retagLogEl = document.getElementById('retag-log');
+    const retagLogStatusEl = document.getElementById('retag-log-status');
+    let retagLogLineCount = 0;
     const retagResultEl = document.getElementById('retag-result');
 
     const brokenStatusSelect = document.getElementById('broken-status');
@@ -1783,10 +1796,16 @@
       if (cls) div.className = cls;
       logEl.appendChild(div);
       logEl.scrollTop = logEl.scrollHeight;
+      logLineCount++;
+      logStatusEl.style.display = '';
+      logStatusEl.textContent = `${logLineCount} line${logLineCount === 1 ? '' : 's'}`;
     }
 
     function resetOutput() {
       logEl.innerHTML = '';
+      logLineCount = 0;
+      logStatusEl.style.display = 'none';
+      logStatusEl.textContent = '';
       summaryEl.style.display = 'none';
       summaryGridEl.innerHTML = '';
       orphanWrapEl.style.display = 'none';
@@ -1998,6 +2017,7 @@
       retagPreviewEl.textContent = message;
       retagPreviewEl.classList.toggle('line-err', isError);
       retagLogEl.innerHTML = '';
+      retagLogLineCount = 0; retagLogStatusEl.style.display = 'none'; retagLogStatusEl.textContent = '';
       retagResultEl.classList.remove('line-err');
       retagResultEl.textContent = 'No bulk re-tag run yet.';
     }
@@ -2118,6 +2138,9 @@
       if (isError) div.className = 'line-err';
       retagLogEl.appendChild(div);
       retagLogEl.scrollTop = retagLogEl.scrollHeight;
+      retagLogLineCount++;
+      retagLogStatusEl.style.display = '';
+      retagLogStatusEl.textContent = `${retagLogLineCount} line${retagLogLineCount === 1 ? '' : 's'}`;
     }
 
     function buildRetagParams() {
@@ -2941,6 +2964,9 @@
       if (cls) div.className = cls;
       ingestLogEl.appendChild(div);
       ingestLogEl.scrollTop = ingestLogEl.scrollHeight;
+      ingestLogLineCount++;
+      ingestLogStatusEl.style.display = '';
+      ingestLogStatusEl.textContent = `${ingestLogLineCount} line${ingestLogLineCount === 1 ? '' : 's'}`;
     }
 
     function ingestRenderSummary(result) {
@@ -2981,6 +3007,7 @@
       ingestRunBtn.disabled = true;
       ingestCancelBtn.style.display = '';
       ingestLogEl.innerHTML = '';
+      ingestLogLineCount = 0; ingestLogStatusEl.style.display = 'none'; ingestLogStatusEl.textContent = '';
       ingestSummaryEl.style.display = 'none';
       ingestSummaryGridEl.innerHTML = '';
       ingestFileListEl.style.display = 'none';
@@ -3622,6 +3649,7 @@
       retagRunBtn.disabled = true;
       retagPopupShown = false;
       retagLogEl.innerHTML = '';
+      retagLogLineCount = 0; retagLogStatusEl.style.display = 'none'; retagLogStatusEl.textContent = '';
       retagResultEl.classList.remove('line-err');
       retagResultEl.textContent = 'Running bulk re-tag...';
       appendRetagLine('Starting bulk re-tag run...');
