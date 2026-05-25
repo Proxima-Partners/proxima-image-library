@@ -1405,6 +1405,9 @@ def api_mcp_preview_session():
             "phrases": data.get("phrases", []),
             "shortlisted": shortlisted,
             "selection": None,
+            "cataloged": [],
+            "failures": [],
+            "cataloged_at": None,
             "created_at": time.time(),
         }
     return jsonify({"token": token})
@@ -1450,7 +1453,7 @@ def api_mcp_preview_token(token: str):
 
 @app.route("/api/mcp/preview/<token>/select", methods=["POST"])
 def api_mcp_preview_select(token: str):
-    """Store the user's image selection for a session token."""
+    """Store a selection and immediately catalog selected stock images."""
     with _preview_sessions_lock:
         sess = _preview_sessions.get(token)
     if not sess:
@@ -1461,12 +1464,116 @@ def api_mcp_preview_select(token: str):
     if not isinstance(selected, list):
         return jsonify({"error": "selected must be an array"}), 400
 
+    internal_items = [
+        item for item in selected
+        if isinstance(item, dict) and (item.get("type") == "internal" or item.get("library") == "internal")
+    ]
+    stock_items = [
+        item for item in selected
+        if isinstance(item, dict) and not (item.get("type") == "internal" or item.get("library") == "internal")
+    ]
+
+    from src.image_processor import CATEGORIES, process_image
+
+    cataloged: list[dict] = []
+    failures: list[dict] = []
+
+    for item in stock_items:
+        download_url = str(item.get("download_url", "") or "").strip()
+        filename = str(item.get("filename", "image.jpg") or "image.jpg").strip() or "image.jpg"
+        category = str(item.get("category", "") or "").strip() or None
+        source = str(item.get("library", "") or "").strip()
+        title = str(item.get("title", "") or "").strip()
+        photographer = str(item.get("photographer", "") or "").strip()
+        tags_in = item.get("tags", [])
+
+        if not download_url:
+            failures.append({"title": title or "Untitled", "error": "download_url required"})
+            continue
+
+        domain = urlparse(download_url).netloc.lower()
+        _allowed = {
+            "images.pexels.com",
+            "www.pexels.com",
+            "cdn.pixabay.com",
+            "pixabay.com",
+            "images.unsplash.com",
+        }
+        if not any(domain == d or domain.endswith("." + d) for d in _allowed):
+            failures.append({"title": title or "Untitled", "error": "URL not permitted"})
+            continue
+
+        if category is not None and category not in CATEGORIES:
+            failures.append({
+                "title": title or "Untitled",
+                "error": f"Invalid category. Must be one of: {CATEGORIES}",
+            })
+            continue
+
+        if isinstance(tags_in, list):
+            tags = [str(t).strip() for t in tags_in if str(t).strip()]
+        else:
+            tags = [t.strip() for t in str(tags_in or "").split(",") if t.strip()]
+        source_context = _stock_source_context(source, title, tags, photographer)
+
+        try:
+            file_bytes = _download_limited_bytes(download_url, timeout=30)
+            _validate_image_payload(file_bytes, filename)
+
+            from src.ai_generator import AltTextGenerator
+
+            gen = AltTextGenerator()
+            if Config.TEST_MODE:
+                list_client = LocalClient()
+                sp_client = None
+                storage_mode = "local"
+            else:
+                from src.sharepoint_list_client import SharePointListClient
+                from src.sharepoint_client import SharePointClient
+
+                list_client = SharePointListClient()
+                sp_client = SharePointClient()
+                storage_mode = "sharepoint"
+
+            result = process_image(
+                file_bytes=file_bytes,
+                original_filename=filename,
+                generator=gen,
+                list_client=list_client,
+                sp_client=sp_client,
+                image_folder=Config.IMAGE_FOLDER,
+                storage_mode=storage_mode,
+                category=category,
+                source_context=source_context or None,
+                source=source or None,
+            )
+            cataloged.append({
+                "title": title or "Untitled",
+                "slug": result.get("slug", ""),
+                "location": result.get("location", ""),
+                "status": result.get("status", ""),
+            })
+        except Exception as e:
+            failures.append({"title": title or "Untitled", "error": str(e) or "Processing failed"})
+
     with _preview_sessions_lock:
         if token in _preview_sessions:
             _preview_sessions[token]["selection"] = selected
             _preview_sessions[token]["selected_at"] = time.time()
+            _preview_sessions[token]["cataloged"] = cataloged
+            _preview_sessions[token]["failures"] = failures
+            _preview_sessions[token]["cataloged_at"] = time.time()
 
-    return jsonify({"ok": True, "count": len(selected)})
+    return jsonify({
+        "ok": True,
+        "count": len(selected),
+        "internal_count": len(internal_items),
+        "stock_count": len(stock_items),
+        "cataloged_count": len(cataloged),
+        "failure_count": len(failures),
+        "cataloged": cataloged,
+        "failures": failures,
+    })
 
 
 @app.route("/api/mcp/preview/<token>/selection", methods=["GET"])
@@ -1486,6 +1593,9 @@ def api_mcp_preview_get_selection(token: str):
         "article_title": sess["article_title"],
         "selected": sess.get("selection"),
         "ready": sess.get("selection") is not None,
+        "cataloged": sess.get("cataloged", []),
+        "failures": sess.get("failures", []),
+        "cataloged_at": sess.get("cataloged_at"),
     })
 
 

@@ -574,33 +574,52 @@
   // ── Confirm selection ─────────────────────────────────────────────────────
   document.getElementById('catalog-btn').addEventListener('click', async () => {
     if (!selectedIndices.size) return;
+    const catalogBtn = document.getElementById('catalog-btn');
     const selected = Array.from(selectedIndices).map(i => images[i]).filter(Boolean);
 
     if (SESSION_TOKEN) {
       try {
-        await fetch(`/api/mcp/preview/${SESSION_TOKEN}/select`, {
+        catalogBtn.disabled = true;
+        catalogBtn.textContent = 'Cataloging...';
+        const res = await fetch(`/api/mcp/preview/${SESSION_TOKEN}/select`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ selected }),
         });
-        const internalCount = selected.filter(i => i.type === 'internal' || i.library === 'internal').length;
-        const stockCount = selected.length - internalCount;
+        const payload = await res.json();
+        if (!res.ok) {
+          throw new Error(payload.error || 'Cataloging failed');
+        }
+
+        const internalCount = payload.internal_count || 0;
+        const stockCount = payload.stock_count || 0;
+        const catalogedCount = payload.cataloged_count || 0;
+        const failureCount = payload.failure_count || 0;
         let desc = '';
-        if (internalCount && stockCount)
-          desc = `${internalCount} from your library + ${stockCount} stock image${stockCount !== 1 ? 's' : ''} to catalog.`;
-        else if (internalCount)
-          desc = `${internalCount} image${internalCount !== 1 ? 's' : ''} from your Proxima library.`;
-        else
-          desc = `${stockCount} stock image${stockCount !== 1 ? 's' : ''} ready to catalog.`;
+
+        if (stockCount === 0) {
+          desc = `${internalCount} internal image${internalCount !== 1 ? 's' : ''} selected. No new cataloging needed.`;
+        } else {
+          desc = `${catalogedCount} of ${stockCount} stock image${stockCount !== 1 ? 's were' : ' was'} cataloged.`;
+          if (failureCount) {
+            desc += ` ${failureCount} failed.`;
+          }
+        }
+
+        const failureLines = (payload.failures || []).slice(0, 3)
+          .map(f => `<div style="margin-top:6px;color:#b91c1c;">- ${f.title || 'Untitled'}: ${f.error || 'Failed'}</div>`)
+          .join('');
 
         document.querySelector('.page-body').innerHTML = `
           <div class="state-panel">
             <div class="state-icon">✅</div>
-            <div class="state-title">Selection saved!</div>
-            <div class="state-msg">${desc}<br>Go back to Claude — it will retrieve your picks and finish the job.</div>
+            <div class="state-title">Cataloging complete</div>
+            <div class="state-msg">${desc}<br>Go back to Claude for the final summary.${failureLines}</div>
           </div>`;
       } catch (err) {
-        showToast('Failed to save selection: ' + err.message);
+        showToast('Failed to catalog selection: ' + err.message);
+        catalogBtn.disabled = false;
+        catalogBtn.textContent = 'Catalog Selected';
       }
       return;
     }

@@ -806,6 +806,9 @@ async def _get_selected_images(args: dict) -> list[types.TextContent]:
     if not selected:
         return [types.TextContent(type="text", text="No images were selected in the gallery.")]
 
+    cataloged = data.get("cataloged", []) if isinstance(data.get("cataloged", []), list) else []
+    failures = data.get("failures", []) if isinstance(data.get("failures", []), list) else []
+
     internal = [img for img in selected if img.get("type") == "internal" or img.get("library") == "internal"]
     stock = [img for img in selected if img.get("type") != "internal" and img.get("library") != "internal"]
 
@@ -815,12 +818,25 @@ async def _get_selected_images(args: dict) -> list[types.TextContent]:
         for img in internal:
             slug = img.get("slug") or img.get("location", "")
             lines.append(f"  - {img.get('title', 'Untitled')} — slug: `{slug}`")
-    if stock:
+
+    if cataloged or failures:
+        lines.append(f"\n**Stock cataloging results**: {len(cataloged)} succeeded, {len(failures)} failed.")
+        for item in cataloged:
+            title = item.get("title", "Untitled")
+            slug = item.get("slug", "")
+            location = item.get("location", "")
+            detail = slug or location or "record created"
+            lines.append(f"  - ✅ {title} — `{detail}`")
+        for item in failures:
+            title = item.get("title", "Untitled")
+            err = item.get("error", "Cataloging failed")
+            lines.append(f"  - ❌ {title} — {err}")
+    elif stock:
         lines.append(f"\n**{len(stock)} stock image(s)** to catalog:")
         for i, img in enumerate(stock):
             lines.append(f"  - #{i+1} **{img.get('title','Untitled')}** ({img.get('library','').capitalize()}) — `{img.get('download_url','')}`")
         lines.append("\nCall `catalog_stock_image` for each stock image above.")
-    if not stock:
+    else:
         lines.append("\nAll selected images are already in the library. No cataloging needed.")
 
     return [types.TextContent(type="text", text="\n".join(lines))]
