@@ -89,14 +89,18 @@ Expected result:
   - specification.md and development.md updated.
   - Ruff pyflakes: 0 errors.
 
-## 7) Next logical step
+## 7) Recurring maintenance reminders
+
+- **Stock photo API tokens expire frequently** — check and rotate Shutterstock (and any other stock photo provider) API keys if search calls start returning 401/403 errors. Tokens are stored in `.env` and must also be updated in Azure App Service environment variables for production.
+
+## 8) Next logical step
 
 - **T2 CLOSED** (2026-04-15): dependency CVEs fixed (0 remaining), error detail suppression applied, secrets/CORS/XSS all verified.
 - **T3 CLOSED** (2026-04-15): code audit complete, lint clean, docs updated.
 - All three pre-production gates (T1, T2, T3) are now closed.
 - Clean up test upload record from SharePoint list if desired.
 
-## 8) Recent changes (2026-04-30)
+## 9) Recent changes (2026-04-30)
 
 - Tag Manager embedded in Maintenance Console (`maintenance.html`), always visible across all workstream tabs (`data-workstream="always"`), starts collapsed.
 - Tags Pending Review hub-metric CTA uses `openTagManager()` onclick — opens and scrolls to Tag Manager panel.

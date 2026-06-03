@@ -6166,6 +6166,175 @@ def api_ss_track():
     return jsonify({"used": data["count"], "limit": SS_QUOTA_LIMIT})
 
 
+_STOCK_API_PROVIDERS = {
+    "pexels": {
+        "label": "Pexels",
+        "keys": ["PEXELS_API_KEY"],
+    },
+    "shutterstock": {
+        "label": "Shutterstock",
+        "keys": ["SHUTTERSTOCK_CLIENT_ID", "SHUTTERSTOCK_CLIENT_SECRET"],
+    },
+    "unsplash": {
+        "label": "Unsplash",
+        "keys": ["UNSPLASH_ACCESS_KEY"],
+    },
+    "pixabay": {
+        "label": "Pixabay",
+        "keys": ["PIXABAY_API_KEY"],
+    },
+}
+
+_DOT_ENV_PATH = Path(__file__).resolve().parent.parent / ".env"
+
+
+def _mask(value: str) -> str:
+    """Return a masked version of a secret key for display."""
+    if not value:
+        return ""
+    if len(value) <= 8:
+        return "*" * len(value)
+    return value[:4] + "*" * (len(value) - 8) + value[-4:]
+
+
+def _test_stock_provider(provider: str) -> dict:
+    """Ping a stock photo provider with a minimal test call. Returns {ok, status, message}."""
+    import base64
+    phrase = "people"
+    try:
+        if provider == "pexels":
+            key = os.getenv("PEXELS_API_KEY", "")
+            if not key:
+                return {"ok": False, "status": "missing", "message": "PEXELS_API_KEY not set"}
+            r = requests.get(
+                "https://api.pexels.com/v1/search",
+                params={"query": phrase, "per_page": 1},
+                headers={"Authorization": key},
+                timeout=8,
+            )
+            if r.status_code == 401:
+                return {"ok": False, "status": "auth_failed", "message": "401 — key rejected"}
+            if r.status_code == 200:
+                return {"ok": True, "status": "ok", "message": "OK"}
+            return {"ok": False, "status": "error", "message": f"HTTP {r.status_code}"}
+
+        elif provider == "shutterstock":
+            cid = os.getenv("SHUTTERSTOCK_CLIENT_ID", "")
+            csec = os.getenv("SHUTTERSTOCK_CLIENT_SECRET", "")
+            if not cid or not csec:
+                return {"ok": False, "status": "missing", "message": "SHUTTERSTOCK_CLIENT_ID / SHUTTERSTOCK_CLIENT_SECRET not set"}
+            credentials = base64.b64encode(f"{cid}:{csec}".encode()).decode()
+            r = requests.get(
+                "https://api.shutterstock.com/v2/images/search",
+                params={"query": phrase, "per_page": 1},
+                headers={"Authorization": f"Basic {credentials}"},
+                timeout=8,
+            )
+            if r.status_code == 401:
+                return {"ok": False, "status": "auth_failed", "message": "401 — credentials rejected"}
+            if r.status_code == 200:
+                return {"ok": True, "status": "ok", "message": "OK"}
+            return {"ok": False, "status": "error", "message": f"HTTP {r.status_code}"}
+
+        elif provider == "unsplash":
+            key = os.getenv("UNSPLASH_ACCESS_KEY", "")
+            if not key:
+                return {"ok": False, "status": "missing", "message": "UNSPLASH_ACCESS_KEY not set"}
+            r = requests.get(
+                "https://api.unsplash.com/search/photos",
+                params={"query": phrase, "per_page": 1},
+                headers={"Authorization": f"Client-ID {key}"},
+                timeout=8,
+            )
+            if r.status_code == 401:
+                return {"ok": False, "status": "auth_failed", "message": "401 — key rejected"}
+            if r.status_code == 200:
+                return {"ok": True, "status": "ok", "message": "OK"}
+            return {"ok": False, "status": "error", "message": f"HTTP {r.status_code}"}
+
+        elif provider == "pixabay":
+            key = os.getenv("PIXABAY_API_KEY", "")
+            if not key:
+                return {"ok": False, "status": "missing", "message": "PIXABAY_API_KEY not set"}
+            r = requests.get(
+                "https://pixabay.com/api/",
+                params={"key": key, "q": phrase, "per_page": 3},
+                timeout=8,
+            )
+            if r.status_code == 400 and "API key" in (r.text or ""):
+                return {"ok": False, "status": "auth_failed", "message": "400 — key rejected"}
+            if r.status_code == 200:
+                return {"ok": True, "status": "ok", "message": "OK"}
+            return {"ok": False, "status": "error", "message": f"HTTP {r.status_code}"}
+
+        return {"ok": False, "status": "error", "message": "Unknown provider"}
+    except requests.Timeout:
+        return {"ok": False, "status": "error", "message": "Request timed out"}
+    except Exception as exc:
+        return {"ok": False, "status": "error", "message": "Request failed"}
+
+
+def _update_env_key(key: str, value: str) -> None:
+    """Update or append a key=value line in the .env file."""
+    if not _DOT_ENV_PATH.exists():
+        _DOT_ENV_PATH.write_text(f"{key}={value}\n", encoding="utf-8")
+        return
+    lines = _DOT_ENV_PATH.read_text(encoding="utf-8").splitlines(keepends=True)
+    pattern = re.compile(rf"^{re.escape(key)}\s*=")
+    replaced = False
+    new_lines = []
+    for line in lines:
+        if pattern.match(line):
+            new_lines.append(f"{key}={value}\n")
+            replaced = True
+        else:
+            new_lines.append(line)
+    if not replaced:
+        new_lines.append(f"{key}={value}\n")
+    _DOT_ENV_PATH.write_text("".join(new_lines), encoding="utf-8")
+
+
+@app.route("/api/maintenance/stock-api-status")
+@login_required
+def api_maintenance_stock_api_status():
+    results = {}
+    for provider, meta in _STOCK_API_PROVIDERS.items():
+        keys_display = {k: _mask(os.getenv(k, "")) for k in meta["keys"]}
+        test = _test_stock_provider(provider)
+        results[provider] = {
+            "label": meta["label"],
+            "keys": keys_display,
+            **test,
+        }
+    return jsonify({"providers": results})
+
+
+@app.route("/api/maintenance/stock-api-update", methods=["POST"])
+@login_required
+def api_maintenance_stock_api_update():
+    data = request.get_json(force=True) or {}
+    provider = str(data.get("provider", "")).strip()
+    updates = data.get("keys", {})
+
+    if provider not in _STOCK_API_PROVIDERS:
+        return jsonify({"error": "Unknown provider"}), 400
+    allowed_keys = set(_STOCK_API_PROVIDERS[provider]["keys"])
+
+    saved = []
+    for key, value in updates.items():
+        if key not in allowed_keys:
+            return jsonify({"error": f"Key {key!r} not valid for provider {provider!r}"}), 400
+        value = str(value).strip()
+        if not value:
+            return jsonify({"error": f"Value for {key!r} cannot be empty"}), 400
+        os.environ[key] = value
+        _update_env_key(key, value)
+        saved.append(key)
+
+    test = _test_stock_provider(provider)
+    return jsonify({"saved": saved, "test": test})
+
+
 # Start background ingest poller (SharePoint mode only)
 if Config.STORAGE_MODE == "sharepoint" and Config.SHAREPOINT_INGEST_FOLDER:
     ingest_poller.start(Config.INGEST_POLL_INTERVAL_SECONDS)

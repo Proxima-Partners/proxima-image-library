@@ -1376,6 +1376,51 @@
       </div><!-- /tool-body -->
     </section>
 
+    <!-- Stock API Keys ──────────────────────────────────────────── -->
+    <section class="panel tool-panel is-collapsed" id="stock-api-panel" data-workstream="tools" data-title="Stock API Keys">
+      <button type="button" class="tool-toggle" id="stock-api-toggle">
+        Stock API Keys
+        <span class="tool-toggle-icon" id="stock-api-toggle-icon">▶</span>
+      </button>
+      <div class="tool-body">
+        <p class="sub" style="margin-bottom:14px;">
+          Check and rotate API credentials for the four stock photo providers. Tokens are updated live in the running process and written back to <code>.env</code>.
+        </p>
+
+        <div class="controls" style="margin-bottom:16px;">
+          <button id="stock-api-check-btn" class="btn">Check All</button>
+        </div>
+
+        <div id="stock-api-status-msg" class="purge-preview" style="display:none;"></div>
+
+        <table id="stock-api-table" style="width:100%;border-collapse:collapse;font-size:13px;">
+          <thead>
+            <tr style="text-align:left;border-bottom:2px solid var(--border);">
+              <th style="padding:6px 10px;white-space:nowrap;">Provider</th>
+              <th style="padding:6px 10px;">Status</th>
+              <th style="padding:6px 10px;">Current Key(s)</th>
+              <th style="padding:6px 10px;"></th>
+            </tr>
+          </thead>
+          <tbody id="stock-api-tbody">
+            <tr><td colspan="4" style="padding:10px;color:var(--muted);">Click "Check All" to load.</td></tr>
+          </tbody>
+        </table>
+
+        <!-- Edit form (revealed per-provider) -->
+        <div id="stock-api-edit-form" style="display:none;margin-top:20px;background:var(--panel-bg,#f9f9f9);border:1px solid var(--border);border-radius:6px;padding:16px;">
+          <h3 id="stock-api-edit-title" style="font-size:14px;font-weight:600;margin:0 0 12px;"></h3>
+          <div id="stock-api-edit-fields" style="display:flex;flex-direction:column;gap:10px;"></div>
+          <div style="margin-top:14px;display:flex;gap:8px;align-items:center;">
+            <button id="stock-api-save-btn" class="btn">Save &amp; Re-test</button>
+            <button id="stock-api-cancel-btn" class="btn btn-secondary">Cancel</button>
+            <span id="stock-api-save-msg" style="font-size:12px;color:var(--muted);"></span>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
     <!-- Tag Manager ──────────────────────────────────────────────── -->
     <section class="panel tool-panel is-collapsed" id="tm-panel" data-workstream="tools" data-title="Tag Manager">
       <button type="button" class="tool-toggle" id="tm-toggle">
@@ -4382,6 +4427,156 @@
     }
     window.addEventListener('hashchange', handleTagManagerHash);
     handleTagManagerHash();
+
+    // ── Stock API Keys ──────────────────────────────────────────────────────
+    (function () {
+      const panel       = document.getElementById('stock-api-panel');
+      const toggle      = document.getElementById('stock-api-toggle');
+      const toggleIcon  = document.getElementById('stock-api-toggle-icon');
+      const checkBtn    = document.getElementById('stock-api-check-btn');
+      const tbody       = document.getElementById('stock-api-tbody');
+      const statusMsg   = document.getElementById('stock-api-status-msg');
+      const editForm    = document.getElementById('stock-api-edit-form');
+      const editTitle   = document.getElementById('stock-api-edit-title');
+      const editFields  = document.getElementById('stock-api-edit-fields');
+      const saveBtn     = document.getElementById('stock-api-save-btn');
+      const cancelBtn   = document.getElementById('stock-api-cancel-btn');
+      const saveMsg     = document.getElementById('stock-api-save-msg');
+
+      let currentProvider = null;
+      let lastProviders   = {};
+
+      // Collapse/expand
+      toggle.addEventListener('click', () => {
+        const collapsed = panel.classList.toggle('is-collapsed');
+        toggleIcon.textContent = collapsed ? '▶' : '▼';
+        if (!collapsed && !Object.keys(lastProviders).length) runCheck();
+      });
+
+      function badgeHtml(status) {
+        const map = {
+          ok:          ['✓ OK',          '#1a7a3e', '#d4f0e0'],
+          auth_failed: ['✗ Auth failed', '#8b1a1a', '#fde8e8'],
+          missing:     ['— Not set',     '#6b5c00', '#fdf4d4'],
+          error:       ['! Error',       '#555',    '#f0f0f0'],
+        };
+        const [label, color, bg] = map[status] || map.error;
+        return `<span style="display:inline-block;padding:2px 8px;border-radius:3px;font-size:11px;font-weight:600;color:${color};background:${bg};">${label}</span>`;
+      }
+
+      function renderTable(providers) {
+        lastProviders = providers;
+        tbody.innerHTML = '';
+        for (const [id, p] of Object.entries(providers)) {
+          const maskedKeys = Object.entries(p.keys)
+            .map(([k, v]) => `<code style="font-size:11px;">${k}</code>&nbsp;<span style="color:var(--muted);font-size:11px;">${v || '(empty)'}</span>`)
+            .join('<br>');
+          const tr = document.createElement('tr');
+          tr.style.borderBottom = '1px solid var(--border)';
+          tr.innerHTML = `
+            <td style="padding:8px 10px;font-weight:600;">${p.label}</td>
+            <td style="padding:8px 10px;">${badgeHtml(p.status)}${p.message && p.status !== 'ok' ? `<div style="font-size:11px;color:var(--muted);margin-top:3px;">${p.message}</div>` : ''}</td>
+            <td style="padding:8px 10px;line-height:1.8;">${maskedKeys}</td>
+            <td style="padding:8px 10px;"><button class="btn btn-secondary" data-provider="${id}" style="font-size:12px;padding:4px 10px;">Update</button></td>`;
+          tbody.appendChild(tr);
+        }
+        tbody.querySelectorAll('[data-provider]').forEach(btn => {
+          btn.addEventListener('click', () => openEdit(btn.dataset.provider));
+        });
+      }
+
+      async function runCheck() {
+        checkBtn.disabled = true;
+        checkBtn.textContent = 'Checking…';
+        statusMsg.style.display = 'none';
+        tbody.innerHTML = '<tr><td colspan="4" style="padding:10px;color:var(--muted);">Testing all providers…</td></tr>';
+        try {
+          const res = await fetch('/api/maintenance/stock-api-status');
+          const data = await res.json();
+          if (data.providers) {
+            renderTable(data.providers);
+          } else {
+            statusMsg.textContent = data.error || 'Unexpected response.';
+            statusMsg.style.display = '';
+          }
+        } catch (e) {
+          statusMsg.textContent = 'Request failed.';
+          statusMsg.style.display = '';
+        } finally {
+          checkBtn.disabled = false;
+          checkBtn.textContent = 'Check All';
+        }
+      }
+
+      function openEdit(providerId) {
+        const p = lastProviders[providerId];
+        if (!p) return;
+        currentProvider = providerId;
+        editTitle.textContent = `Update ${p.label} credentials`;
+        editFields.innerHTML = '';
+        for (const keyName of Object.keys(p.keys)) {
+          const wrap = document.createElement('div');
+          wrap.style.cssText = 'display:flex;flex-direction:column;gap:4px;';
+          wrap.innerHTML = `
+            <label style="font-size:12px;font-weight:600;">${keyName}</label>
+            <input type="text" id="stock-edit-${keyName}" placeholder="Paste new value…"
+              style="font-size:12px;padding:6px 8px;border:1px solid var(--border);border-radius:4px;font-family:monospace;width:100%;box-sizing:border-box;">`;
+          editFields.appendChild(wrap);
+        }
+        saveMsg.textContent = '';
+        editForm.style.display = '';
+        editForm.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+
+      saveBtn.addEventListener('click', async () => {
+        if (!currentProvider) return;
+        const p = lastProviders[currentProvider];
+        const keys = {};
+        let allFilled = true;
+        for (const keyName of Object.keys(p.keys)) {
+          const val = (document.getElementById(`stock-edit-${keyName}`)?.value || '').trim();
+          if (!val) { allFilled = false; break; }
+          keys[keyName] = val;
+        }
+        if (!allFilled) {
+          saveMsg.textContent = 'All fields are required.';
+          saveMsg.style.color = 'var(--danger, #c0392b)';
+          return;
+        }
+        saveBtn.disabled = true;
+        saveMsg.textContent = 'Saving…';
+        saveMsg.style.color = 'var(--muted)';
+        try {
+          const res = await fetch('/api/maintenance/stock-api-update', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ provider: currentProvider, keys }),
+          });
+          const data = await res.json();
+          if (data.error) {
+            saveMsg.textContent = data.error;
+            saveMsg.style.color = 'var(--danger, #c0392b)';
+          } else {
+            const ok = data.test?.ok;
+            saveMsg.textContent = ok ? '✓ Saved and verified OK' : `Saved — test: ${data.test?.message || 'failed'}`;
+            saveMsg.style.color = ok ? '#1a7a3e' : 'var(--danger, #c0392b)';
+            await runCheck();
+          }
+        } catch (e) {
+          saveMsg.textContent = 'Request failed.';
+          saveMsg.style.color = 'var(--danger, #c0392b)';
+        } finally {
+          saveBtn.disabled = false;
+        }
+      });
+
+      cancelBtn.addEventListener('click', () => {
+        editForm.style.display = 'none';
+        currentProvider = null;
+      });
+
+      checkBtn.addEventListener('click', runCheck);
+    })();
   </script>
 </body>
 </html>
