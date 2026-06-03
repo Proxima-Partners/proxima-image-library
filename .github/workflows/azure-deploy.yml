@@ -35,4 +35,3 @@ jobs:
         with:
           app-name: PP-App-Serv
           startup-command: 'bash startup.sh'
-          scm-do-build-during-deployment: false
