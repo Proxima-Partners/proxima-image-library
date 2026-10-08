@@ -873,6 +873,10 @@
           <input id="allow-missing-attribution" type="checkbox" />
           Catalog without attribution (stock-library files only — confirm license terms first)
         </label>
+        <label class="check-row">
+          <input id="allow-missing-rights" type="checkbox" />
+          Catalog without license data (Adobe Stock / Shutterstock — records stay unverified)
+        </label>
         <button id="run" class="btn">Run Sync</button>
       </div>
 
@@ -1607,6 +1611,7 @@
     const sourceSelect = document.getElementById('source');
     const dryRunInput = document.getElementById('dry-run');
     const allowMissingAttributionInput = document.getElementById('allow-missing-attribution');
+    const allowMissingRightsInput = document.getElementById('allow-missing-rights');
     const logEl = document.getElementById('log');
     const logStatusEl = document.getElementById('log-status');
     let logLineCount = 0;
@@ -1991,8 +1996,10 @@
       ];
       if (result.dry_run) {
         rows.push(`Needs attribution (would be held): ${result.needs_attribution_count ?? 0}`);
+        rows.push(`Needs license data (would be held): ${result.needs_rights_count ?? 0}`);
       } else {
         rows.push(`Held — stock source, no attribution on record: ${result.held_for_attribution ?? 0}`);
+        rows.push(`Held — licensed stock, no license data: ${result.held_for_rights ?? 0}`);
       }
       summaryGridEl.innerHTML = rows.map(v => `<div>${v}</div>`).join('');
 
@@ -3323,6 +3330,7 @@
       if (source) params.set('source', source);
       if (dryRunInput.checked) params.set('dry_run', 'true');
       if (allowMissingAttributionInput.checked) params.set('allow_missing_attribution', 'true');
+      if (allowMissingRightsInput.checked) params.set('allow_missing_rights', 'true');
       params.set('csrf_token', window.PROXIMA_CSRF_TOKEN);
 
       const es = new EventSource(`/api/maintenance/sync-highres?${params.toString()}`);

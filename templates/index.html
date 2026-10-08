@@ -464,6 +464,8 @@
     .variation-dims { color: var(--muted); }
     .variation-row a { color: var(--accent); font-weight: 600; text-decoration: none; }
     .variation-row a:hover { text-decoration: underline; }
+    .variation-downloads { display: flex; align-items: center; gap: 12px; white-space: nowrap; }
+    .variation-dl { color: var(--muted); }
     #detail-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 4px; }
     .btn {
       padding: 9px 18px; border-radius: var(--radius); font-size: 13px;
@@ -1089,7 +1091,11 @@
             <div class="variation-row">
               <span class="variation-label">${esc(v.label)}</span>
               <span class="variation-dims">${v.width && v.height ? `${v.width} × ${v.height} px` : ''}${v.fileSize ? ' · ' + esc(v.fileSize) : ''}</span>
-              <a href="${v.url}" target="_blank" rel="noopener">View</a>
+              <span class="variation-downloads">
+                <span class="variation-dl">Download</span>
+                ${(v.downloads || [{label: 'File', url: v.url}]).map(dl =>
+                  `<a href="${esc(dl.url)}" download>${esc(dl.label)}</a>`).join('')}
+              </span>
             </div>
           `).join('');
           variationsWrap.style.display = '';

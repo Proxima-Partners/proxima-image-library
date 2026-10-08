@@ -23,6 +23,7 @@ test_preview_output.html
 test_data/maintenance_checkpoints/
 test_data/t1_last_report.json
 test_data/t1_ci_report.json
+test_data/png_backfill_reports/
 proxima_ss_counter.json
 
 # IDE

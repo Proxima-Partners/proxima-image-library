@@ -45,17 +45,21 @@ def _asset_exists(area: str, location: str, *, storage_mode: str, image_folder: 
     return path.is_relative_to(Path(image_folder).resolve()) and path.is_file()
 
 
-def _write_hero(location: str, content: bytes, *, storage_mode: str, image_folder: str, sp_client) -> None:
+def _write_asset(area: str, location: str, content: bytes, *, storage_mode: str, image_folder: str, sp_client) -> None:
     location = _safe_relative(location)
     rel = PurePosixPath(location)
     if storage_mode == "sharepoint":
         root = (Config.SHAREPOINT_IMAGE_FOLDER or "").strip().strip("/")
-        folder = f"{root}/Hero/{rel.parent}" if root else f"Hero/{rel.parent}"
+        folder = f"{root}/{area}/{rel.parent}" if root else f"{area}/{rel.parent}"
         sp_client.upload_file(folder, rel.name, content)
         return
-    path = Path(image_folder) / "Hero" / Path(location)
+    path = Path(image_folder) / area / Path(location)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(content)
+
+
+def _write_hero(location: str, content: bytes, *, storage_mode: str, image_folder: str, sp_client) -> None:
+    _write_asset("Hero", location, content, storage_mode=storage_mode, image_folder=image_folder, sp_client=sp_client)
 
 
 def _stored_derivative_metadata(content: bytes, location: str) -> dict:
@@ -125,6 +129,18 @@ def backfill_record(
         }
         hero_meta["location"] = standard_location
 
+    from src.png_backfill import write_png_derivatives
+    png = write_png_derivatives(
+        derivatives,
+        standard_location=standard_location,
+        hero_location=standard_location if hero_meta else "",
+        storage_mode=storage_mode,
+        image_folder=image_folder,
+        sp_client=sp_client,
+    )
+    if hero_meta and png["hero"]:
+        hero_meta["png"] = png["hero"]
+
     prior_original = existing.get("original", {}) if isinstance(existing, dict) else {}
     original_meta = {
         **derivatives["original"],
@@ -145,7 +161,10 @@ def backfill_record(
         "slug": slug,
         "original": original_meta,
         "hero": hero_meta,
-        "standard": _stored_derivative_metadata(standard_bytes, standard_location),
+        "standard": {
+            **_stored_derivative_metadata(standard_bytes, standard_location),
+            **({"png": png["standard"]} if png["standard"] else {}),
+        },
         "width": original_meta["width"],
         "height": original_meta["height"],
         "qualityTier": original_meta["qualityTier"],
@@ -164,5 +183,6 @@ def backfill_record(
         "qualityTier": original_meta["qualityTier"],
         "heroCreated": hero_created,
         "heroPreserved": bool(hero_meta) and not hero_created,
+        "pngCreated": png["created"],
         "metadataWritten": True,
     }

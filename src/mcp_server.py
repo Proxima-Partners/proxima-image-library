@@ -97,7 +97,7 @@ def _add_delivery_metadata(item: dict) -> dict:
     if "qualityTier" in item and "standard" in item:
         metadata = {
             key: item.get(key)
-            for key in ("original", "hero", "standard", "width", "height", "qualityTier", "focalPoint")
+            for key in ("original", "hero", "standard", "width", "height", "qualityTier", "focalPoint", "rights")
         }
     else:
         from src.image_metadata import read_metadata
@@ -121,6 +121,12 @@ def _add_delivery_metadata(item: dict) -> dict:
     if isinstance(enriched.get("hero"), dict):
         location = enriched["hero"].get("location", "")
         enriched["hero"]["url"] = _delivery_url("Hero", location)
+    for key, png_area in (("standard", "PNG"), ("hero", "Hero-PNG")):
+        variant = enriched.get(key)
+        if isinstance(variant, dict) and isinstance(variant.get("png"), dict):
+            variant["png"] = dict(variant["png"])
+            variant["png"]["url"] = _delivery_url(png_area, variant["png"].get("location", ""))
+    enriched["rights"] = metadata.get("rights") if isinstance(metadata.get("rights"), dict) else None
     enriched["width"] = metadata.get("width")
     enriched["height"] = metadata.get("height")
     enriched["qualityTier"] = metadata.get("qualityTier")
@@ -310,6 +316,18 @@ async def list_tools() -> list[types.Tool]:
                         "type": "string",
                         "description": "Provider asset identifier when available.",
                     },
+                    "rights": {
+                        "type": "object",
+                        "description": (
+                            "Structured license data (see get_image_rights fields). Never invent "
+                            "values — leave unknown fields out. AdobeStock/ShutterStock require "
+                            "licenseType and licenseReference unless allow_missing_rights is true."
+                        ),
+                    },
+                    "allow_missing_rights": {
+                        "type": "boolean",
+                        "description": "Override the licensed-stock hold. Only with explicit user approval.",
+                    },
                 },
                 "required": ["download_url", "original_filename", "category"],
             },
@@ -394,6 +412,23 @@ async def list_tools() -> list[types.Tool]:
                         "type": "string",
                         "enum": ["Headshots", "Community", "Locations", "Situations", "Graphics", "Banners"],
                         "description": "Storage category. Ask the user if not obvious from context.",
+                    },
+                    "source": {
+                        "type": "string",
+                        "enum": ["ShutterStock", "AdobeStock", "Unsplash", "Pexels", "Pixabay", "Internal"],
+                        "description": "Where the file came from. Defaults to Internal.",
+                    },
+                    "rights": {
+                        "type": "object",
+                        "description": (
+                            "Structured license data (see get_image_rights fields). Never invent "
+                            "values — leave unknown fields out. AdobeStock/ShutterStock require "
+                            "licenseType and licenseReference unless allow_missing_rights is true."
+                        ),
+                    },
+                    "allow_missing_rights": {
+                        "type": "boolean",
+                        "description": "Override the licensed-stock hold. Only with explicit user approval.",
                     },
                 },
                 "required": ["image_data", "filename", "category"],
@@ -953,6 +988,31 @@ async def _get_selected_images(args: dict) -> list[types.TextContent]:
     return [types.TextContent(type="text", text="\n".join(lines))]
 
 
+def _rights_for_catalog(args: dict, source: str):
+    """Validate rights and apply the licensed-stock hold. Returns (rights, error_text)."""
+    import json
+    from src.image_metadata import STOCK_SOURCES, rights_hold_missing, validate_rights
+    from src.image_processor import normalize_source
+
+    source_name = normalize_source(source)
+    rights = None
+    if args.get("rights"):
+        try:
+            rights = validate_rights(args["rights"])
+        except ValueError as exc:
+            return None, json.dumps({"error": str(exc)}, ensure_ascii=False)
+    missing = rights_hold_missing(rights, source_name)
+    if missing and args.get("allow_missing_rights") is not True:
+        return None, json.dumps({
+            "error": f"Held: {source_name} images need license data before cataloging",
+            "held": True,
+            "missing": missing,
+        }, ensure_ascii=False)
+    if rights is None and source_name in STOCK_SOURCES:
+        rights = {"source": source_name}
+    return rights, None
+
+
 async def _catalog_stock_image(args: dict) -> list[types.TextContent]:
     import json
     import requests as req
@@ -968,6 +1028,9 @@ async def _catalog_stock_image(args: dict) -> list[types.TextContent]:
 
     if not download_url:
         return [types.TextContent(type="text", text=json.dumps({"error": "download_url is required"}, ensure_ascii=False))]
+    rights, rights_error = _rights_for_catalog(args, source)
+    if rights_error:
+        return [types.TextContent(type="text", text=rights_error)]
 
     # Download the image
     try:
@@ -1010,6 +1073,7 @@ async def _catalog_stock_image(args: dict) -> list[types.TextContent]:
             license_info=license_info,
             source_url=source_url,
             source_asset_id=source_asset_id,
+            rights=rights,
         )
         result["webp_url"] = _webp_url(result.get("location", ""))
         result = _add_delivery_metadata(result)
@@ -1090,6 +1154,10 @@ async def _catalog_image_from_file(args: dict) -> list[types.TextContent]:
 
     if not image_data:
         return [types.TextContent(type="text", text=json.dumps({"error": "image_data is required"}, ensure_ascii=False))]
+    source = str(args.get("source", "") or "").strip()
+    rights, rights_error = _rights_for_catalog(args, source)
+    if rights_error:
+        return [types.TextContent(type="text", text=rights_error)]
 
     try:
         file_bytes = base64.b64decode(image_data)
@@ -1123,7 +1191,8 @@ async def _catalog_image_from_file(args: dict) -> list[types.TextContent]:
             sp_client=sp_client,
             image_folder=Config.IMAGE_FOLDER,
             storage_mode=storage_mode,
-            source="Internal",
+            source=source or None,
+            rights=rights,
         )
         result["webp_url"] = _webp_url(result.get("location", ""))
         result = _add_delivery_metadata(result)

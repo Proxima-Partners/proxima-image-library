@@ -8,7 +8,8 @@ from PIL import Image as PILImage
 from PIL import ImageOps
 
 from src.config import Config
-from src.image_metadata import read_metadata
+from src.image_metadata import RIGHTS_STATUSES, read_metadata, rights_missing, rights_source, rights_status
+from src.png_backfill import needs_png
 
 
 def _dimensions(raw: bytes) -> tuple[int, int]:
@@ -28,7 +29,9 @@ def build_inventory(records: list[dict], *, storage_mode: str, image_folder: str
             "below1600": 0,
             "missingOriginal": 0,
             "metadataGaps": 0,
+            "pngMissing": 0,
         },
+        "rightsStatus": {status: 0 for status in RIGHTS_STATUSES},
         "heroEligible": [],
         "storedOriginalOnly1600": [],
         "standardOnly1601To2559": [],
@@ -107,8 +110,16 @@ def build_inventory(records: list[dict], *, storage_mode: str, image_folder: str
         gaps = []
         if not (fields.get("Source") or original_meta.get("provider")):
             gaps.append("source")
-        if not (original_meta.get("attribution") or original_meta.get("license")):
+        rights = metadata.get("rights") if isinstance(metadata, dict) else None
+        rights_src = item["source"] or rights_source(metadata or {})
+        item["rightsStatus"] = rights_status(rights, rights_src)
+        report["rightsStatus"][item["rightsStatus"]] += 1
+        if item["rightsStatus"] in ("none", "incomplete"):
             gaps.append("rights")
+            item["rightsMissing"] = rights_missing(rights, rights_src)
+        item["pngMissing"] = needs_png(metadata)
+        if item["pngMissing"]:
+            report["summary"]["pngMissing"] += 1
         focal = metadata.get("focalPoint") if isinstance(metadata, dict) else None
         if not isinstance(focal, dict) or not all(key in focal for key in ("x", "y")):
             gaps.append("focalPoint")

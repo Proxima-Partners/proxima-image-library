@@ -103,6 +103,7 @@ _RATE_LIMIT_RULES = {
     "/api/mcp/claude-article": (Config.RATE_LIMIT_STREAM_REQUESTS * 2, Config.RATE_LIMIT_WINDOW_SECONDS),
     "/api/mcp/claude-article-auto": (Config.RATE_LIMIT_STREAM_REQUESTS * 2, Config.RATE_LIMIT_WINDOW_SECONDS),
     "/api/mcp/stock-search": (Config.RATE_LIMIT_AUTH_REQUESTS, Config.RATE_LIMIT_WINDOW_SECONDS),
+    "/api/mcp/rights": (Config.RATE_LIMIT_AUTH_REQUESTS * 4, Config.RATE_LIMIT_WINDOW_SECONDS),
 }
 _RATE_LIMIT_LOCK = threading.Lock()
 _rate_limit_state: dict[tuple[str, str], list[float]] = {}
@@ -921,14 +922,51 @@ def api_catalog_stock():
                     headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
+def _mcp_secret_ok() -> bool:
+    secret = Config.MCP_INTERNAL_SECRET or ""
+    provided = request.headers.get("X-MCP-Secret", "") or ""
+    return bool(secret) and secrets.compare_digest(provided, secret)
+
+
+def _truthy(value) -> bool:
+    return value is True or str(value or "").strip().lower() in {"1", "true", "yes"}
+
+
+def _catalog_rights(data: dict, source_name: str):
+    """Validate optional rights for an MCP catalog call and apply the stock hold.
+
+    Returns (rights_or_None, error_response_or_None). AdobeStock/ShutterStock
+    need licenseType + licenseReference unless allow_missing_rights is set.
+    """
+    from src.image_metadata import STOCK_SOURCES, rights_hold_missing, validate_rights
+
+    raw = data.get("rights")
+    rights = None
+    if raw not in (None, {}, ""):
+        try:
+            rights = validate_rights(raw)
+        except ValueError as exc:
+            return None, (jsonify({"error": str(exc)}), 400)
+    missing = rights_hold_missing(rights, source_name)
+    if missing and not _truthy(data.get("allow_missing_rights")):
+        return None, (jsonify({
+            "error": f"Held: {source_name} images need license data before cataloging",
+            "held": True,
+            "missing": missing,
+        }), 409)
+    if rights is None and source_name in STOCK_SOURCES:
+        # Overridden hold: still start an (unverified, incomplete) rights record.
+        rights = {"source": source_name}
+    return rights, None
+
+
 @app.route("/api/mcp/catalog-stock", methods=["POST"])
 def api_mcp_catalog_stock():
     """Internal endpoint for Pete MCP server to catalog a stock image.
     Protected by X-MCP-Secret header instead of MSAL session auth.
     Returns JSON directly (no SSE streaming).
     """
-    secret = Config.MCP_INTERNAL_SECRET
-    if not secret or request.headers.get("X-MCP-Secret") != secret:
+    if not _mcp_secret_ok():
         return jsonify({"error": "Unauthorized"}), 401
 
     data = request.get_json(force=True) or {}
@@ -943,10 +981,13 @@ def api_mcp_catalog_stock():
     source_url = data.get("source_url", "").strip() or download_url
     source_asset_id = data.get("source_asset_id", "").strip()
 
-    from src.image_processor import CATEGORIES, process_image
+    from src.image_processor import CATEGORIES, normalize_source, process_image
 
     if not download_url:
         return jsonify({"error": "download_url required"}), 400
+    rights, rights_error = _catalog_rights(data, normalize_source(source))
+    if rights_error:
+        return rights_error
 
     domain = urlparse(download_url).netloc.lower()
     _allowed = {"images.pexels.com", "www.pexels.com", "cdn.pixabay.com", "pixabay.com", "images.unsplash.com"}
@@ -995,6 +1036,7 @@ def api_mcp_catalog_stock():
             license_info=license_info,
             source_url=source_url,
             source_asset_id=source_asset_id,
+            rights=rights,
         )
         return jsonify(result)
     except Exception:
@@ -1009,8 +1051,7 @@ def api_mcp_catalog_from_file():
     """
     import base64 as _base64
 
-    secret = Config.MCP_INTERNAL_SECRET
-    if not secret or request.headers.get("X-MCP-Secret") != secret:
+    if not _mcp_secret_ok():
         return jsonify({"error": "Unauthorized"}), 401
 
     data = request.get_json(force=True) or {}
@@ -1018,10 +1059,14 @@ def api_mcp_catalog_from_file():
     filename = data.get("filename", "image.jpg").strip() or "image.jpg"
     category = data.get("category", "").strip() or None
 
-    from src.image_processor import CATEGORIES, process_image
+    from src.image_processor import CATEGORIES, normalize_source, process_image
 
     if not image_data:
         return jsonify({"error": "image_data required"}), 400
+    source_name = normalize_source(str(data.get("source", "") or ""))
+    rights, rights_error = _catalog_rights(data, source_name)
+    if rights_error:
+        return rights_error
 
     if category is not None and category not in CATEGORIES:
         return jsonify({"error": f"Invalid category. Must be one of: {CATEGORIES}"}), 400
@@ -1056,11 +1101,87 @@ def api_mcp_catalog_from_file():
             image_folder=Config.IMAGE_FOLDER,
             storage_mode=storage_mode,
             category=category,
-            source="Internal",
+            source=source_name,
+            rights=rights,
         )
         return jsonify(result)
     except Exception:
         return jsonify({"error": "Internal server error"}), 500
+
+
+_RIGHTS_BATCH_LIMIT = 50
+
+
+def _rights_storage() -> dict:
+    sharepoint = Config.STORAGE_MODE == "sharepoint"
+    return {
+        "storage_mode": Config.STORAGE_MODE,
+        "image_folder": Config.IMAGE_FOLDER,
+        "sp_client": get_sp_client() if sharepoint else None,
+    }
+
+
+@app.route("/api/mcp/rights", methods=["GET", "POST"])
+def api_mcp_rights():
+    """Read or record structured license data for one image (Pete MCP).
+
+    GET ?slug=        → {slug, source, filename, rights, missing, status}
+    GET ?slugs=a,b,…  → {statuses: {slug: verified|unverified|incomplete|none}}
+    POST {slug, rights, force?} → read-modify-write; returns the GET shape
+                                   plus ``conflicts`` (fields kept because
+                                   they already differed and force was unset).
+    Never returns delivery/thumbnail URLs (they embed the MCP secret).
+    """
+    if not _mcp_secret_ok():
+        return jsonify({"error": "Unauthorized"}), 401
+
+    from src.image_metadata import read_rights, write_rights
+
+    storage = _rights_storage()
+    if request.method == "GET":
+        slugs_raw = request.args.get("slugs")
+        if slugs_raw is not None:
+            slugs = list(dict.fromkeys(s.strip() for s in slugs_raw.split(",") if s.strip()))
+            if len(slugs) > _RIGHTS_BATCH_LIMIT:
+                return jsonify({"error": f"At most {_RIGHTS_BATCH_LIMIT} slugs per request"}), 400
+
+            def _status(slug: str) -> str:
+                try:
+                    info = read_rights(slug, **storage)
+                except ValueError:
+                    return "none"
+                return info["status"] if info else "none"
+
+            from concurrent.futures import ThreadPoolExecutor
+            with ThreadPoolExecutor(max_workers=8) as pool:
+                statuses = dict(zip(slugs, pool.map(_status, slugs)))
+            return jsonify({"statuses": statuses})
+
+        slug = request.args.get("slug", "").strip()
+        if not slug:
+            return jsonify({"error": "slug or slugs required"}), 400
+        try:
+            info = read_rights(slug, **storage)
+        except ValueError:
+            return jsonify({"error": "Invalid slug"}), 400
+        if info is None:
+            return jsonify({"error": f"No image metadata for slug '{slug}'"}), 404
+        return jsonify(info)
+
+    data = request.get_json(silent=True) or {}
+    slug = str(data.get("slug", "") or "").strip()
+    rights = data.get("rights")
+    if not slug or not isinstance(rights, dict):
+        return jsonify({"error": "slug and rights (object) are required"}), 400
+    try:
+        result = write_rights(slug, rights, force=data.get("force") is True, **storage)
+    except FileNotFoundError:
+        return jsonify({"error": f"No image metadata for slug '{slug}'"}), 404
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    except Exception:
+        return jsonify({"error": "Internal server error"}), 500
+    return jsonify(result)
 
 
 @app.route("/api/mcp/claude-article", methods=["POST"])
@@ -2050,6 +2171,42 @@ def api_image_info():
 
 
 _VARIANT_AREAS = {"hero": "Hero", "standard": "WebP", "original": "High-Res"}
+_PNG_AREAS = {"hero": "Hero-PNG", "standard": "PNG"}
+_DOWNLOAD_AREAS = {"Hero", "WebP", "High-Res", "PNG", "Hero-PNG"}
+_DOWNLOAD_SUFFIX_TAG = {"Hero": "-hero", "Hero-PNG": "-hero", "WebP": "-standard", "PNG": "-standard", "High-Res": ""}
+_IMAGE_MIMETYPES = {
+    ".webp": "image/webp",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png": "image/png",
+    ".gif": "image/gif",
+    ".tif": "image/tiff",
+    ".tiff": "image/tiff",
+}
+
+
+def _download_url(area: str, location: str, fmt: str = "") -> str:
+    url = f"/image/download?area={quote(area)}&path={quote(location)}"
+    if fmt:
+        url += f"&format={quote(fmt)}"
+    return url + "&download=1"
+
+
+def _variant_downloads(key: str, area: str, variant: dict) -> list[dict]:
+    """WEBP + PNG links for hero/standard; one native-format link for the original."""
+    location = variant["location"]
+    if key not in _PNG_AREAS:
+        label = (PurePosixPath(location).suffix.lstrip(".") or str(variant.get("format", "") or "file")).upper()
+        return [{"label": "JPG" if label == "JPEG" else label, "url": _download_url(area, location)}]
+    png = variant.get("png") if isinstance(variant.get("png"), dict) else {}
+    png_url = (
+        _download_url(_PNG_AREAS[key], png["location"]) if png.get("location")
+        else _download_url(area, location, fmt="png")  # on-the-fly until backfilled
+    )
+    return [
+        {"label": "WEBP", "url": _download_url(area, location)},
+        {"label": "PNG", "url": png_url},
+    ]
 _VARIANT_LABELS = {"hero": "Hero (2560px)", "standard": "Standard (1600px)", "original": "Original"}
 
 
@@ -2103,13 +2260,17 @@ def api_image_variations():
             "format": variant.get("format"),
             "fileSize": _format_file_size(int(variant.get("fileSize", 0) or 0)),
             "url": f"/image/download?area={quote(area)}&path={quote(variant_location)}",
+            "downloads": _variant_downloads(key, area, variant),
         })
 
+    from src.image_metadata import rights_summary
+    rights = metadata.get("rights") if isinstance(metadata.get("rights"), dict) else None
     return jsonify({
         "slug": slug,
         "qualityTier": metadata.get("qualityTier"),
         "variations": variations,
         "source": source_info,
+        "rights": rights_summary(rights),
     })
 
 
@@ -2180,30 +2341,64 @@ def image():
 @app.route("/image/download")
 @login_required
 def image_download():
-    """Serve one exact stored variant (Hero/Standard/Original) for viewing or download."""
+    """Serve one exact stored variant for viewing, or as an attachment.
+
+    ``download=1`` streams the bytes with Content-Disposition so the browser
+    saves the file (a redirect to SharePoint would ignore the download hint).
+    ``format=png`` converts a stored Hero/standard WebP on the fly — the
+    fallback for images whose PNG twin has not been backfilled yet.
+    """
     area = request.args.get("area", "").strip()
     location = unquote(request.args.get("path", ""))
-    if area not in {"Hero", "WebP", "High-Res"} or not location:
+    fmt = request.args.get("format", "").strip().lower()
+    as_attachment = request.args.get("download", "").strip() == "1"
+    if area not in _DOWNLOAD_AREAS or not location:
         return Response("Invalid request", status=400)
+    if fmt and (fmt != "png" or area not in {"Hero", "WebP"}):
+        return Response("Unsupported format", status=400)
 
     rel = PurePosixPath(location)
     if rel.is_absolute() or ".." in rel.parts:
         return Response("Invalid path", status=400)
 
-    if Config.STORAGE_MODE == "sharepoint":
-        try:
-            root = Config.SHAREPOINT_IMAGE_FOLDER
-            sp_path = f"{root}/{area}/{location}" if root else f"{area}/{location}"
-            url = get_sp_client().get_file_url(sp_path)
-            return redirect(url)
-        except Exception:
-            return Response("Internal server error", status=500)
-
     image_folder = Path(Config.IMAGE_FOLDER).resolve()
     full_path = (image_folder / area / rel).resolve()
-    if not full_path.is_relative_to(image_folder) or not full_path.is_file():
-        return Response("Image not found", status=404)
-    return send_file(full_path)
+    root = Config.SHAREPOINT_IMAGE_FOLDER
+    sp_path = f"{root}/{area}/{location}" if root else f"{area}/{location}"
+
+    if not fmt and not as_attachment:
+        if Config.STORAGE_MODE == "sharepoint":
+            try:
+                return redirect(get_sp_client().get_file_url(sp_path))
+            except Exception:
+                return Response("Internal server error", status=500)
+        if not full_path.is_relative_to(image_folder) or not full_path.is_file():
+            return Response("Image not found", status=404)
+        return send_file(full_path)
+
+    try:
+        if Config.STORAGE_MODE == "sharepoint":
+            content = get_sp_client().get_file_bytes(sp_path)
+        else:
+            if not full_path.is_relative_to(image_folder) or not full_path.is_file():
+                return Response("Image not found", status=404)
+            content = full_path.read_bytes()
+        if fmt == "png":
+            from src.image_processor import convert_to_png
+            content = convert_to_png(content)
+    except Exception:
+        return Response("Internal server error", status=500)
+
+    suffix = ".png" if fmt == "png" else rel.suffix.lower()
+    filename = secure_filename(f"{rel.stem}{_DOWNLOAD_SUFFIX_TAG.get(area, '')}{suffix}") or f"image{suffix}"
+    return Response(
+        content,
+        mimetype=_IMAGE_MIMETYPES.get(suffix, "application/octet-stream"),
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Cache-Control": "private, max-age=300",
+        },
+    )
 
 
 _sp_url_cache: dict[str, tuple[str, float]] = {}  # key → (url, expires_at)
@@ -2294,7 +2489,7 @@ def api_mcp_asset():
         return Response("Unauthorized", status=401)
 
     area = request.args.get("area", "")
-    if area not in {"High-Res", "Hero", "WebP"}:
+    if area not in _DOWNLOAD_AREAS:
         return Response("Invalid asset area", status=400)
     location = unquote(request.args.get("path", "")).strip()
     if not location or PurePosixPath(location).is_absolute() or ".." in PurePosixPath(location).parts:
@@ -4551,6 +4746,7 @@ def api_maintenance_sync_highres():
     requested_source = request.args.get("source", "").strip()
     dry_run = request.args.get("dry_run", "").strip().lower() in {"1", "true", "yes"}
     allow_missing_attribution = request.args.get("allow_missing_attribution", "").strip().lower() in {"1", "true", "yes"}
+    allow_missing_rights = request.args.get("allow_missing_rights", "").strip().lower() in {"1", "true", "yes"}
 
     def generate():
         yield "data: [START]\n\n"
@@ -4559,6 +4755,7 @@ def api_maintenance_sync_highres():
         def worker():
             try:
                 from src.ai_generator import AltTextGenerator
+                from src.image_metadata import STOCK_SOURCES
                 from src.image_processor import normalize_source, process_image
 
                 gen = AltTextGenerator()
@@ -4611,6 +4808,7 @@ def api_maintenance_sync_highres():
                             "filename": base,
                             "sp_path": sp_path,
                             "needs_attribution": src != "Internal",
+                            "needs_rights": src in STOCK_SOURCES,
                         })
 
                     for _sp_path, rel in webp_items:
@@ -4644,6 +4842,7 @@ def api_maintenance_sync_highres():
                                 "filename": file_path.name,
                                 "path": str(file_path),
                                 "needs_attribution": src != "Internal",
+                                "needs_rights": src in STOCK_SOURCES,
                             })
 
                     if webp_root.exists():
@@ -4664,6 +4863,13 @@ def api_maintenance_sync_highres():
                            "on record — they will be held, not cataloged. Check 'Catalog without attribution' "
                            "to override once you've confirmed the license terms."))
 
+                needs_rights = [c for c in candidates if c["needs_rights"]]
+                if needs_rights and not allow_missing_rights:
+                    q.put(("progress",
+                           f"{len(needs_rights)} file(s) are licensed stock (Adobe Stock / Shutterstock) with no "
+                           "license type or reference on record — they will be held. Record the license data "
+                           "first, or check 'Catalog without license data' to override."))
+
                 if dry_run:
                     summary = {
                         "processed": 0,
@@ -4671,6 +4877,9 @@ def api_maintenance_sync_highres():
                         "unprocessed_high_res_found": len(candidates),
                         "needs_attribution_count": len(needs_attribution),
                         "needs_attribution_files": sorted(c["filename"] for c in needs_attribution),
+                        "needs_rights_count": len(needs_rights),
+                        "needs_rights_files": sorted(c["filename"] for c in needs_rights),
+                        "allow_missing_rights": allow_missing_rights,
                         "orphaned_webp_count": len(orphaned_webp),
                         "orphaned_webp": sorted(orphaned_webp),
                         "source_filter": target_source or "all",
@@ -4683,6 +4892,7 @@ def api_maintenance_sync_highres():
                 processed = 0
                 failed = 0
                 held = 0
+                held_rights = 0
                 total = len(candidates)
                 # Pre-load filenames once to avoid O(N) record_exists calls per slug
                 existing_filenames: set = {
@@ -4697,6 +4907,13 @@ def api_maintenance_sync_highres():
                                f"[{idx}/{total}] HELD {item['rel']}: {item['source']} source has no attribution "
                                "on record — catalog it via the stock-photo search tool, or re-run with "
                                "'Catalog without attribution' checked"))
+                        continue
+                    if item["needs_rights"] and not allow_missing_rights:
+                        held_rights += 1
+                        q.put(("progress",
+                               f"[{idx}/{total}] HELD {item['rel']}: {item['source']} needs a license type "
+                               "and license reference before cataloging — re-run with "
+                               "'Catalog without license data' checked to override"))
                         continue
                     q.put(("progress", f"[{idx}/{total}] Cataloging {item['rel']}"))
                     try:
@@ -4714,6 +4931,7 @@ def api_maintenance_sync_highres():
                             write_high_res=False,
                             high_res_location_override=item["rel"],
                             existing_filenames=existing_filenames,
+                            rights={"source": item["source"]} if item["needs_rights"] else None,
                         )
                         processed += 1
                     except Exception as exc:
@@ -4724,6 +4942,8 @@ def api_maintenance_sync_highres():
                     "processed": processed,
                     "failed": failed,
                     "held_for_attribution": held,
+                    "held_for_rights": held_rights,
+                    "allow_missing_rights": allow_missing_rights,
                     "unprocessed_high_res_found": total,
                     "orphaned_webp_count": len(orphaned_webp),
                     "orphaned_webp": sorted(orphaned_webp),

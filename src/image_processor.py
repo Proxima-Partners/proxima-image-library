@@ -12,6 +12,7 @@ from PIL import Image as PILImage
 from PIL import ImageCms, ImageOps
 
 from src.config import Config
+from src.image_metadata import finalize_rights, license_summary, validate_rights, write_metadata
 
 # Approved website derivatives. Width is authoritative; height follows the
 # EXIF-corrected source aspect ratio. Existing callers of transform_to_webp()
@@ -100,12 +101,51 @@ def inspect_original(image_bytes: bytes) -> dict:
         }
 
 
-def _encode_webp(img: PILImage.Image, target_width: int) -> dict:
+def _resize_to_width(img: PILImage.Image, target_width: int) -> PILImage.Image:
     width, height = img.size
     output_width = min(target_width, width)  # explicit no-upscale guarantee
     output_height = round(height * output_width / width)
     if (output_width, output_height) != img.size:
         img = img.resize((output_width, output_height), PILImage.Resampling.LANCZOS)
+    return img
+
+
+def _encode_png(img: PILImage.Image, target_width: int) -> dict:
+    """Lossless PNG companion to a WebP derivative (same pixels, same size)."""
+    img = _resize_to_width(img, target_width)
+    if img.mode not in ("RGB", "RGBA"):
+        img = img.convert("RGBA" if "A" in img.getbands() else "RGB")
+    buf = BytesIO()
+    img.save(buf, format="PNG", optimize=True)
+    content = buf.getvalue()
+    return {
+        "bytes": content,
+        "width": img.size[0],
+        "height": img.size[1],
+        "format": "PNG",
+        "fileSize": len(content),
+    }
+
+
+def png_location(location: str) -> str:
+    """Map a WebP derivative location (Category/slug.webp) to its PNG twin."""
+    return str(PurePosixPath(location).with_suffix(".png")) if location else ""
+
+
+def convert_to_png(image_bytes: bytes) -> bytes:
+    """Convert any stored derivative (e.g. WebP) to PNG without resizing."""
+    with PILImage.open(BytesIO(image_bytes)) as img:
+        img.load()
+        mode = "RGBA" if "A" in img.getbands() else "RGB"
+        out = img.convert(mode)
+    buf = BytesIO()
+    out.save(buf, format="PNG", optimize=True)
+    return buf.getvalue()
+
+
+def _encode_webp(img: PILImage.Image, target_width: int) -> dict:
+    img = _resize_to_width(img, target_width)
+    output_width, output_height = img.size
     buf = BytesIO()
     img.save(buf, format="WEBP", quality=WEBP_QUALITY, method=4)
     content = buf.getvalue()
@@ -119,25 +159,46 @@ def _encode_webp(img: PILImage.Image, target_width: int) -> dict:
     }
 
 
-def generate_web_derivatives(image_bytes: bytes) -> dict:
+def generate_web_derivatives(image_bytes: bytes, *, include_png: bool = True) -> dict:
     """Generate standard and, when eligible, hero derivatives without upscaling.
 
     A sub-1600 source still receives a same-width WebP in the legacy standard
     location so existing consumers continue to have a web-safe URL; its
     low-resolution classification makes clear that it is not a 1600px asset.
+
+    With include_png, each WebP derivative also gets a lossless PNG twin
+    rendered from the same resized pixels (``standard_png`` / ``hero_png``).
     """
     original = inspect_original(image_bytes)
     with PILImage.open(BytesIO(image_bytes)) as source_img:
         oriented = ImageOps.exif_transpose(source_img)
         srgb = _to_srgb(oriented)
+        hero_eligible = original["width"] >= HERO_WIDTH
         standard = _encode_webp(srgb, STANDARD_WIDTH)
-        hero = _encode_webp(srgb, HERO_WIDTH) if original["width"] >= HERO_WIDTH else None
-    return {"original": original, "standard": standard, "hero": hero}
+        hero = _encode_webp(srgb, HERO_WIDTH) if hero_eligible else None
+        standard_png = _encode_png(srgb, STANDARD_WIDTH) if include_png else None
+        hero_png = _encode_png(srgb, HERO_WIDTH) if include_png and hero_eligible else None
+    return {
+        "original": original,
+        "standard": standard,
+        "hero": hero,
+        "standard_png": standard_png,
+        "hero_png": hero_png,
+    }
 
 
 def transform_to_webp(image_bytes: bytes) -> bytes:
     """Backward-compatible standard WebP transform (quality 82, no upscale)."""
-    return generate_web_derivatives(image_bytes)["standard"]["bytes"]
+    return generate_web_derivatives(image_bytes, include_png=False)["standard"]["bytes"]
+
+
+def png_meta(derivative: Optional[dict], location: str) -> Optional[dict]:
+    """Sidecar entry for a PNG derivative (bytes stripped)."""
+    if not derivative:
+        return None
+    meta = {key: value for key, value in derivative.items() if key != "bytes"}
+    meta["location"] = location
+    return meta
 
 
 # ---------------------------------------------------------------------------
@@ -224,6 +285,7 @@ def process_image(
     source_url: str = "",
     source_asset_id: str = "",
     focal_point: Optional[dict] = None,
+    rights: Optional[dict] = None,
 ) -> dict:
     """Full pipeline for a single image.
 
@@ -265,6 +327,9 @@ def process_image(
         raise ValueError("focal_point must contain numeric x and y values")
     if not 0 <= focal["x"] <= 1 or not 0 <= focal["y"] <= 1:
         raise ValueError("focal_point x and y must each be between 0 and 1")
+    rights_data = None
+    if rights:
+        rights_data = validate_rights(rights)  # fail fast before any upload
 
     def _log(msg: str) -> None:
         if on_progress:
@@ -275,6 +340,8 @@ def process_image(
     derivatives = generate_web_derivatives(file_bytes)
     webp_bytes = derivatives["standard"]["bytes"]
     hero_bytes = derivatives["hero"]["bytes"] if derivatives["hero"] else None
+    standard_png_bytes = derivatives["standard_png"]["bytes"] if derivatives["standard_png"] else None
+    hero_png_bytes = derivatives["hero_png"]["bytes"] if derivatives["hero_png"] else None
     image_hash = compute_perceptual_hash(webp_bytes)
 
     # ── Steps 1b–3: Category + alt text + tags in one Claude call ─────────
@@ -302,6 +369,7 @@ def process_image(
     highres_filename = f"{slug}-original{ext}"
     location = f"{category}/{webp_filename}"
     hero_location = f"{category}/{webp_filename}" if hero_bytes is not None else ""
+    png_filename = f"{slug}.png"
     high_res_location = high_res_location_override or f"{source_name}/{highres_filename}"
 
     # ── Steps 5a–5b: Store files ───────────────────────────────────────────
@@ -317,6 +385,12 @@ def process_image(
         if hero_bytes is not None:
             _log("Uploading hero WebP to SharePoint…")
             sp_client.upload_file(f"{root}/Hero/{category}", webp_filename, hero_bytes)
+        if standard_png_bytes is not None:
+            _log("Uploading PNG to SharePoint…")
+            sp_client.upload_file(f"{root}/PNG/{category}", png_filename, standard_png_bytes)
+        if hero_png_bytes is not None:
+            _log("Uploading hero PNG to SharePoint…")
+            sp_client.upload_file(f"{root}/Hero-PNG/{category}", png_filename, hero_png_bytes)
     else:
         base = Path(image_folder)
         _log("Saving files locally…")
@@ -329,6 +403,12 @@ def process_image(
             hero_path = base / "Hero" / category / webp_filename
             hero_path.parent.mkdir(parents=True, exist_ok=True)
             hero_path.write_bytes(hero_bytes)
+
+        for area, content in (("PNG", standard_png_bytes), ("Hero-PNG", hero_png_bytes)):
+            if content is not None:
+                png_path = base / area / category / png_filename
+                png_path.parent.mkdir(parents=True, exist_ok=True)
+                png_path.write_bytes(content)
 
         if write_high_res:
             hr_path = base / "High-Res" / Path(high_res_location)
@@ -366,12 +446,18 @@ def process_image(
         key: value for key, value in derivatives["standard"].items() if key != "bytes"
     }
     standard_meta["location"] = location
+    standard_png_meta = png_meta(derivatives["standard_png"], png_location(location))
+    if standard_png_meta:
+        standard_meta["png"] = standard_png_meta
     hero_meta = None
     if derivatives["hero"]:
         hero_meta = {
             key: value for key, value in derivatives["hero"].items() if key != "bytes"
         }
         hero_meta["location"] = hero_location
+        hero_png_meta = png_meta(derivatives["hero_png"], png_location(hero_location))
+        if hero_png_meta:
+            hero_meta["png"] = hero_png_meta
 
     metadata = {
         "schemaVersion": 1,
@@ -384,7 +470,10 @@ def process_image(
         "qualityTier": original_meta["qualityTier"],
         "focalPoint": focal,
     }
-    from src.image_metadata import write_metadata
+    if rights_data:
+        metadata["rights"] = finalize_rights(rights_data, slug=slug, source=source_name)
+        if not license_info:
+            original_meta["license"] = license_summary(metadata["rights"])
     metadata_location = write_metadata(
         metadata,
         storage_mode=storage_mode,
@@ -410,5 +499,6 @@ def process_image(
         "height": original_meta["height"],
         "qualityTier": original_meta["qualityTier"],
         "focalPoint": focal,
+        "rights": metadata.get("rights"),
         "metadata_location": metadata_location,
     }

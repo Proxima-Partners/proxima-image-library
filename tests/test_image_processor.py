@@ -167,7 +167,10 @@ def test_process_image_returns_result_when_record_creation_succeeds(tmp_path):
 
     assert result["status"] == "pending-review"
     assert result["filename"].endswith(".webp")
-    assert len(sp_client.uploads) == 3
+    # High-Res, standard WebP, standard PNG twin, metadata sidecar.
+    assert len(sp_client.uploads) == 4
+    assert ("Images/PNG/Headshots", f"{result['slug']}.png") in [(f, n) for f, n, _ in sp_client.uploads]
+    assert result["standard"]["png"]["location"] == f"Headshots/{result['slug']}.png"
     assert list_client.calls[0]["location"].startswith("Headshots/")
     assert result["qualityTier"] == "low-resolution"
     assert result["focalPoint"] == {"x": 0.5, "y": 0.5}

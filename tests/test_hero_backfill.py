@@ -91,3 +91,41 @@ def test_selected_standard_only_backfill_writes_metadata_without_hero(tmp_path):
     metadata = read_metadata("medium", storage_mode="local", image_folder=str(tmp_path))
     assert metadata["qualityTier"] == "standard-only"
     assert metadata["hero"] is None
+
+
+def test_backfill_preserves_rights_and_writes_png_twins(tmp_path):
+    original_location = "AdobeStock/rights-original.jpg"
+    standard_location = "Community/rights.webp"
+    original_path = tmp_path / "High-Res" / original_location
+    standard_path = tmp_path / "WebP" / standard_location
+    original_path.parent.mkdir(parents=True)
+    standard_path.parent.mkdir(parents=True)
+    original_path.write_bytes(_image_bytes(2600, 1300))
+    standard_path.write_bytes(_image_bytes(1600, 800, "WEBP"))
+    rights = {
+        "source": "AdobeStock",
+        "licenseType": "standard",
+        "statements": [{"by": "Mike Edwards", "on": "2026-10-07", "text": "Licensed."}],
+        "verification": {"status": "unverified"},
+    }
+    write_metadata(
+        {"slug": "rights", "original": {"license": "x"}, "rights": rights},
+        storage_mode="local",
+        image_folder=str(tmp_path),
+    )
+
+    result = backfill_record(
+        _record("9", "rights", standard_location, original_location),
+        storage_mode="local",
+        image_folder=str(tmp_path),
+    )
+
+    metadata = read_metadata("rights", storage_mode="local", image_folder=str(tmp_path))
+    assert metadata["rights"] == rights
+    assert sorted(result["pngCreated"]) == ["Hero-PNG", "PNG"]
+    assert metadata["standard"]["png"]["location"] == "Community/rights.png"
+    assert metadata["hero"]["png"]["location"] == "Community/rights.png"
+    with Image.open(tmp_path / "Hero-PNG" / "Community/rights.png") as hero_png:
+        assert hero_png.size == (2560, 1280)
+        assert hero_png.format == "PNG"
+    assert (tmp_path / "PNG" / "Community/rights.png").is_file()

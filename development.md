@@ -107,7 +107,7 @@ Auth testing notes:
 
 ## MCP Server (Claude Desktop Integration)
 
-The MCP server exposes three tools so Claude Desktop can search images and catalog stock photos inline during writing sessions.
+The MCP server exposes these tools so Claude Desktop can search images and catalog stock photos inline during writing sessions.
 
 ### Tools
 
@@ -115,7 +115,25 @@ The MCP server exposes three tools so Claude Desktop can search images and catal
 | ---- | ------- | ----------- |
 | `search_image_library` | Auto — after blog/article skill output | Searches local JSON or SharePoint List; returns ranked matches with inline thumbnails |
 | `search_stock_photos` | After internal search returns no selection | Searches Pexels, Shutterstock, Unsplash, Pixabay concurrently; returns inline thumbnails |
-| `catalog_image_from_file` | When user drops a file directly into Claude | Accepts base64 image data, runs full processing pipeline, adds record to library |
+| `catalog_image_from_file` | When user drops a file directly into Claude | Accepts base64 image data (plus optional `source`, `rights`, `allow_missing_rights`), runs full processing pipeline, adds record to library |
+| `catalog_stock_image` | After the user confirms a stock search result | Downloads from an allowlisted stock host and catalogs it; accepts `rights` and `allow_missing_rights` |
+
+Licensed stock (`AdobeStock`, `ShutterStock`) is held until `rights.licenseType` and `rights.licenseReference` are supplied, unless `allow_missing_rights` is true. Pete's connector reads and writes rights through `GET/POST /api/mcp/rights` (see `specification.md` → Rights metadata).
+
+### Recording Adobe Stock license data
+
+The Adobe connector's `asset_license_and_download_stock` tool takes `assetId` (+ optional `size`) and returns only a presigned download URL (valid 1 hour). Its documented output has no license reference, license type, contributor or license date, so it cannot fill `rights` on its own. Also note that calling it **licenses the asset** (re-calling on an already-licensed asset only refreshes the URL).
+
+To record license data:
+
+1. Export the license history from the Adobe Stock account (Adobe Stock → License History → download CSV / license PDFs).
+2. Map columns to rights fields in a CSV (`slug, providerAssetId, contributor, licenseType, licenseReference, licensedOn, licensee, …`) and run `scripts/record_rights.py rights.csv` (dry run), then `--apply`.
+3. Upload the license PDF or receipt to SharePoint and record its path in `verification_evidence`. Mark `verification_status=verified` only once evidence is attached and license type, channels and expiration match the intended use.
+4. Catalog the downloaded file with `catalog_image_from_file` (`source: AdobeStock` + `rights`) — never by adding Adobe URLs to the download allowlist.
+
+### PNG twins and backfill
+
+Every catalog path writes `PNG/` and `Hero-PNG/` alongside the WebP derivatives. For images cataloged earlier, run `scripts/run_png_backfill.py` (dry run by default; `--apply --limit 10` for a pilot, then `--apply --status approved`, then `--apply`). It never touches sidecar keys other than `standard.png` / `hero.png`, and writes a report to `test_data/png_backfill_reports/`.
 
 ### Register in Claude Desktop
 
