@@ -2296,24 +2296,15 @@ def api_image_delete():
     fields = target.get("fields", {})
 
     if delete_files:
+        targets = _record_asset_targets(fields)
         if Config.STORAGE_MODE == "sharepoint":
             sp_client = get_sp_client()
-            for area, rel in [
-                ("WebP", fields.get("Location", "")),
-                ("High-Res", fields.get("High-Res Location", "")),
-            ]:
-                rel = str(rel or "").strip()
-                if rel:
-                    _delete_sharepoint_target(sp_client, area, rel)
+            for area, rel in targets:
+                _delete_sharepoint_target(sp_client, area, rel)
         else:
             image_root = Path(Config.IMAGE_FOLDER).resolve()
-            for area, rel in [
-                ("WebP", fields.get("Location", "")),
-                ("High-Res", fields.get("High-Res Location", "")),
-            ]:
-                rel = str(rel or "").strip()
-                if rel:
-                    _delete_local_target(image_root, area, rel)
+            for area, rel in targets:
+                _delete_local_target(image_root, area, rel)
 
     deleted = _bulk_delete_records(get_client(), [record_id])
 
@@ -2901,6 +2892,41 @@ def _bulk_delete_records(client, record_ids: List[str]) -> int:
     return int(client.delete_records(record_ids))
 
 
+def _record_asset_targets(fields: Dict) -> list[tuple[str, str]]:
+    """Return every stored asset owned by one catalog record.
+
+    Hero and PNG derivatives use the same category/slug path as the legacy
+    WebP, with PNG changing only the suffix. Missing targets are harmless to
+    the deletion helpers, so this also cleans up partially generated records.
+    """
+    targets: list[tuple[str, str]] = []
+
+    def _add(area: str, relative_path) -> None:
+        rel = str(relative_path or "").strip()
+        if rel and (area, rel) not in targets:
+            targets.append((area, rel))
+
+    location = str(fields.get("Location", "") or "").strip()
+    if location:
+        _add("WebP", location)
+        _add("Hero", location)
+        try:
+            png_location = str(PurePosixPath(location).with_suffix(".png"))
+        except ValueError:
+            png_location = ""
+        _add("PNG", png_location)
+        _add("Hero-PNG", png_location)
+
+    _add("High-Res", fields.get("High-Res Location", ""))
+
+    slug = str(fields.get("Slug", "") or "").strip()
+    if not slug and location:
+        slug = PurePosixPath(location).stem
+    if re.fullmatch(r"[a-z0-9][a-z0-9-]{0,127}", slug):
+        _add("Metadata", f"{slug}.json")
+    return targets
+
+
 def _bulk_patch_fields(client, patches: List[tuple[str, Dict]]) -> Dict:
     """Apply field patches in bulk and return a normalized result payload."""
     if not patches:
@@ -3163,13 +3189,7 @@ def api_maintenance_purge_status():
             image_root = Path(Config.IMAGE_FOLDER).resolve()
             for rec in matches:
                 fields = rec.get("fields", {})
-                for area, rel in [
-                    ("WebP", fields.get("Location", "")),
-                    ("High-Res", fields.get("High-Res Location", "")),
-                ]:
-                    rel = str(rel).strip()
-                    if not rel:
-                        continue
+                for area, rel in _record_asset_targets(fields):
                     outcome = _delete_local_target(image_root, area, rel)
                     if outcome == "deleted":
                         files_deleted += 1
@@ -3187,13 +3207,7 @@ def api_maintenance_purge_status():
             sp_client = get_sp_client()
             for rec in matches:
                 fields = rec.get("fields", {})
-                for area, rel in [
-                    ("WebP", fields.get("Location", "")),
-                    ("High-Res", fields.get("High-Res Location", "")),
-                ]:
-                    rel = str(rel).strip()
-                    if not rel:
-                        continue
+                for area, rel in _record_asset_targets(fields):
                     outcome = _delete_sharepoint_target(sp_client, area, rel)
                     if outcome == "deleted":
                         files_deleted += 1

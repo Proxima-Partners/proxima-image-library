@@ -115,6 +115,7 @@ def client(monkeypatch, tmp_path):
         "MSAL_TENANT_ID": "dummy-tenant",
         "MSAL_REDIRECT_URI": "http://localhost/auth/callback",
         "ANTHROPIC_API_KEY": "dummy-key",
+        "MAINTENANCE_ADMIN_USERS": "admin@example.com",
         "IMAGE_FOLDER": str(tmp_path),
         "MCP_INTERNAL_SECRET": "test-mcp-secret",
     }
@@ -128,9 +129,9 @@ def client(monkeypatch, tmp_path):
     return app_module.app.test_client()
 
 
-def _login(client):
+def _login(client, email="user@example.com"):
     with client.session_transaction() as sess:
-        sess["user"] = {"preferred_username": "user@example.com"}
+        sess["user"] = {"preferred_username": email}
         sess["_csrf_token"] = "t"
 
 
@@ -148,6 +149,16 @@ def test_download_stored_png_as_attachment(client, tmp_path):
     assert response.status_code == 200
     assert response.mimetype == "image/png"
     assert response.headers["Content-Disposition"] == 'attachment; filename="wide-hero.png"'
+
+
+def test_mcp_asset_serves_stored_png(client, tmp_path):
+    record, _ = _seed(tmp_path)
+    _run(record, tmp_path)
+    response = client.get(
+        "/api/mcp/asset?area=PNG&path=Banners/wide.png&key=test-mcp-secret"
+    )
+    assert response.status_code == 200
+    assert response.mimetype == "image/png"
 
 
 def test_download_webp_attachment_and_png_fallback_conversion(client, tmp_path):
@@ -190,3 +201,30 @@ def test_variations_offer_webp_and_png_downloads(client, tmp_path):
     by_key = {v["key"]: v for v in data["variations"]}
     assert by_key["hero"]["downloads"][1]["url"].startswith("/image/download?area=Hero-PNG&path=Banners/wide.png")
     assert [d["label"] for d in by_key["original"]["downloads"]] == ["JPG"]
+
+
+def test_delete_removes_all_derivatives_and_sidecar(client, tmp_path, monkeypatch):
+    record, _ = _seed(tmp_path)
+    _run(record, tmp_path)
+    _login(client, email="admin@example.com")
+
+    import src.app as app_module
+    monkeypatch.setattr(app_module, "_records_snapshot", lambda use_cache=False: [record])
+    monkeypatch.setattr(app_module, "get_client", lambda: object())
+    monkeypatch.setattr(app_module, "_bulk_delete_records", lambda _client, _ids: 1)
+
+    response = client.post(
+        "/api/image/delete",
+        json={"record_id": "1", "delete_files": True},
+        headers={"Origin": "http://localhost"},
+    )
+    assert response.status_code == 200
+    for relative in (
+        "WebP/Banners/wide.webp",
+        "Hero/Banners/wide.webp",
+        "PNG/Banners/wide.png",
+        "Hero-PNG/Banners/wide.png",
+        "High-Res/Internal/wide-original.jpg",
+        "Metadata/wide.json",
+    ):
+        assert not (tmp_path / relative).exists()
