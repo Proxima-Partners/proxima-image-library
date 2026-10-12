@@ -498,19 +498,39 @@ def _sse_safe(s: str) -> str:
 
 
 def _sse_poll_loop(t: threading.Thread, q: "queue.Queue", timeout_seconds: int,
-                   timeout_msg: str, invalidate_cache: bool = False):
+                   timeout_msg: str, invalidate_cache: bool = False,
+                   heartbeat_seconds: Optional[float] = None):
     """Yield SSE events from a worker queue until done/error/timeout.
 
     Replaces the repeated while-True polling pattern across SSE streaming routes.
     Call after starting the worker thread:
         yield from _sse_poll_loop(t, q, 180, "timed out after 3 minutes")
     """
+    started_at = time.monotonic()
+    last_activity_at = started_at
+
     while True:
-        try:
-            kind, value = q.get(timeout=timeout_seconds)
-        except queue.Empty:
+        inactive_seconds = time.monotonic() - last_activity_at
+        remaining_seconds = timeout_seconds - inactive_seconds
+        if remaining_seconds <= 0:
             yield f"data: [ERROR] {_sse_safe(timeout_msg)}\n\n"
             break
+
+        wait_seconds = remaining_seconds
+        if heartbeat_seconds is not None:
+            wait_seconds = min(wait_seconds, heartbeat_seconds)
+
+        try:
+            kind, value = q.get(timeout=wait_seconds)
+        except queue.Empty:
+            if time.monotonic() - last_activity_at >= timeout_seconds:
+                yield f"data: [ERROR] {_sse_safe(timeout_msg)}\n\n"
+                break
+            elapsed_seconds = int(time.monotonic() - started_at)
+            yield f"data: [HEARTBEAT] Server is still processing ({elapsed_seconds}s elapsed)\n\n"
+            continue
+
+        last_activity_at = time.monotonic()
 
         if kind == "progress":
             yield f"data: {_sse_safe(value)}\n\n"
@@ -6004,13 +6024,22 @@ def api_upload_process():
         q: queue.Queue = queue.Queue()
 
         def worker():
+            last_step = "Preparing uploaded file"
+
+            def report_progress(message: str) -> None:
+                nonlocal last_step
+                last_step = message.rstrip(".… ")
+                q.put(("progress", message))
+
             try:
+                report_progress("Preparing uploaded file…")
                 file_bytes = Path(staged["path"]).read_bytes()
                 try:
                     os.unlink(staged["path"])
                 except OSError:
                     pass
 
+                report_progress("Connecting to AI and image storage services…")
                 from src.ai_generator import AltTextGenerator
                 gen = AltTextGenerator()
 
@@ -6033,18 +6062,33 @@ def api_upload_process():
                     sp_client=sp_client,
                     image_folder=Config.IMAGE_FOLDER,
                     storage_mode=storage_mode,
-                    on_progress=lambda msg: q.put(("progress", msg)),
+                    on_progress=report_progress,
                     category=category,
                     source=source,
                 )
                 q.put(("done", result))
             except Exception:
-                q.put(("error", "Processing failed"))
+                app.logger.exception(
+                    "Upload processing failed file_id=%s filename=%s step=%s",
+                    file_id,
+                    staged["filename"],
+                    last_step,
+                )
+                q.put((
+                    "error",
+                    f"Processing failed during: {last_step}. The error was recorded in server logs.",
+                ))
 
         t = threading.Thread(target=worker, daemon=True)
         t.start()
-        yield from _sse_poll_loop(t, q, 180, "Processing timed out after 3 minutes",
-                                  invalidate_cache=True)
+        yield from _sse_poll_loop(
+            t,
+            q,
+            180,
+            "Processing timed out after 3 minutes",
+            invalidate_cache=True,
+            heartbeat_seconds=10,
+        )
 
     return Response(
         stream_with_context(generate()),

@@ -218,6 +218,24 @@
     .result-card-log .log-done  { color: var(--success); font-weight: 600; }
     .result-card-log .log-error { color: var(--error); font-weight: 600; }
 
+    .result-card-progress {
+      padding: 12px 16px;
+      background: #f8fbfc;
+      border-bottom: 1px solid var(--border);
+    }
+    .result-current-step {
+      color: var(--text);
+      font-size: 13px;
+      font-weight: 600;
+      line-height: 1.4;
+    }
+    .result-timing {
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 11px;
+    }
+    .result-timing.is-waiting { color: #92400e; }
+
     .result-card-meta {
       padding: 12px 16px;
       border-top: 1px solid var(--border);
@@ -561,7 +579,15 @@
         es.onmessage = e => {
           const msg = e.data;
 
-          if (msg === '[START]') return;
+          if (msg === '[START]') {
+            card.setStep('Server accepted the file; starting processing…');
+            return;
+          }
+
+          if (msg.startsWith('[HEARTBEAT]')) {
+            card.noteHeartbeat();
+            return;
+          }
 
           if (msg === '[DONE]') {
             card.setStatus('done');
@@ -587,25 +613,15 @@
           card.appendLog(msg);
         };
 
-        let retryCount = 0;
         es.onerror = () => {
           if (finished) return;
           es.close();
-          if (retryCount < 3) {
-            retryCount++;
-            const delay = retryCount * 5000;
-            card.appendLog(`Connection lost — retrying in ${delay / 1000}s…`, 'error');
-            setTimeout(() => {
-              if (finished) return;
-              const es2 = new EventSource(url);
-              es2.onmessage = es.onmessage;
-              es2.onerror = es.onerror;
-            }, delay);
-          } else {
-            card.setStatus('error');
-            card.appendLog('Connection lost', 'error');
-            finish();
-          }
+          card.appendLog(
+            'Processing connection was lost. Server status is unknown; check the library before retrying this file.',
+            'error'
+          );
+          card.setStatus('error');
+          finish();
         };
       });
     }
@@ -629,26 +645,84 @@
         <span class="rc-filename" title="${filename}">${filename}</span>
         <span class="status-badge badge-pending">Queued</span>
       </div>
+      <div class="result-card-progress" aria-live="polite">
+        <div class="result-current-step">Waiting in queue</div>
+        <div class="result-timing">Not started</div>
+      </div>
       <div class="result-card-log"></div>
     `;
 
     const logEl    = el.querySelector('.result-card-log');
     const badgeEl  = el.querySelector('.status-badge');
+    const stepEl   = el.querySelector('.result-current-step');
+    const timingEl = el.querySelector('.result-timing');
+    let startedAt = null;
+    let lastServerUpdateAt = null;
+    let timerId = null;
+
+    function formatDuration(totalSeconds) {
+      const seconds = Math.max(0, Math.floor(totalSeconds));
+      const minutes = Math.floor(seconds / 60);
+      const remainder = seconds % 60;
+      return minutes ? `${minutes}m ${remainder}s` : `${remainder}s`;
+    }
+
+    function updateTiming() {
+      if (!startedAt) return;
+      const now = Date.now();
+      const elapsed = formatDuration((now - startedAt) / 1000);
+      const sinceUpdate = lastServerUpdateAt ? Math.floor((now - lastServerUpdateAt) / 1000) : 0;
+      if (sinceUpdate >= 20) {
+        timingEl.textContent = `${elapsed} elapsed · waiting ${formatDuration(sinceUpdate)} for a server update`;
+        timingEl.classList.add('is-waiting');
+      } else {
+        timingEl.textContent = `${elapsed} elapsed · server active`;
+        timingEl.classList.remove('is-waiting');
+      }
+    }
+
+    function setStep(message) {
+      stepEl.textContent = message;
+      lastServerUpdateAt = Date.now();
+      updateTiming();
+    }
+
+    function noteHeartbeat() {
+      lastServerUpdateAt = Date.now();
+      updateTiming();
+    }
 
     function setStatus(status) {
       const labels = { pending: 'Queued', running: 'Processing…', done: 'Done', error: 'Error' };
       const classes = { pending: 'badge-pending', running: 'badge-running', done: 'badge-done', error: 'badge-error' };
       badgeEl.textContent = labels[status] || status;
       badgeEl.className = `status-badge ${classes[status] || ''}`;
+
+      if (status === 'running') {
+        startedAt = Date.now();
+        lastServerUpdateAt = startedAt;
+        stepEl.textContent = 'Connecting to processing service…';
+        updateTiming();
+        timerId = window.setInterval(updateTiming, 1000);
+      } else if (status === 'done' || status === 'error') {
+        if (timerId) window.clearInterval(timerId);
+        timerId = null;
+        updateTiming();
+        timingEl.classList.remove('is-waiting');
+        if (status === 'done') stepEl.textContent = 'Processing complete';
+      }
     }
 
     function appendLog(msg, type) {
       const line = document.createElement('div');
       if (type === 'error') line.className = 'log-error';
       else if (type === 'done') line.className = 'log-done';
-      line.textContent = msg === 'Done.' ? '✓ Done' : msg;
+      const elapsed = startedAt ? `[${formatDuration((Date.now() - startedAt) / 1000)}] ` : '';
+      line.textContent = elapsed + (msg === 'Done.' ? '✓ Done' : msg);
       logEl.appendChild(line);
       logEl.scrollTop = logEl.scrollHeight;
+      if (type === 'error') setStep(msg);
+      else if (msg !== 'Done.') setStep(msg);
     }
 
     function showResult(result) {
@@ -681,7 +755,7 @@
       el.appendChild(meta);
     }
 
-    return { el, setStatus, appendLog, showResult };
+    return { el, setStatus, setStep, noteHeartbeat, appendLog, showResult };
   }
 </script>
 </body>

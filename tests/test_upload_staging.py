@@ -1,4 +1,6 @@
 import importlib
+import queue
+import threading
 
 import pytest
 
@@ -43,3 +45,25 @@ def test_staged_save_and_lookup_roundtrip(app_module):
 
 def test_staged_lookup_returns_none_for_missing_id(app_module):
     assert app_module._staged_lookup("missing") is None
+
+
+def test_sse_poll_loop_emits_heartbeat_before_result(app_module):
+    events = queue.Queue()
+
+    def worker():
+        threading.Event().wait(0.03)
+        events.put(("done", {"filename": "photo.webp"}))
+
+    thread = threading.Thread(target=worker)
+    thread.start()
+    output = list(app_module._sse_poll_loop(
+        thread,
+        events,
+        timeout_seconds=1,
+        timeout_msg="timed out",
+        heartbeat_seconds=0.01,
+    ))
+
+    assert any("[HEARTBEAT]" in event for event in output)
+    assert any("[RESULT]" in event for event in output)
+    assert output[-1] == "data: [DONE]\n\n"
