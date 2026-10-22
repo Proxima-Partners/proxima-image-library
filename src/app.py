@@ -35,6 +35,7 @@ from werkzeug.exceptions import RequestEntityTooLarge
 from src.local_client import LocalClient
 from src import __version__
 from src.config import Config
+from src.mcp_delivery import verify_delivery
 from src import ingest_poller
 from src.maintenance_helpers import (
     MAINTENANCE_PURGE_STATUSES as _MAINTENANCE_PURGE_STATUSES,
@@ -2437,15 +2438,26 @@ def _get_sp_url(sp_path: str, thumb: bool) -> str:
     return url
 
 
-def _serve_image(thumb: bool) -> Response:
+def _serve_image(thumb: bool, proxy_sharepoint: bool = False) -> Response:
     location = unquote(request.args.get("path", ""))
     if not location:
         return Response("Missing path parameter", status=400)
+    rel = PurePosixPath(location)
+    if rel.is_absolute() or ".." in rel.parts:
+        return Response("Invalid path", status=400)
 
     if Config.STORAGE_MODE == "sharepoint":
         try:
             root = Config.SHAREPOINT_IMAGE_FOLDER
             sp_path = f"{root}/WebP/{location}" if root else f"WebP/{location}"
+            if proxy_sharepoint:
+                content = get_sp_client().get_file_bytes(sp_path)
+                img = PILImage.open(BytesIO(content))
+                if thumb:
+                    img.thumbnail((240, 240))
+                buf = BytesIO()
+                img.convert("RGB").save(buf, format="JPEG", quality=85)
+                return Response(buf.getvalue(), mimetype="image/jpeg")
             url = _get_sp_url(sp_path, thumb)
             return redirect(url)
         except Exception:
@@ -2479,16 +2491,32 @@ def _serve_image(thumb: bool) -> Response:
 
 @app.route("/api/mcp/thumbnail")
 def api_mcp_thumbnail():
-    """Public thumbnail endpoint for MCP skill use.
+    """Public, browser-safe thumbnail endpoint for MCP clients.
 
-    Authenticated by ?key=<MCP_INTERNAL_SECRET> so the skill can embed
-    images as markdown ![](url) in Claude.ai chat without MSAL.
+    New links use a short-lived HMAC signature. ``?key=`` remains accepted on
+    GET for existing MCP clients; neither form requires MSAL or a custom header.
     """
     secret = Config.MCP_INTERNAL_SECRET
+    location = unquote(request.args.get("path", ""))
     key = request.args.get("key", "")
-    if not secret or key != secret:
+    valid_key = bool(secret and key and secrets.compare_digest(key, secret))
+    valid_signature = verify_delivery(
+        secret,
+        "thumbnail",
+        location,
+        request.args.get("expires", ""),
+        request.args.get("sig", ""),
+    )
+    if not (valid_key or valid_signature):
         return Response("Unauthorized", status=401)
-    return _serve_image(thumb=True)
+    response = _serve_image(thumb=True, proxy_sharepoint=True)
+    if response.status_code < 400:
+        if valid_signature:
+            remaining = max(0, int(request.args["expires"]) - int(time.time()))
+            response.headers["Cache-Control"] = f"public, max-age={min(remaining, 900)}"
+        else:
+            response.headers["Cache-Control"] = "public, max-age=300"
+    return response
 
 
 @app.route("/api/mcp/asset")

@@ -2,6 +2,9 @@ import importlib
 from io import BytesIO
 
 import pytest
+from PIL import Image
+
+from src.mcp_delivery import sign_delivery
 
 
 @pytest.fixture
@@ -178,6 +181,105 @@ def test_exact_asset_delivery_preserves_webp_bytes(client, tmp_path):
     assert response.status_code == 200
     assert response.data == content
     assert response.content_type == "image/webp"
+
+
+def _write_test_image(path):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    Image.new("RGB", (320, 180), color=(20, 90, 140)).save(path, format="WEBP")
+
+
+def test_mcp_thumbnail_accepts_key_on_browser_get(client, tmp_path):
+    _write_test_image(tmp_path / "WebP" / "Community" / "browser-test.webp")
+
+    response = client.get(
+        "/api/mcp/thumbnail",
+        query_string={"path": "Community/browser-test.webp", "key": "test-mcp-secret"},
+        headers={"User-Agent": "Mozilla/5.0"},
+    )
+
+    assert response.status_code == 200
+    assert response.content_type == "image/jpeg"
+    assert response.data.startswith(b"\xff\xd8")
+    assert response.headers["Cache-Control"] == "public, max-age=300"
+
+
+def test_mcp_thumbnail_accepts_short_lived_signed_url(client, tmp_path):
+    location = "Community/signed-test.webp"
+    _write_test_image(tmp_path / "WebP" / location)
+    signed = sign_delivery(
+        "test-mcp-secret",
+        "thumbnail",
+        location,
+        ttl_seconds=300,
+    )
+
+    response = client.get(
+        "/api/mcp/thumbnail",
+        query_string={"path": location, **signed},
+        headers={"User-Agent": "Mozilla/5.0"},
+    )
+
+    assert response.status_code == 200
+    assert response.content_type == "image/jpeg"
+    assert response.headers["Cache-Control"].startswith("public, max-age=")
+
+
+def test_mcp_thumbnail_rejects_expired_or_tampered_signature(client, tmp_path):
+    location = "Community/signed-test.webp"
+    _write_test_image(tmp_path / "WebP" / location)
+    expired = sign_delivery(
+        "test-mcp-secret",
+        "thumbnail",
+        location,
+        ttl_seconds=10,
+        now=1,
+    )
+    valid_for_other_path = sign_delivery(
+        "test-mcp-secret",
+        "thumbnail",
+        "Community/other.webp",
+        ttl_seconds=300,
+    )
+
+    expired_response = client.get(
+        "/api/mcp/thumbnail",
+        query_string={"path": location, **expired},
+    )
+    tampered_response = client.get(
+        "/api/mcp/thumbnail",
+        query_string={"path": location, **valid_for_other_path},
+    )
+
+    assert expired_response.status_code == 401
+    assert tampered_response.status_code == 401
+
+
+def test_mcp_thumbnail_proxies_sharepoint_bytes_without_redirect(client, monkeypatch):
+    import src.app as app_module
+
+    buf = BytesIO()
+    Image.new("RGB", (320, 180), color=(20, 90, 140)).save(buf, format="WEBP")
+
+    class FakeSharePointClient:
+        def get_file_bytes(self, path):
+            assert path.endswith("/WebP/Community/browser-test.webp")
+            return buf.getvalue()
+
+        def get_thumbnail_url(self, path):
+            raise AssertionError("public MCP thumbnails must not redirect to SharePoint")
+
+    monkeypatch.setattr(app_module.Config, "STORAGE_MODE", "sharepoint")
+    monkeypatch.setattr(app_module, "get_sp_client", lambda: FakeSharePointClient())
+
+    response = client.get(
+        "/api/mcp/thumbnail",
+        query_string={"path": "Community/browser-test.webp", "key": "test-mcp-secret"},
+        headers={"User-Agent": "Mozilla/5.0"},
+    )
+
+    assert response.status_code == 200
+    assert response.content_type == "image/jpeg"
+    assert "Location" not in response.headers
 
 
 def test_selective_backfill_candidate_scan_is_read_only(client, monkeypatch):

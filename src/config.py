@@ -96,6 +96,7 @@ class Config:
 
     # MCP internal API secret
     MCP_INTERNAL_SECRET = os.getenv("MCP_INTERNAL_SECRET", "")
+    MCP_DELIVERY_URL_TTL_SECONDS = int(os.getenv("MCP_DELIVERY_URL_TTL_SECONDS", "900"))
 
     # Stock photo API keys
     UNSPLASH_ACCESS_KEY = os.getenv("UNSPLASH_ACCESS_KEY", "")

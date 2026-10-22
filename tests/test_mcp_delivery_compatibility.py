@@ -1,4 +1,6 @@
 import asyncio
+import json
+from urllib.parse import parse_qs, urlparse
 
 from src import mcp_server
 from src.image_metadata import write_metadata
@@ -58,3 +60,23 @@ def test_pete_exposes_explicit_selective_backfill_tool():
 
     assert tool.inputSchema["required"] == ["slug"]
     assert "Never call automatically" in tool.description
+
+
+def test_get_image_url_returns_expiring_signature_without_shared_secret(monkeypatch):
+    monkeypatch.setattr(mcp_server.Config, "APP_BASE_URL", "https://library.example")
+    monkeypatch.setattr(mcp_server.Config, "MCP_INTERNAL_SECRET", "test-secret")
+    monkeypatch.setattr(mcp_server.Config, "MCP_DELIVERY_URL_TTL_SECONDS", 900)
+
+    content = asyncio.run(mcp_server._get_image_url({"location": "Community/example image.webp"}))
+    payload = json.loads(content[0].text)
+    parsed = urlparse(payload["url"])
+    query = parse_qs(parsed.query)
+
+    assert parsed.scheme == "https"
+    assert parsed.netloc == "library.example"
+    assert parsed.path == "/api/mcp/thumbnail"
+    assert query["path"] == ["Community/example image.webp"]
+    assert "expires" in query
+    assert "sig" in query
+    assert "key" not in query
+    assert "test-secret" not in payload["url"]

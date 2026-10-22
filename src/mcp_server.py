@@ -38,6 +38,7 @@ from mcp.server.stdio import stdio_server
 from mcp import types
 
 from src.config import Config
+from src.mcp_delivery import signed_delivery_url
 
 server = Server("proxima-image-library")
 
@@ -509,7 +510,14 @@ async def _search_image_library(args: dict) -> list[types.TextContent]:
         if not location:
             return ""
         if secret:
-            return f"{base_url}/api/mcp/thumbnail?path={_quote(location)}&key={_quote(secret)}"
+            return signed_delivery_url(
+                base_url,
+                "/api/mcp/thumbnail",
+                secret,
+                "thumbnail",
+                location,
+                ttl_seconds=Config.MCP_DELIVERY_URL_TTL_SECONDS,
+            )
         return f"{base_url}/thumbnail?path={_quote(location)}"
 
     # Fetch thumbnails in parallel (inline in chat)
@@ -1083,15 +1091,21 @@ async def _catalog_stock_image(args: dict) -> list[types.TextContent]:
 
 
 async def _get_image_url(args: dict) -> list[types.TextContent]:
-    from urllib.parse import quote
     location = args.get("location", "").strip()
     if not location:
         return [types.TextContent(type="text", text=json.dumps({"error": "location is required"}))]
     secret = Config.MCP_INTERNAL_SECRET
     if not secret:
         return [types.TextContent(type="text", text=json.dumps({"error": "MCP_INTERNAL_SECRET not configured"}))]
-    base = "https://library.liveproxima.org"
-    url = f"{base}/api/mcp/thumbnail?path={quote(location)}&key={quote(secret)}"
+    base = (Config.APP_BASE_URL or "https://library.liveproxima.org").rstrip("/")
+    url = signed_delivery_url(
+        base,
+        "/api/mcp/thumbnail",
+        secret,
+        "thumbnail",
+        location,
+        ttl_seconds=Config.MCP_DELIVERY_URL_TTL_SECONDS,
+    )
     return [types.TextContent(type="text", text=json.dumps({"url": url, "location": location}))]
 
 
