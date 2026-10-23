@@ -19,6 +19,8 @@ docker buildx build --platform linux/amd64 --target runtime --load \
 docker image inspect "$IMAGE" --format '{{json .}}' > reports/image.json
 python3 scripts/container_smoke.py "$IMAGE" "$GITHUB_SHA" \
   "$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" | tee reports/smoke.json
+python3 -m scripts.release_channel_smoke "$IMAGE" "$GITHUB_SHA" \
+  "$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" | tee reports/release-channel-smoke.json
 docker save --output scan-input/runtime.tar "$IMAGE"
 scanner_args=(--rm --user "$(id -u):$(id -g)" --cap-drop ALL --security-opt no-new-privileges
   --volume "$PWD/scan-input:/input:ro" --volume "$PWD/reports:/reports" --volume "$PWD/scan-cache:/cache")

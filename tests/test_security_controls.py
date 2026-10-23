@@ -86,6 +86,60 @@ def test_deployment_drain_requires_admin_and_same_origin(client):
     assert client.post(path, json={"enabled": False}, headers=headers).json["draining"] is False
 
 
+def test_stock_credentials_keep_admin_csrf_and_environment_boundaries(client, monkeypatch, tmp_path):
+    from src import app as module
+    from src.stock_credentials import StockCredentials
+    store = StockCredentials(tmp_path / "stock.env", {"PEXELS_API_KEY": "environment-secret"})
+    monkeypatch.setattr(module, "stock_credentials", store)
+    monkeypatch.setattr(module, "_test_stock_provider", lambda _: {"ok": True, "status": "ok"})
+    path = "/api/maintenance/stock-api-update"
+    payload = {"provider": "pexels", "keys": {"PEXELS_API_KEY": "replacement"}}
+    headers = {"Origin": "http://localhost"}
+    assert client.post(path, json=payload, headers=headers).status_code == 401
+    _login(client)
+    assert client.post(path, json=payload, headers=headers).status_code == 403
+    _login(client, email="admin@example.com")
+    assert client.post(path, json=payload).status_code == 403
+    assert client.post(path, json=[], headers=headers).status_code == 400
+    assert client.post(path, json=payload, headers=headers).status_code == 409
+    status = client.get("/api/maintenance/stock-api-status").json
+    assert status["providers"]["pexels"]["editable"] is False
+    assert status["providers"]["pexels"]["sources"] == {"PEXELS_API_KEY": "environment"}
+    assert "environment-secret" not in str(status)
+    assert not store.path.exists()
+
+
+def test_stock_credentials_update_reports_only_keys_and_persists(client, monkeypatch, tmp_path):
+    from src import app as module
+    from src.stock_credentials import StockCredentials
+    store = StockCredentials(tmp_path / "stock.env", {})
+    monkeypatch.setattr(module, "stock_credentials", store)
+    monkeypatch.setattr(module, "_test_stock_provider", lambda _: {"ok": True, "status": "ok"})
+    _login(client, email="admin@example.com")
+    response = client.post("/api/maintenance/stock-api-update", headers={"Origin": "http://localhost"},
+        json={"provider": "unsplash", "keys": {"UNSPLASH_ACCESS_KEY": "saved-secret"}})
+    assert response.status_code == 200
+    assert response.json["saved"] == ["UNSPLASH_ACCESS_KEY"]
+    assert "saved-secret" not in str(response.json)
+    assert StockCredentials(store.path, {}).environ["UNSPLASH_ACCESS_KEY"] == "saved-secret"
+
+
+def test_release_identity_is_admin_only_and_not_public_readiness(client, monkeypatch):
+    from src import app as module
+    state = {"state_id": "a" * 64, "boot_id": "b" * 32, "uid": 65532, "gid": 65532}
+    monkeypatch.setattr(module, "_RELEASE_STATE", state)
+    assert "release_state" not in client.get("/readyz").json
+    path = "/api/maintenance/deployment-status"
+    assert client.get(path).status_code == 401
+    _login(client)
+    assert client.get(path).status_code == 403
+    _login(client, email="admin@example.com")
+    response = client.get(path)
+    assert response.json["release_state"] == state
+    assert response.json["release"] == module._RELEASE
+    assert response.headers["Cache-Control"] == "no-store"
+
+
 def test_read_only_unknown_get_is_denied_before_handler(security_app, monkeypatch):
     monkeypatch.setenv("APP_READ_ONLY", "true")
     security_app.add_url_rule("/future-job", "future_job", lambda: pytest.fail("Unknown route executed"))

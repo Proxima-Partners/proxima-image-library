@@ -4,6 +4,90 @@ Updated: 2026-10-23 (America/Los_Angeles).
 
 ## Current execution checkpoint
 
+**Private recovery checks passed; legacy staging is now contained. Public cutover
+is still pending.** Legacy deployment workflow is disabled; old staging is stopped
+with a verified stopped-writer backup. Old production stays online at v1.0.5.
+All four preliminary private configuration/state/source backups passed readback;
+both legacy states passed isolated Linux recovery as UID/GID 65532. Separate
+histories/quota were preserved, with no merge, reset or replay.
+
+Only the library CNAME TTL changed (3600 -> 300); its old destination is intact.
+All four authoritative DNS servers verified the change at 19:55:10 UTC; the old
+cache window expires conservatively at 20:55:10 UTC / 13:55:10 PDT. Both preparation
+leases are released/unlocked. No new image has been deployed, no main commit/push,
+no production stop, final state transfer, DNS destination change or write canary.
+See the current runbook and `cutover-evidence/2026-10-23-containment-and-backups.json`.
+
+### Earlier TLS checkpoint (historical)
+
+**Target TLS preparation PASSED; public production cutover remains NO-GO.**
+The supplied private key matches the wildcard certificate. Chain/hostname/server-
+auth checks passed; an encrypted PFX was imported from memory only. Certificate
+`image-library-tls-99c1349350b3` is SNI-bound to `library.liveproxima.org` on the
+new app. Five strict direct-target TLS/HTTP rounds verified v2.0.0, exact accepted
+pilot build, readiness and anonymous auth boundaries. An initial TLS failure is
+retained in the evidence; no certificate/binding mutation was repeated. The held
+release lock was released only after reconciliation and is now unlocked.
+
+Source key permissions are now 0600; original bytes remain in Downloads. DNS/TTL,
+the old TLS binding and public v1.0.5 route remain unchanged. Both new slots remain
+read-only with ingestion off and operator-only ingress. No app deployment,
+commit/push, state transfer or canary occurred. TLS expires 2027-04-18; renewal
+automation/alerts still need implementation. See
+`cutover-evidence/2026-10-23-tls-preparation.json` and the runbook TLS checkpoint.
+
+Remaining gates: trusted release artifacts and live adapter/recovery rehearsal,
+legacy-writer containment, verified backup/restore/transfer, DNS TTL window,
+fresh custom-domain SSO and the approved single disposable writable canary.
+
+### Release-storage and control preparation checkpoint
+
+**Dedicated release storage verified; production cutover remains NO-GO.**
+User-approved `pilrelease9528` storage and two private containers are provisioned,
+with narrow operator/release-identity data roles, shared keys disabled, deny-by-
+default firewall, versioning and 30-day soft deletion. A real infinite-lease
+contention/renewal/release test passed on the rehearsal blob; it is unlocked.
+No production lock, app deployment, workflow disable, DNS/TLS change, state
+transfer or catalog write occurred. CI network/identity access remains unproven.
+
+An authenticated SCM adapter draft, private filesystem status/drain channel and
+bounded protected-state capture are prepared locally. **418 target-Linux tests
+pass**; offline runtime checks cover single-worker identity, auth, persistent
+drain/state, fresh restart and SIGTERM. Adapter provenance retrieval, actual
+backup/restore, live SCM ownership, restart/rollback and cleanup rehearsal remain
+open; there is no runnable production CLI/workflow. No commit/push was made.
+
+TLS public certificate is present and valid for the wildcard through 2027-04-18;
+the user will provide its matching private key or PFX/P12 path. The disposable
+write-canary/cleanup scope is approved but has not run. Legacy workflow remains
+active and old writers uncontained; pilot mode remains `hold`. Production still
+serves v1.0.5 / `0ddfd05` on the unchanged legacy CNAME.
+See [PRODUCTION_RELEASE_RUNBOOK.md](PRODUCTION_RELEASE_RUNBOOK.md) and
+`cutover-evidence/2026-10-23-release-storage-and-controls.json` for current gates.
+
+### Earlier local preparation (historical evidence)
+
+Credential persistence/precedence, allowlisted slot telemetry, authenticated
+production mount identity and a fault-tested release-policy core are prepared.
+See [PRODUCTION_RELEASE_RUNBOOK.md](PRODUCTION_RELEASE_RUNBOOK.md).
+The core is intentionally not connected to Azure/CI: a real authenticated adapter,
+durable lease/backup integration and supervised recovery proof remain required.
+No commit, push, deployment, cloud setting, credential, DNS or catalog change was
+performed. Legacy containment, protected transfer, TLS and named write canary are
+still open gates. Local evidence is in `cutover-evidence/2026-10-23-preparation.json`.
+Final target-runtime suite: **325 passed** (network disabled, UID/GID 65532).
+Restart/persistence/auth/SIGTERM smoke passed; fresh image security gate passed
+with the existing eight reviewed OS findings and zero unreviewed high/critical
+findings. Exceptions were not extended. This is an uncommitted local image,
+not a registry release receipt or live production acceptance.
+
+**Production-cutover preflight completed 2026-10-23: NO-GO pending preparation.**
+Live production and DNS are unchanged; pilot remains healthy and on `hold`.
+See [PRODUCTION_CUTOVER_PREFLIGHT.md](PRODUCTION_CUTOVER_PREFLIGHT.md) for the
+legacy-writer/drain gap, split state histories, production credential/configuration
+requirements, DNS/TLS preparation, per-slot telemetry and production release lock.
+This was read-only investigation; no application fixes or cloud changes were made.
+
 **Isolated read-only container pilot PASSED with approved in-place promotion.**
 Five fresh complete releases passed with 255 freshly executed tests each.
 Median time to verified main: 266.88s (4m27s); median complete CI including

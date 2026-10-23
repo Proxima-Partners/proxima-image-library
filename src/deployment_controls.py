@@ -140,10 +140,35 @@ def verify_state_directory():
         return None
     if not read_only() or os.getenv("INGEST_POLLER_ENABLED", "false").lower() != "false":
         raise RuntimeError("Persistent pilot probe requires read-only mode and ingestion disabled")
-    # A non-secret, pilot-only sentinel lets the operator prove the actual
-    # mounted state survives new image deployments, restarts and slot swaps.
+    return _persistent_identity(path, ".image-library-pilot-state", "pilot")
+
+
+def verify_release_state():
+    """Opt-in production identity, exposed only by the authenticated status API.
+
+    Separate from the pilot sentinel: never weaken the pilot's read-only guard.
+    This is mount identity, NOT a backup or proof that application data is intact.
+    """
+    enabled = os.getenv("PRODUCTION_RELEASE_CONTROL_ENABLED", "false").lower()
+    if enabled == "false":
+        return None
+    if enabled != "true":
+        raise RuntimeError("Invalid production release control setting")
+    if os.getenv("PILOT_STATE_PROBE_ENABLED", "false").lower() != "false":
+        raise RuntimeError("Production release controls cannot use the pilot probe")
+    root = Path(os.getenv("APP_STATE_DIR", ""))
+    if not root.is_absolute() or not root.is_dir():
+        raise RuntimeError("Production release controls require an absolute state directory")
+    if os.getenv("TELEMETRY_SLOT") not in {"production", "staging"}:
+        raise RuntimeError("Production release controls require an explicit telemetry slot")
+    return _persistent_identity(root, ".image-library-release-state", "release")
+
+
+def _persistent_identity(path, filename, kind):
+    # A non-secret sentinel identifies a mount across in-place image updates
+    # and restarts. It is not a file-integrity manifest or permission to swap.
     # Never overwrite an existing file or follow a link into application data.
-    marker = path / ".image-library-pilot-state"
+    marker = path / filename
     try:
         fd = os.open(marker, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
     except FileExistsError:
@@ -156,9 +181,9 @@ def verify_state_directory():
     fd = os.open(marker, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     with os.fdopen(fd, "rb") as stream:
         if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
-            raise RuntimeError("Invalid pilot state sentinel")
+            raise RuntimeError(f"Invalid {kind} state sentinel")
         data = stream.read(33)
     if not re.fullmatch(rb"[a-f0-9]{32}", data):
-        raise RuntimeError("Invalid pilot state sentinel")
+        raise RuntimeError(f"Invalid {kind} state sentinel")
     return {"state_id": hashlib.sha256(data).hexdigest(), "boot_id": uuid.uuid4().hex,
             "uid": os.getuid(), "gid": os.getgid()}

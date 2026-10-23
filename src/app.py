@@ -20,7 +20,6 @@ from io import BytesIO, StringIO
 from pathlib import Path, PurePosixPath
 from urllib.parse import quote, unquote, urlparse
 
-from dotenv import load_dotenv
 from typing import Dict, List, Optional
 from werkzeug.utils import secure_filename
 
@@ -35,7 +34,8 @@ from werkzeug.exceptions import RequestEntityTooLarge
 
 from src.local_client import LocalClient
 from src import __version__
-from src.config import Config
+from src.config import Config, stock_credentials
+from src.stock_credentials import PROVIDERS as _STOCK_API_PROVIDERS, ManagedCredentialError
 from src.release import release_info
 from src.telemetry import initialize_telemetry, tracer
 from src.mcp_delivery import verify_delivery
@@ -73,7 +73,6 @@ from src.maintenance_helpers import (
     collect_duplicate_snapshot as _collect_duplicate_snapshot_helper,
 )
 
-load_dotenv()
 Config.validate_runtime()
 
 app = Flask(__name__, template_folder="../templates", static_folder="../static")
@@ -458,7 +457,11 @@ def release_failed_deployment_work(_exception):
 @app.get("/api/maintenance/deployment-status")
 @login_required
 def deployment_status():
-    return jsonify(deployment.snapshot())
+    response = jsonify({**deployment.snapshot(), **(
+        {"release_state": _RELEASE_STATE, "release": _RELEASE} if _RELEASE_STATE else {}
+    )})
+    response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 @app.post("/api/maintenance/deployment-drain")
@@ -995,7 +998,7 @@ def api_catalog_stock():
                 if dl_location:
                     dl_domain = urlparse(dl_location).netloc.lower()
                     if "unsplash.com" in dl_domain:
-                        access_key = Config.UNSPLASH_ACCESS_KEY
+                        access_key = os.getenv("UNSPLASH_ACCESS_KEY", "")
                         if access_key:
                             try:
                                 requests.get(dl_location, headers={"Authorization": f"Client-ID {access_key}"}, timeout=5)
@@ -2021,7 +2024,7 @@ def api_download_image():
     if download_location:
         dl_domain = urlparse(download_location).netloc.lower()
         if "unsplash.com" in dl_domain:
-            access_key = Config.UNSPLASH_ACCESS_KEY
+            access_key = os.getenv("UNSPLASH_ACCESS_KEY", "")
             if access_key:
                 try:
                     requests.get(
@@ -6274,35 +6277,11 @@ def api_ss_track():
     return jsonify({"used": data["count"], "limit": SS_QUOTA_LIMIT})
 
 
-_STOCK_API_PROVIDERS = {
-    "pexels": {
-        "label": "Pexels",
-        "keys": ["PEXELS_API_KEY"],
-    },
-    "shutterstock": {
-        "label": "Shutterstock",
-        "keys": ["SHUTTERSTOCK_CLIENT_ID", "SHUTTERSTOCK_CLIENT_SECRET"],
-    },
-    "unsplash": {
-        "label": "Unsplash",
-        "keys": ["UNSPLASH_ACCESS_KEY"],
-    },
-    "pixabay": {
-        "label": "Pixabay",
-        "keys": ["PIXABAY_API_KEY"],
-    },
-}
-
-_DOT_ENV_PATH = deployment.state_path("proxima_stock_keys.env", Path(__file__).resolve().parent.parent / ".env")
-
-
 def _mask(value: str) -> str:
     """Return a masked version of a secret key for display."""
     if not value:
         return ""
-    if len(value) <= 8:
-        return "*" * len(value)
-    return value[:4] + "*" * (len(value) - 8) + value[-4:]
+    return "configured"
 
 
 def _test_stock_provider(provider: str) -> dict:
@@ -6382,26 +6361,6 @@ def _test_stock_provider(provider: str) -> dict:
         return {"ok": False, "status": "error", "message": "Request failed"}
 
 
-def _update_env_key(key: str, value: str) -> None:
-    """Update or append a key=value line in the .env file."""
-    if not _DOT_ENV_PATH.exists():
-        _DOT_ENV_PATH.write_text(f"{key}={value}\n", encoding="utf-8")
-        return
-    lines = _DOT_ENV_PATH.read_text(encoding="utf-8").splitlines(keepends=True)
-    pattern = re.compile(rf"^{re.escape(key)}\s*=")
-    replaced = False
-    new_lines = []
-    for line in lines:
-        if pattern.match(line):
-            new_lines.append(f"{key}={value}\n")
-            replaced = True
-        else:
-            new_lines.append(line)
-    if not replaced:
-        new_lines.append(f"{key}={value}\n")
-    _DOT_ENV_PATH.write_text("".join(new_lines), encoding="utf-8")
-
-
 @app.route("/api/maintenance/stock-api-status")
 @login_required
 def api_maintenance_stock_api_status():
@@ -6412,6 +6371,8 @@ def api_maintenance_stock_api_status():
         results[provider] = {
             "label": meta["label"],
             "keys": keys_display,
+            "editable": stock_credentials.editable(provider),
+            "sources": stock_credentials.sources(provider),
             **test,
         }
     return jsonify({"providers": results})
@@ -6420,24 +6381,22 @@ def api_maintenance_stock_api_status():
 @app.route("/api/maintenance/stock-api-update", methods=["POST"])
 @login_required
 def api_maintenance_stock_api_update():
-    data = request.get_json(force=True) or {}
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"error": "Expected a JSON object"}), 400
     provider = str(data.get("provider", "")).strip()
     updates = data.get("keys", {})
 
     if provider not in _STOCK_API_PROVIDERS:
         return jsonify({"error": "Unknown provider"}), 400
-    allowed_keys = set(_STOCK_API_PROVIDERS[provider]["keys"])
-
-    saved = []
-    for key, value in updates.items():
-        if key not in allowed_keys:
-            return jsonify({"error": f"Key {key!r} not valid for provider {provider!r}"}), 400
-        value = str(value).strip()
-        if not value:
-            return jsonify({"error": f"Value for {key!r} cannot be empty"}), 400
-        os.environ[key] = value
-        _update_env_key(key, value)
-        saved.append(key)
+    try:
+        saved = stock_credentials.update(provider, updates)
+    except ManagedCredentialError:
+        return jsonify({"error": "Provider is environment-managed; update it in Azure configuration"}), 409
+    except ValueError:
+        return jsonify({"error": "Invalid credential keys or values"}), 400
+    except (OSError, RuntimeError):
+        return jsonify({"error": "Credentials not confirmed saved; reconcile persistent state before retrying"}), 503
 
     test = _test_stock_provider(provider)
     return jsonify({"saved": saved, "test": test})
@@ -6446,6 +6405,15 @@ def api_maintenance_stock_api_update():
 # Warm local resources before readiness. No catalog writes; an explicitly
 # enabled read-only pilot can retain its own non-secret persistence sentinel.
 _PILOT_STATE = deployment.verify_state_directory()
+_RELEASE_STATE = deployment.verify_release_state()
+_RELEASE_CHANNEL = None
+if _RELEASE_STATE:
+    from src.release_channel import ReleaseChannel
+    _RELEASE_CHANNEL = ReleaseChannel(
+        os.environ["APP_STATE_DIR"], _RELEASE_STATE, _RELEASE,
+        lambda: len(get_client().get_records(limit=1)),
+    )
+    _RELEASE_CHANNEL.start()
 app.jinja_env.get_template("index.html")
 PILImage.init()
 from PIL import features as _pillow_features

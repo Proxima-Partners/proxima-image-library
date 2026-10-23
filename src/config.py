@@ -4,13 +4,18 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 from src.deployment_controls import state_path
+from src.stock_credentials import StockCredentials
 
-# Load .env from the project root regardless of working directory
-load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+# Load only the project-root development file, never a discovered parent file.
+# Enforce the opt-out here as well for older developer dotenv installations.
+if os.getenv("PYTHON_DOTENV_DISABLED", "").strip().lower() not in {"1", "true", "t", "yes", "y"}:
+    load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
-# Keep mutable provider settings outside deployed code, including containers.
-# Loaded second; load_dotenv never overrides an already-set environment value.
-load_dotenv(state_path("proxima_stock_keys.env", Path(__file__).resolve().parent.parent / ".env"))
+# Dedicated allowlisted loader works even with PYTHON_DOTENV_DISABLED=1.
+# Externally supplied values retain precedence and cannot be edited in the UI.
+stock_credentials = StockCredentials(state_path(
+    "proxima_stock_keys.env", Path(__file__).resolve().parent.parent / "proxima_stock_keys.env",
+))
 
 
 class Config:

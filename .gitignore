@@ -13,6 +13,7 @@ env/
 
 # Local secrets
 .env
+proxima_stock_keys.env
 
 # Local generated artifacts
 sync_log.txt

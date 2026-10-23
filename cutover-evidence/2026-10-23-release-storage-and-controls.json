@@ -1,0 +1,137 @@
+{
+  "schema": 1,
+  "recorded_at_utc": "2026-10-23 19:20:47 UTC",
+  "status": "preparation_only_production_no_go",
+  "branch": "perf/container-pilot",
+  "base_commit": "7158034ca338cdccf9cff3e590453ebb286112b2",
+  "uncommitted": true,
+  "committed_or_pushed": false,
+  "authorization": {
+    "dedicated_private_release_storage": "approved",
+    "disposable_canary_upload_thumbnail_metadata_and_exact_cleanup": "approved_not_executed",
+    "matching_key_or_pfx_path": "user_will_provide_pending"
+  },
+  "azure_mutations": {
+    "deployment": "image-library-release-storage-20261023",
+    "provisioning_state": "Succeeded",
+    "validation": "Succeeded",
+    "what_if_mutating_resources": 8,
+    "what_if_scope": "storage_only_creates",
+    "account": "pilrelease9528",
+    "resource_group": "PP-Resources",
+    "region": "westus2",
+    "sku": "Standard_LRS",
+    "access_tier": "Hot",
+    "shared_key_access": false,
+    "blob_public_access": false,
+    "https_only": true,
+    "minimum_tls": "TLS1_2",
+    "default_oauth": true,
+    "firewall": {
+      "default": "Deny",
+      "bypass": "None",
+      "operator_ipv4_rules": 1,
+      "private_endpoint": false
+    },
+    "versioning": true,
+    "blob_soft_delete_days": 30,
+    "container_soft_delete_days": 30,
+    "containers": [
+      "release-control",
+      "rollback-backups"
+    ],
+    "new_rbac_assignments": 4,
+    "new_role": "Storage Blob Data Contributor",
+    "new_role_scope": "each_container_for_release_identity_and_operator",
+    "inherited_administrative_access_not_changed": true,
+    "unrelated_resources_changed": false
+  },
+  "live_verification": {
+    "operator_oauth_container_reads": "passed_both",
+    "operator_entra_scm_vfs_reads": {
+      "legacy_production": 200,
+      "legacy_staging": 200,
+      "target_production": 200,
+      "target_staging": 200
+    },
+    "ci_identity_and_network_path": "not_verified_operator_only_storage_firewall",
+    "lease": {
+      "blob": "release-control/rehearsal.json",
+      "infinite": true,
+      "acquisition": "passed",
+      "competing_owner_http": 409,
+      "renewal": "passed",
+      "release_and_successor_acquisition": "passed",
+      "final_state": "available",
+      "final_status": "unlocked",
+      "automatic_break": false,
+      "production_lock_created": false,
+      "arm_fencing": false,
+      "recovery_directory": "/var/folders/gs/bf8r89pj0q51k9lqwqvyjjq80000gn/T/image-library-lease-rehearsal-irkksoad",
+      "rehearsal_blob_and_versions_retained": true
+    },
+    "private_app_backups_created": false,
+    "state_transfer": false,
+    "app_mutations": false,
+    "workflow_mutations": false,
+    "dns_or_tls_mutations": false,
+    "catalog_mutations": false,
+    "production_version": "v1.0.5",
+    "production_commit": "0ddfd050160f5363a1ebb87ade588509b7a426e0",
+    "library_cname": "pp-app-serv.azurewebsites.net",
+    "legacy_workflow_state": "active",
+    "pilot_mode": "hold"
+  },
+  "local_validation": {
+    "tests": {
+      "passed": 418,
+      "failed": 0,
+      "platform": "linux/amd64",
+      "python": "3.12.15",
+      "uid": 65532,
+      "gid": 65532,
+      "network": "none",
+      "test_stage_cache_disabled": true
+    },
+    "runtime_image": {
+      "tag": "image-library:release-controls-local",
+      "build_id": "local-release-controls-20261023",
+      "config_id": "sha256:4a3944f1d11596bb35fc04dbeb0950130947c29bf72b15867a7c1b7acc6e07f8",
+      "manifest": "sha256:99f8f32bbbe7382ef0b47d2eea9e926c47a8fa04492d5a049712eb9f3b20f9a1",
+      "registry_published": false,
+      "commit_field_is_base_only": true
+    },
+    "existing_runtime_smoke": "passed_auth_nonroot_mount_restart_sigterm",
+    "release_channel_smoke": "passed_single_worker_drain_persistence_fresh_boot_mount_auth",
+    "live_scm_file_ownership_or_graph_read_probe_verified": false,
+    "new_image_scan_sbom": "not_run_fresh_committed_ci_evidence_required",
+    "prior_image_security_evidence_not_reused": true,
+    "diff_check": "passed",
+    "isolated_fixture_cleanup": "own_docker_containers_and_volumes_removed"
+  },
+  "source_sha256": {
+    "src/app.py": "2bd00069295fd383439e642aeda6201b75d5297959556d6d5c9a453014fa4b1b",
+    "src/release_channel.py": "6651fe5539c46070431c25897c22b16a2f7aaa3e53d8f2c9a3e7ef7e02491973",
+    "scripts/production_release.py": "e4157a735b65e51fc54b8ff90edb91431f44588c311bfeb69b5e05c5c195746f",
+    "scripts/production_azure_adapter.py": "22990bf9572161dc2ed8393841cd6d3ab86c4fb49b876fcc118599f6afa9a318",
+    "scripts/release_azure_io.py": "c4b8f5022d94b3d41c6e5418cae65e71048c1a44ba59202a526e1493005c4ef2",
+    "scripts/release_state_archive.py": "31ad60fec3dba62b979ac7c3656dd42c913d8eb97ba8394ccc151cb645154815",
+    "scripts/release_channel_smoke.py": "6ee611b16f596a5d895349a4f95b1073de2b7db3e5abdb2152b470749e557dc2",
+    "tests/test_release_channel.py": "b4fdde5274cdc2b31a25435aed461ac0d2058103e6a48b5e45daec8f9e596d38",
+    "tests/test_release_azure_io.py": "4c34b2dc5aeb9306ac8bb237ceb3d6ae71ba663cf334582aa099f7d33a7a28ef",
+    "tests/test_release_state_archive.py": "5b2b3874bf73d8357e5bcab5af784097b0201501009813f043c4dc3a84405d6f",
+    "tests/test_production_azure_adapter.py": "bcef971d6c6b9fa193fac012a9d8b62f15a8f41f7d51a446f21979757965a927",
+    "infra/image-library-release-storage.bicep": "b5266a1af203edd6dd70a22271de121ef2b02d8de6e11cb6bf2d96a670a3fc22"
+  },
+  "remaining_gates": [
+    "matching_private_key_or_pfx_and_chain_validation",
+    "authenticated_artifact_loader_binding_ci_receipts_scan_sbom_registry_manifest",
+    "ci_storage_network_scm_and_dedicated_plan_read_access",
+    "live_channel_ownership_restart_rollback_ambiguity_and_cleanup_rehearsal",
+    "legacy_workflow_hold_and_both_slot_writer_containment",
+    "protected_quiesced_backups_and_verified_state_restore_transfer",
+    "reviewed_commit_fresh_ci_image_scan_and_publication",
+    "target_tls_dns_ttl_window_and_custom_domain_sso",
+    "one_disposable_write_canary_and_exact_cleanup_then_observation"
+  ]
+}

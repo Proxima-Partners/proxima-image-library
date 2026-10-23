@@ -12,6 +12,7 @@ def isolated_controls(monkeypatch, tmp_path):
     monkeypatch.delenv("INGEST_POLLER_ENABLED", raising=False)
     monkeypatch.delenv("INGEST_OWNER_HOSTNAME", raising=False)
     monkeypatch.delenv("PILOT_STATE_PROBE_ENABLED", raising=False)
+    monkeypatch.delenv("PRODUCTION_RELEASE_CONTROL_ENABLED", raising=False)
     assert controls.snapshot()["active_work"] == 0
     yield
     assert controls.snapshot()["active_work"] == 0
@@ -124,6 +125,32 @@ def test_pilot_sentinel_does_not_follow_symlinks(monkeypatch, tmp_path):
     (tmp_path / '.image-library-pilot-state').symlink_to(target)
     with pytest.raises(OSError): controls.verify_state_directory()
     assert target.read_bytes() == b'protected'
+
+
+def test_production_identity_opt_in_persists_separately_without_pilot_bypass(monkeypatch, tmp_path):
+    assert controls.verify_release_state() is None
+    monkeypatch.setenv("PRODUCTION_RELEASE_CONTROL_ENABLED", "true")
+    monkeypatch.setenv("TELEMETRY_SLOT", "production")
+    first = controls.verify_release_state()
+    second = controls.verify_release_state()
+    assert first["state_id"] == second["state_id"]
+    assert first["boot_id"] != second["boot_id"]
+    assert not (tmp_path / ".image-library-pilot-state").exists()
+    monkeypatch.setenv("PILOT_STATE_PROBE_ENABLED", "true")
+    with pytest.raises(RuntimeError, match="cannot use the pilot"):
+        controls.verify_release_state()
+    with pytest.raises(RuntimeError, match="requires read-only"):
+        controls.verify_state_directory()
+
+
+@pytest.mark.parametrize("key,value", [("APP_STATE_DIR", "relative"), ("TELEMETRY_SLOT", "private-host"),
+    ("PRODUCTION_RELEASE_CONTROL_ENABLED", "typo"), ("PILOT_STATE_PROBE_ENABLED", "typo")])
+def test_production_state_requires_explicit_valid_configuration(monkeypatch, key, value):
+    monkeypatch.setenv("PRODUCTION_RELEASE_CONTROL_ENABLED", "true")
+    monkeypatch.setenv("TELEMETRY_SLOT", "production")
+    monkeypatch.setenv(key, value)
+    with pytest.raises(RuntimeError):
+        controls.verify_release_state()
 
 
 @pytest.mark.parametrize("class_name,method", [

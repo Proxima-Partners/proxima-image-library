@@ -1,0 +1,98 @@
+{
+  "local_only": true,
+  "working_tree_dirty": true,
+  "not_a_registry_release_receipt": true,
+  "status": "pass",
+  "evaluated_at": "2026-10-23T18:47:24.875532+00:00",
+  "expires_at": "2026-11-21T23:59:59Z",
+  "image_config_id": "sha256:a1a6a076bd96cd7713817c9e410c0bfd998c52a910008edcb071ec7e808cbbc1",
+  "archive_sha256": "ea11ff1d2fb7013abb4c99c6acf2801158d7bba184c2ed3b817ba8d5314a22b8",
+  "base_image": "dhi.io/python:3.12-debian13@sha256:a67245096d56c6ce891b9bec78a8090850907af9314185597c6b5d75438ca999",
+  "commit": "7158034ca338cdccf9cff3e590453ebb286112b2",
+  "build_id": "local-cutover-preparation-20261023",
+  "reviewed_findings": [
+    {
+      "candidate_id": "triage-001",
+      "cve": "CVE-2025-69720",
+      "package": "libncursesw6",
+      "version": "6.5+20250216-2+dhi4",
+      "severity": "HIGH",
+      "class": "os-pkgs",
+      "type": "debian",
+      "reason": "vendor_backport"
+    },
+    {
+      "candidate_id": "triage-002",
+      "cve": "CVE-2025-69720",
+      "package": "libtinfo6",
+      "version": "6.5+20250216-2+dhi4",
+      "severity": "HIGH",
+      "class": "os-pkgs",
+      "type": "debian",
+      "reason": "vendor_backport"
+    },
+    {
+      "candidate_id": "triage-003",
+      "cve": "CVE-2026-76642",
+      "package": "libuuid1",
+      "version": "2.41.5-0+deb13u1+dhi3",
+      "severity": "HIGH",
+      "class": "os-pkgs",
+      "type": "debian",
+      "reason": "component_absent"
+    },
+    {
+      "candidate_id": "triage-004",
+      "cve": "CVE-2026-78408",
+      "package": "libuuid1",
+      "version": "2.41.5-0+deb13u1+dhi3",
+      "severity": "HIGH",
+      "class": "os-pkgs",
+      "type": "debian",
+      "reason": "component_absent"
+    },
+    {
+      "candidate_id": "triage-005",
+      "cve": "CVE-2026-78409",
+      "package": "libuuid1",
+      "version": "2.41.5-0+deb13u1+dhi3",
+      "severity": "HIGH",
+      "class": "os-pkgs",
+      "type": "debian",
+      "reason": "component_absent"
+    },
+    {
+      "candidate_id": "triage-006",
+      "cve": "CVE-2026-78410",
+      "package": "libuuid1",
+      "version": "2.41.5-0+deb13u1+dhi3",
+      "severity": "HIGH",
+      "class": "os-pkgs",
+      "type": "debian",
+      "reason": "component_absent"
+    },
+    {
+      "candidate_id": "triage-007",
+      "cve": "CVE-2025-69720",
+      "package": "ncurses-base",
+      "version": "6.5+20250216-2+dhi4",
+      "severity": "HIGH",
+      "class": "os-pkgs",
+      "type": "debian",
+      "reason": "vendor_backport"
+    },
+    {
+      "candidate_id": "triage-008",
+      "cve": "CVE-2025-69720",
+      "package": "ncurses-bin",
+      "version": "6.5+20250216-2+dhi4",
+      "severity": "HIGH",
+      "class": "os-pkgs",
+      "type": "debian",
+      "reason": "vendor_backport"
+    }
+  ],
+  "unreviewed_high_critical": 0,
+  "policy_sha256": "7e3893d19fe6f8f40cf64aab41f424b6ef4ba7382ffc444f2bc3720bb9c098c4",
+  "raw_scan_sha256": "85679403f32c6bf036e79fc877f3dfe37b7e93debd0c8385f352aadb449f4ca6"
+}

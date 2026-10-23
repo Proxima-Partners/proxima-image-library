@@ -10,6 +10,26 @@ from opentelemetry.trace import SpanKind, Status, StatusCode
 from src import telemetry
 
 
+@pytest.mark.parametrize("slot,expected", [("production", "production"), ("staging", "staging"),
+    ("", "unknown"), ("private-host.example?secret=token", "unknown")])
+def test_resource_slot_is_allowlisted_and_separates_same_build(monkeypatch, slot, expected):
+    monkeypatch.setenv("TELEMETRY_SLOT", slot)
+    monkeypatch.setenv("OTEL_RESOURCE_ATTRIBUTES", "private=secret")
+    attrs = telemetry.telemetry_resource("a" * 40, "39914306153-1").attributes
+    assert attrs["image_library.slot"] == expected
+    assert attrs["deployment.environment.name"] == expected
+    assert attrs["service.instance.id"] == expected + ":39914306153-1"
+    assert "secret" not in str(attrs)
+    assert "private" not in str(attrs)
+
+
+def test_resource_rejects_arbitrary_commit_and_build(monkeypatch):
+    monkeypatch.setenv("TELEMETRY_SLOT", "production")
+    attrs = telemetry.telemetry_resource("private", "secret?query").attributes
+    assert attrs["service.version"] == "unknown"
+    assert attrs["service.instance.id"] == "production:source"
+
+
 def provider_and_exporter():
     exporter = InMemorySpanExporter()
     provider = TracerProvider(resource=Resource({"service.name": "test"}))
