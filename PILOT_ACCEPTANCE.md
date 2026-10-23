@@ -51,9 +51,38 @@ Alternative: externalize local state to separately managed, slot-sticky storage
 before retaining swaps. That adds infrastructure, access configuration and
 migration work not included in the current approved resource set.
 
-Automatic pilot deployments are held with `IMAGE_LIBRARY_PILOT_MODE=hold`;
-build-only validation remains active. Resume requires an explicit `run` value
-after local validation of the approved in-place implementation. Legacy production/DNS remain unchanged.
+Automatic pilot deployments are being resumed with `IMAGE_LIBRARY_PILOT_MODE=run`
+after local validation and recovery rehearsals of the approved implementation.
+Legacy production/DNS remain unchanged.
+
+### In-place rehearsal progress
+
+- First forward update preserved main state but stopped on an overly strict
+  configuration comparison: Azure's `lastModifiedTime` changes on any update.
+  No blind rollback was attempted. This failed report remains retained.
+- The corrected comparison excludes only the image and its audit modification
+  timestamp; it still compares every setting/credential and other container
+  properties in memory. No secret values or hashes are logged.
+- Restoring the prior approved digest in place passed on both slots: staging
+  33.69 seconds; new main 54.22 seconds. Each retained its original state ID,
+  nonroot identity, authenticated boundary and unchanged configuration.
+- CLI version behavior is accounted for: reassert the verified 8080 port when
+  updating the image. Reject startup/environment/volume overrides before update.
+- All 251 tests pass locally and in target-Linux CI `39909715224`; exact-image
+  smoke, SBOM and the unchanged security gate also pass.
+- Failed-start/readiness rejection and one bounded recovery passed in 100.57
+  seconds, including unchanged main and restored staging state/auth. Azure
+  independently reported the intentionally invalid startup exited with code 1.
+- Failed-pull rejection and recovery passed in 83.84 seconds. Azure reported
+  `ImagePullFailure` for the intentionally nonexistent digest; exactly one
+  recovery restored the approved image and original state, with main unchanged.
+- Actual automatic main rollback PASSED. After a real healthy candidate update,
+  an explicitly recorded post-readiness gate fault exercised the release helper's
+  recovery path: exactly one restoration of the previous approved digest in
+  41.96 seconds, with original state and protected configuration unchanged.
+  The candidate was NOT accepted as a successful release. This is distinct from
+  the actual invalid-start and missing-image failure tests above.
+- Five-run complete-release timing remains pending.
 
 ## Comparable read experiment
 
@@ -97,11 +126,6 @@ time. Queue time, build time, image update and swap must remain separate.
 
 ## Remaining gates
 
-- Validate the approved in-place promotion without weakening the state-preservation gate.
-- Reconfirm protected credentials and state ownership under the approved new
-  promotion procedure. Compare all settings in memory, never log secret values
-  or their hashes. No settings are copied and no swaps are performed.
-- Failed-readiness and failed-pull rejection and one bounded recovery each.
 - At least five comparable complete cached releases including promotion, with
   queue time separate; median target <=5 minutes, update/promotion targets <=2 minutes.
 - Final consolidated evidence and explicit acceptance decision. No old-app
@@ -111,3 +135,27 @@ Sanitized restart, seed, failed-swap and recovery receipts are checked into
 `pilot-evidence/2026-10-22-*.json`. Full local downloaded evidence remains in
 `/tmp/image-library-pilot-evidence.3zow09/`.
 Authoritative CI artifacts are retained for 90 days on each cited GitHub run.
+
+## Unattended pilot release procedure
+
+- Only `perf/container-pilot` may use the build/pilot OIDC environments. Set
+  `IMAGE_LIBRARY_PILOT_MODE=run` to allow new pilot builds, `hold` to prevent
+  new ones. Holding does not cancel a release already in progress.
+- The shared `image-library-deploy` concurrency group serializes deployment.
+  A release downloads its exact passing build receipt and the currently running
+  prior receipts; expired/missing/mismatched evidence stops before image update.
+- Update staging, verify exact build/digest/state/auth/configuration, then
+  update main to that SAME digest. Never swap or copy settings. Preserve the
+  before/after report and actual verified timestamp in the CI artifact.
+- An acknowledged update followed by a failed gate permits exactly one
+  restoration of the verified prior digest. Recovery must preserve the original
+  state and configuration. A recovered failed candidate still fails the release.
+- Ambiguous Azure results, failed recovery or failed access cleanup stop further
+  mutations. Put new runs on hold, inspect the run/checkpoint, Azure configured
+  digest and live readiness on BOTH hostnames. Reconcile temporary `pilot-ci-*`
+  rules to the exact finished run before removal; never remove the operator rule.
+- Never replay an existing checkpoint. Only after reconciliation, use a fresh
+  run attempt/report. Keep the Actions job visible in Edge during supervision.
+- This procedure covers the read-only isolated pilot only. Public cutover,
+  writable production promotion, scheduled catalog work and cleanup remain
+  governed by their separate gates and approvals.

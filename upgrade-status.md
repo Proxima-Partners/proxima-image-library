@@ -8,7 +8,19 @@ Updated: 2026-10-22 (America/Los_Angeles).
 The user approved staging validation followed by the same tested digest update
 in place, preserving main-slot state/settings and accepting a brief restart.
 One verified rollback is permitted; ambiguous updates require reconciliation.
-Pilot deployments remain held until the revised local checks pass.
+Revised local and recovery checks now pass; resume pilot deployments for the
+five-run complete-release timing gate. Public production and DNS remain unchanged.
+
+In-place prior-digest restoration passed on both pilot slots (33.69s staging,
+54.22s main), preserving state and every setting/credential. A first rehearsal
+stopped on Azure's changing audit timestamp; only that metadata is now excluded
+from configuration comparison, and the failed receipt is preserved. All 251
+tests pass locally and on target Linux in CI `39909715224`, including image
+smoke, SBOM and the existing security gate. Failed-start recovery passed in
+100.57s; a confirmed `ImagePullFailure` recovered once in 83.84s. Actual automatic
+main rollback also passed: a forced gate failure after a healthy candidate
+update restored the prior approved digest exactly once in 41.96s, preserving
+state and credentials. Five complete timed releases are next.
 
 A forward slot swap exposed a state-ownership mismatch:
 the two pilot `/home` sentinels exchanged hostnames with the content. Runtime and

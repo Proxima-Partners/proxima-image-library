@@ -197,6 +197,8 @@ def main():
                       for slot, snapshot in before.items()}
             for slot in priors:
                 receipt_matches(priors[slot], before[slot])
+            report['rollback_release_receipts'] = priors
+            checkpoint(args.report, report)
             if args.main_only:
                 receipt_matches(release, before['staging'])
             else:
@@ -207,7 +209,7 @@ def main():
             report['staging_gate_passed'] = True
             checkpoint(args.report, report)
             update_slot('production', release, priors['production'], report, args.report)
-        report['status'] = 'passed'
+        report.update(status='passed', verified_at=datetime.now(timezone.utc).isoformat())
     except Exception as exc:
         report.update(status='failed', error_type=type(exc).__name__)
         raise

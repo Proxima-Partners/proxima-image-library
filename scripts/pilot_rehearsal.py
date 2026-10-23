@@ -9,6 +9,7 @@ import json
 from pathlib import Path
 import re
 import subprocess
+import tempfile
 import time
 from urllib.error import HTTPError, URLError
 from urllib.request import urlopen, build_opener
@@ -108,7 +109,7 @@ def expected_from(snapshot):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action', choices=['restart', 'seed-main', 'swap', 'restore-swap', 'failed-readiness', 'failed-pull'])
+    parser.add_argument('action', choices=['restart', 'seed-main', 'swap', 'restore-swap', 'failed-readiness', 'failed-pull', 'inplace-rollback'])
     parser.add_argument('--release', help='Downloaded passing CI release.json; required for seed/swap')
     parser.add_argument('--checkpoint', type=Path, help='Failed completed-swap report to restore exactly')
     parser.add_argument('--report', type=Path, required=True)
@@ -129,7 +130,39 @@ def main():
     with args.report.open('x') as stream: json.dump(report, stream, indent=2)
     started = time.monotonic()
     try:
-        if args.action == 'seed-main':
+        if args.action == 'inplace-rollback':
+            # Deliberate gate failure AFTER a real healthy main update. This
+            # proves the release helper's actual one-shot recovery path, not
+            # just an independent manual downgrade. No bad image is published.
+            from scripts import pilot_inplace_release as rollout
+            release = load_release(args.release)
+            if release['registry_image'] == before['production']['image']:
+                raise RuntimeError('Rollback rehearsal requires a distinct candidate image')
+            with tempfile.TemporaryDirectory(prefix='pilot-rollback-receipts-') as directory:
+                priors = {slot: rollout.download_receipt(before[slot]['readiness']['build_id'], Path(directory) / slot)
+                          for slot in ('production', 'staging')}
+                rollout.update_slot('staging', release, priors['staging'], report, args.report)
+                real_verify = rollout.verify_ready
+                def inject_gate_failure(slot, expected, state_id, **kwargs):
+                    observed = real_verify(slot, expected, state_id, **kwargs)
+                    if slot == 'production' and expected['image'] == release['registry_image']:
+                        report['fault_injection'] = 'forced post-readiness gate failure on healthy candidate'
+                        report['candidate_verified_before_fault'] = observed
+                        raise RuntimeError('Intentional bounded rollback rehearsal')
+                    return observed
+                rollout.verify_ready = inject_gate_failure
+                try:
+                    rollout.update_slot('production', release, priors['production'], report, args.report)
+                except RuntimeError:
+                    operation = report['operations'][-1]
+                    if (not report.get('fault_injection') or operation.get('status') != 'rolled_back' or
+                            operation.get('rollback_attempts') != 1):
+                        raise
+                else:
+                    raise RuntimeError('The injected failure did not exercise rollback')
+                finally:
+                    rollout.verify_ready = real_verify
+        elif args.action == 'seed-main':
             release = load_release(args.release)
             prior = before['production']['readiness']
             if not prior or not prior.get('pilot_state'):

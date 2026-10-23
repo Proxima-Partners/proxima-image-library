@@ -1,0 +1,122 @@
+{
+  "action": "failed-pull",
+  "before": {
+    "production": {
+      "resource": "/subscriptions/9528fb58-4fa4-43f8-9940-e5c3e1f1903f/resourceGroups/PP-Resources/providers/Microsoft.Web/sites/pp-image-library",
+      "host": "pp-image-library.azurewebsites.net",
+      "image": "proximaimagelibrary.azurecr.io/image-library@sha256:f5bb32b23cc5e20c6fa3b4813b1171431a10a979aac9196f2029db0c2c78345f",
+      "readiness": {
+        "build_id": "39904263261-1",
+        "commit": "68ae9ed6dda196f87feaa4cb1956b75adbdf04df",
+        "pilot_state": {
+          "boot_id": "5dcf122262a147d8b1bfc64565b6bfbb",
+          "gid": 65532,
+          "state_id": "23417242c2c60e65d695520412f767a5a7ca6fd9d29b9357a62f7ef24e05c0c2",
+          "uid": 65532
+        },
+        "short": "68ae9ed",
+        "status": "ready",
+        "telemetry": true,
+        "version": "v2.0.0"
+      },
+      "safe_settings": {
+        "APP_READ_ONLY": "true",
+        "INGEST_POLLER_ENABLED": "false",
+        "TEST_MODE": "false",
+        "DEV_AUTH_BYPASS": "false",
+        "PILOT_STATE_PROBE_ENABLED": "true",
+        "WEBSITES_ENABLE_APP_SERVICE_STORAGE": "true"
+      }
+    },
+    "staging": {
+      "resource": "/subscriptions/9528fb58-4fa4-43f8-9940-e5c3e1f1903f/resourceGroups/PP-Resources/providers/Microsoft.Web/sites/pp-image-library/slots/staging",
+      "host": "pp-image-library-staging.azurewebsites.net",
+      "image": "proximaimagelibrary.azurecr.io/image-library@sha256:f5bb32b23cc5e20c6fa3b4813b1171431a10a979aac9196f2029db0c2c78345f",
+      "readiness": {
+        "build_id": "39904263261-1",
+        "commit": "68ae9ed6dda196f87feaa4cb1956b75adbdf04df",
+        "pilot_state": {
+          "boot_id": "d2f9cff2c4cc4205a67c40c9672316ed",
+          "gid": 65532,
+          "state_id": "c4ed33732aa65098c8b4536a5c8ef7fc1dc804df435a147741df59b965a38115",
+          "uid": 65532
+        },
+        "short": "68ae9ed",
+        "status": "ready",
+        "telemetry": true,
+        "version": "v2.0.0"
+      },
+      "safe_settings": {
+        "APP_READ_ONLY": "true",
+        "INGEST_POLLER_ENABLED": "false",
+        "TEST_MODE": "false",
+        "DEV_AUTH_BYPASS": "false",
+        "PILOT_STATE_PROBE_ENABLED": "true",
+        "WEBSITES_ENABLE_APP_SERVICE_STORAGE": "true"
+      }
+    }
+  },
+  "status": "passed",
+  "started_at": "2026-10-23T06:12:36.354193+00:00",
+  "rejected_image_pull": {
+    "Status": "Terminated",
+    "Image": "proximaimagelibrary.azurecr.io/image-library@sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "TerminationReason": "ImagePullFailure"
+  },
+  "unchanged_main": {
+    "resource": "/subscriptions/9528fb58-4fa4-43f8-9940-e5c3e1f1903f/resourceGroups/PP-Resources/providers/Microsoft.Web/sites/pp-image-library",
+    "host": "pp-image-library.azurewebsites.net",
+    "image": "proximaimagelibrary.azurecr.io/image-library@sha256:f5bb32b23cc5e20c6fa3b4813b1171431a10a979aac9196f2029db0c2c78345f",
+    "readiness": {
+      "build_id": "39904263261-1",
+      "commit": "68ae9ed6dda196f87feaa4cb1956b75adbdf04df",
+      "pilot_state": {
+        "boot_id": "5dcf122262a147d8b1bfc64565b6bfbb",
+        "gid": 65532,
+        "state_id": "23417242c2c60e65d695520412f767a5a7ca6fd9d29b9357a62f7ef24e05c0c2",
+        "uid": 65532
+      },
+      "short": "68ae9ed",
+      "status": "ready",
+      "telemetry": true,
+      "version": "v2.0.0"
+    },
+    "safe_settings": {
+      "APP_READ_ONLY": "true",
+      "INGEST_POLLER_ENABLED": "false",
+      "TEST_MODE": "false",
+      "DEV_AUTH_BYPASS": "false",
+      "PILOT_STATE_PROBE_ENABLED": "true",
+      "WEBSITES_ENABLE_APP_SERVICE_STORAGE": "true"
+    }
+  },
+  "recovery_attempts": 1,
+  "recovered": {
+    "resource": "/subscriptions/9528fb58-4fa4-43f8-9940-e5c3e1f1903f/resourceGroups/PP-Resources/providers/Microsoft.Web/sites/pp-image-library/slots/staging",
+    "host": "pp-image-library-staging.azurewebsites.net",
+    "image": "proximaimagelibrary.azurecr.io/image-library@sha256:f5bb32b23cc5e20c6fa3b4813b1171431a10a979aac9196f2029db0c2c78345f",
+    "readiness": {
+      "build_id": "39904263261-1",
+      "commit": "68ae9ed6dda196f87feaa4cb1956b75adbdf04df",
+      "pilot_state": {
+        "boot_id": "88bca611c9ac4f73bd606308a103936c",
+        "gid": 65532,
+        "state_id": "c4ed33732aa65098c8b4536a5c8ef7fc1dc804df435a147741df59b965a38115",
+        "uid": 65532
+      },
+      "short": "68ae9ed",
+      "status": "ready",
+      "telemetry": true,
+      "version": "v2.0.0"
+    },
+    "safe_settings": {
+      "APP_READ_ONLY": "true",
+      "INGEST_POLLER_ENABLED": "false",
+      "TEST_MODE": "false",
+      "DEV_AUTH_BYPASS": "false",
+      "PILOT_STATE_PROBE_ENABLED": "true",
+      "WEBSITES_ENABLE_APP_SERVICE_STORAGE": "true"
+    }
+  },
+  "operation_seconds": 83.84
+}

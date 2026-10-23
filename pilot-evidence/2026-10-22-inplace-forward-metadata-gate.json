@@ -1,0 +1,116 @@
+{
+  "status": "failed",
+  "started_at": "2026-10-23T06:02:51.426126+00:00",
+  "release": {
+    "status": "pass",
+    "evaluated_at": "2026-10-23T05:15:22.219500+00:00",
+    "expires_at": "2026-11-21T23:59:59Z",
+    "image_config_id": "sha256:bffb81eb5b4ef5e59fc4b8989f5182bef5c0bf5c370dee0b9c7aa9894e22d8bf",
+    "archive_sha256": "a23be28905489bc585b962897ff057c7ec37ea33b959cd27bd906c909e38e2b1",
+    "base_image": "dhi.io/python:3.12-debian13@sha256:a67245096d56c6ce891b9bec78a8090850907af9314185597c6b5d75438ca999",
+    "commit": "8e460140d8f80ca2d02f0228c5cd10cb9f027fd4",
+    "build_id": "39904604019-1",
+    "unreviewed_high_critical": 0,
+    "policy_sha256": "7e3893d19fe6f8f40cf64aab41f424b6ef4ba7382ffc444f2bc3720bb9c098c4",
+    "raw_scan_sha256": "0e180e022ee1ca2eb8adfb27d44ff1cbf78c29e26238aaeac4e11b0c86f6bf13",
+    "registry_image": "proximaimagelibrary.azurecr.io/image-library@sha256:dd4b30a53d084f424fd7a1790673db852735d3704c5d4fb7ef31550e8bffbb17",
+    "provenance_type": "workflow-release-receipt"
+  },
+  "strategy": "in-place-no-swap",
+  "temporary_access_removed": {},
+  "before": {
+    "staging": {
+      "resource": "/subscriptions/9528fb58-4fa4-43f8-9940-e5c3e1f1903f/resourceGroups/PP-Resources/providers/Microsoft.Web/sites/pp-image-library/slots/staging",
+      "host": "pp-image-library-staging.azurewebsites.net",
+      "image": "proximaimagelibrary.azurecr.io/image-library@sha256:dd4b30a53d084f424fd7a1790673db852735d3704c5d4fb7ef31550e8bffbb17",
+      "readiness": {
+        "build_id": "39904604019-1",
+        "commit": "8e460140d8f80ca2d02f0228c5cd10cb9f027fd4",
+        "pilot_state": {
+          "boot_id": "5fa4c04c7772456a9e9dfde11f82b7e3",
+          "gid": 65532,
+          "state_id": "c4ed33732aa65098c8b4536a5c8ef7fc1dc804df435a147741df59b965a38115",
+          "uid": 65532
+        },
+        "short": "8e46014",
+        "status": "ready",
+        "telemetry": true,
+        "version": "v2.0.0"
+      },
+      "safe_settings": {
+        "APP_READ_ONLY": "true",
+        "INGEST_POLLER_ENABLED": "false",
+        "TEST_MODE": "false",
+        "DEV_AUTH_BYPASS": "false",
+        "PILOT_STATE_PROBE_ENABLED": "true",
+        "WEBSITES_ENABLE_APP_SERVICE_STORAGE": "true"
+      }
+    },
+    "production": {
+      "resource": "/subscriptions/9528fb58-4fa4-43f8-9940-e5c3e1f1903f/resourceGroups/PP-Resources/providers/Microsoft.Web/sites/pp-image-library",
+      "host": "pp-image-library.azurewebsites.net",
+      "image": "proximaimagelibrary.azurecr.io/image-library@sha256:f5bb32b23cc5e20c6fa3b4813b1171431a10a979aac9196f2029db0c2c78345f",
+      "readiness": {
+        "build_id": "39904263261-1",
+        "commit": "68ae9ed6dda196f87feaa4cb1956b75adbdf04df",
+        "pilot_state": {
+          "boot_id": "88e09d0671a34fbe839768ed9d946a41",
+          "gid": 65532,
+          "state_id": "23417242c2c60e65d695520412f767a5a7ca6fd9d29b9357a62f7ef24e05c0c2",
+          "uid": 65532
+        },
+        "short": "68ae9ed",
+        "status": "ready",
+        "telemetry": true,
+        "version": "v2.0.0"
+      },
+      "safe_settings": {
+        "APP_READ_ONLY": "true",
+        "INGEST_POLLER_ENABLED": "false",
+        "TEST_MODE": "false",
+        "DEV_AUTH_BYPASS": "false",
+        "PILOT_STATE_PROBE_ENABLED": "true",
+        "WEBSITES_ENABLE_APP_SERVICE_STORAGE": "true"
+      }
+    }
+  },
+  "staging_gate_passed": true,
+  "operations": [
+    {
+      "slot": "production",
+      "before": {
+        "resource": "/subscriptions/9528fb58-4fa4-43f8-9940-e5c3e1f1903f/resourceGroups/PP-Resources/providers/Microsoft.Web/sites/pp-image-library",
+        "host": "pp-image-library.azurewebsites.net",
+        "image": "proximaimagelibrary.azurecr.io/image-library@sha256:f5bb32b23cc5e20c6fa3b4813b1171431a10a979aac9196f2029db0c2c78345f",
+        "readiness": {
+          "build_id": "39904263261-1",
+          "commit": "68ae9ed6dda196f87feaa4cb1956b75adbdf04df",
+          "pilot_state": {
+            "boot_id": "88e09d0671a34fbe839768ed9d946a41",
+            "gid": 65532,
+            "state_id": "23417242c2c60e65d695520412f767a5a7ca6fd9d29b9357a62f7ef24e05c0c2",
+            "uid": 65532
+          },
+          "short": "68ae9ed",
+          "status": "ready",
+          "telemetry": true,
+          "version": "v2.0.0"
+        },
+        "safe_settings": {
+          "APP_READ_ONLY": "true",
+          "INGEST_POLLER_ENABLED": "false",
+          "TEST_MODE": "false",
+          "DEV_AUTH_BYPASS": "false",
+          "PILOT_STATE_PROBE_ENABLED": "true",
+          "WEBSITES_ENABLE_APP_SERVICE_STORAGE": "true"
+        }
+      },
+      "candidate_image": "proximaimagelibrary.azurecr.io/image-library@sha256:dd4b30a53d084f424fd7a1790673db852735d3704c5d4fb7ef31550e8bffbb17",
+      "status": "reconciliation_required_no_rollback",
+      "rollback_attempts": 0,
+      "error_type": "RuntimeError"
+    }
+  ],
+  "error_type": "RuntimeError",
+  "elapsed_seconds": 128.46
+}
