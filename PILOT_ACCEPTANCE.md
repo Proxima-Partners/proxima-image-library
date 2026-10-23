@@ -93,6 +93,23 @@ review found pytest could itself be cached. The pipeline now disables cache for
 the disposable test stage only, keeping dependency caches; five comparable runs
 will be measured with fresh test execution on every attempt.
 
+Repeat `39910716638-2` failed closed BEFORE any image update: the earlier run
+attempt's artifacts were no longer available after rerunning the workflow.
+Both CI access rules were removed and both images/states remained unchanged.
+The already-downloaded passing receipt from attempt 1 was preserved verbatim
+in `pilot-evidence/release-receipts/39910716638-1.json` and cross-checked against
+the original successful build-job security/publish logs. The helper may use only
+such a reviewed exact unexpired checkpoint if artifact retrieval fails; missing,
+expired or mismatched evidence still blocks. The first preliminary run's full
+raw build artifact is no longer available; its prior 90-day retention statement
+does not override this observed rerun behavior.
+
+Use FRESH workflow runs, not reruns, for the five final measurements. Workflow
+measurement-label-only commits will hold application code constant, with fresh
+tests, exact-image smoke and scans every time. Preserve all build/deploy artifacts
+locally as well as the 90-day GitHub retention for these accepted runs. This
+measures the cached release pipeline, not dependency-upgrade or cold-host time.
+
 ## Comparable read experiment
 
 One warm-up then 20 interleaved, sequential authenticated `/api/images` requests
@@ -163,8 +180,10 @@ Authoritative CI artifacts are retained for 90 days on each cited GitHub run.
   mutations. Put new runs on hold, inspect the run/checkpoint, Azure configured
   digest and live readiness on BOTH hostnames. Reconcile temporary `pilot-ci-*`
   rules to the exact finished run before removal; never remove the operator rule.
-- Never replay an existing checkpoint. Only after reconciliation, use a fresh
-  run attempt/report. Keep the Actions job visible in Edge during supervision.
+- Never replay an existing checkpoint or rerun a deployed workflow: reruns can
+  invalidate earlier artifact availability. After reconciliation, use a fresh
+  workflow run/report and preserve receipts for both running/rollback images.
+  Keep the Actions job visible in Edge during supervision.
 - This procedure covers the read-only isolated pilot only. Public cutover,
   writable production promotion, scheduled catalog work and cleanup remain
   governed by their separate gates and approvals.

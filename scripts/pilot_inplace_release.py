@@ -25,6 +25,7 @@ from scripts.pilot_rehearsal import (
 )
 
 REPO = 'Proxima-Partners/proxima-image-library'
+RECEIPT_ARCHIVE = Path(__file__).resolve().parents[1] / 'pilot-evidence' / 'release-receipts'
 
 
 def checkpoint(path, report):
@@ -45,10 +46,23 @@ def download_receipt(build_id, destination):
     if not re.fullmatch(r'[0-9]+-[0-9]+', build_id):
         raise ValueError('Invalid CI build identity')
     run_id, _ = build_id.split('-')
-    subprocess.run(['gh', 'run', 'download', run_id, '--repo', REPO,
-                    '--name', 'pilot-build-' + build_id, '--dir', str(destination)],
-                   check=True, capture_output=True, timeout=90)
-    return load_release(destination / 'release.json')
+    try:
+        subprocess.run(['gh', 'run', 'download', run_id, '--repo', REPO,
+                        '--name', 'pilot-build-' + build_id, '--dir', str(destination)],
+                       check=True, capture_output=True, timeout=90)
+        receipt = load_release(destination / 'release.json')
+    except subprocess.CalledProcessError:
+        # Rerunning a GitHub workflow can remove the earlier attempt's artifacts.
+        # Only a separately retained, reviewed exact receipt may recover that
+        # evidence. Never invent a pass or infer one from a healthy endpoint.
+        archived = RECEIPT_ARCHIVE / (build_id + '.json')
+        if not archived.is_file():
+            raise RuntimeError('Rollback receipt unavailable; preserve evidence and reconcile before retry') from None
+        receipt = load_release(archived)
+        receipt['recovery_source'] = 'reviewed-repository-receipt-checkpoint'
+    if receipt['build_id'] != build_id:
+        raise RuntimeError('Rollback receipt build identity differs')
+    return receipt
 
 
 def protected_configuration(slot):

@@ -148,3 +148,22 @@ def test_unexpected_container_override_is_not_accepted(monkeypatch, field, value
     monkeypatch.setattr(rollout, 'az', lambda *args: [container])
     with pytest.raises(RuntimeError, match='Unexpected container'):
         rollout.protected_configuration('staging')
+
+
+@pytest.mark.parametrize('case', ['valid', 'missing', 'expired', 'wrong_build'])
+def test_missing_artifact_requires_exact_unexpired_reviewed_checkpoint(monkeypatch, tmp_path, case):
+    monkeypatch.setattr(rollout, 'RECEIPT_ARCHIVE', tmp_path)
+    def unavailable(*args, **kwargs): raise subprocess.CalledProcessError(1, 'gh')
+    monkeypatch.setattr(rollout.subprocess, 'run', unavailable)
+    data = {'status': 'pass', 'registry_image': 'proximaimagelibrary.azurecr.io/image-library@sha256:' + 'a'*64,
+            'commit': 'b'*40, 'build_id': '111-1', 'expires_at': '2100-01-01T00:00:00Z'}
+    if case == 'expired': data['expires_at'] = '2000-01-01T00:00:00Z'
+    if case == 'wrong_build': data['build_id'] = '222-1'
+    if case != 'missing': (tmp_path / '111-1.json').write_text(json.dumps(data))
+    if case == 'valid':
+        result = rollout.download_receipt('111-1', tmp_path / 'download')
+        assert result['build_id'] == '111-1'
+        assert result['recovery_source'] == 'reviewed-repository-receipt-checkpoint'
+    else:
+        with pytest.raises((RuntimeError, ValueError)):
+            rollout.download_receipt('111-1', tmp_path / 'download')
