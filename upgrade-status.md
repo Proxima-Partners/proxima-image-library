@@ -1,15 +1,30 @@
 # Upgrade status
 
-Updated: 2026-10-22 (America/Los_Angeles).
+Updated: 2026-10-23 (America/Los_Angeles).
 
 ## Current execution checkpoint
 
-**Pilot is not passed; approved in-place implementation is in progress.**
+**Isolated read-only container pilot PASSED with approved in-place promotion.**
+Five fresh complete releases passed with 255 freshly executed tests each.
+Median time to verified main: 266.88s (4m27s); median complete CI including
+cleanup: 281s (4m41s). Initial queues were 3–5s; all ten rollouts were 35.50–55.10s.
+Final build `39914306153-1` / commit `f7c58f0` / digest `3a7a7c24…` is healthy
+on both pilot slots. Real sign-in, visible v2.0.0, catalog/thumbnails, read-only
+status and actual telemetry ingestion are verified. Independent Kudu VFS state
+hashes match the original main/staging identities. No temporary CI ingress remains.
+
+Pilot mode is now `hold` after the requested measurement series. Public production
+remains v1.0.5 / `0ddfd05`, its IONOS CNAME is unchanged, and remote `main` is
+unchanged. This pilot performed no catalog writes, backfills, production shutdown or DNS cutover.
+See [PILOT_ACCEPTANCE.md](PILOT_ACCEPTANCE.md) for every timing, retained failure,
+recovery evidence, artifact-retention correction and maintenance follow-up.
+
+## Implementation history (superseded by final acceptance above)
+
 The user approved staging validation followed by the same tested digest update
 in place, preserving main-slot state/settings and accepting a brief restart.
 One verified rollback is permitted; ambiguous updates require reconciliation.
-Revised local and recovery checks now pass; resume pilot deployments for the
-five-run complete-release timing gate. Public production and DNS remain unchanged.
+Revised local and recovery checks passed before resuming the measured series.
 
 In-place prior-digest restoration passed on both pilot slots (33.69s staging,
 54.22s main), preserving state and every setting/credential. A first rehearsal
@@ -20,7 +35,7 @@ smoke, SBOM and the existing security gate. Failed-start recovery passed in
 100.57s; a confirmed `ImagePullFailure` recovered once in 83.84s. Actual automatic
 main rollback also passed: a forced gate failure after a healthy candidate
 update restored the prior approved digest exactly once in 41.96s, preserving
-state and credentials. Five complete timed releases are next.
+state and credentials. Five complete timed releases subsequently passed.
 
 A forward slot swap exposed a state-ownership mismatch:
 the two pilot `/home` sentinels exchanged hostnames with the content. Runtime and
@@ -29,7 +44,7 @@ were untouched. Reverse-swap recovery PASSED in 84.70 seconds against the
 original image/state checkpoint, including both nonroot/auth checks. Approval changes promotion to tested-digest updates
 in place with a bounded restart/one rollback, rather than adding unapproved
 external storage. See PILOT_ACCEPTANCE.md. Automatic pilot deployments are held
-pending implementation validation; build-only validation stays enabled.
+after completed pilot acceptance; build-only validation stays enabled.
 
 User approved the exact-image applicability review and requested unattended
 execution until the pilot passes. All eight candidate package findings have
@@ -133,7 +148,7 @@ identity instead of treating temporary ingress-propagation errors as no state.
 - [x] Present proposed rollout, acceptance gates and rollback design in the local plan.
 - [x] User approved the container implementation plan and necessary downtime.
 - [ ] Pre-migrate: protected configuration/state inventory and validated DNS/TLS rollback.
-- [ ] Implement and verify container image and isolated pilot.
+- [x] Implement and verify container image and isolated pilot.
 - [ ] Execute approved maintenance-window cutover.
 - [ ] Validate public behavior, telemetry and measured performance.
 
@@ -143,7 +158,7 @@ An in-place dedicated-plan move is not established: the app retains the legacy `
 
 Production and staging both configure the same ingest folder, and importing the web application can start a writing/deleting poller. The pilot and every nonproduction slot must have writers disabled; a single user does not prevent duplicate background jobs. This is a detected risk, not evidence that duplication occurred.
 
-Implementation is in progress on `perf/container-pilot`; `main` and production remain unchanged. Writer/drain controls, persistent-state paths and build identity have local validation evidence below. The approved isolated Azure resources are now provisioned; the first publish/deploy pipeline is next. No DNS change or catalog write has been made.
+Pilot implementation is complete on `perf/container-pilot`; `main` and production remain unchanged. Writer/drain controls, persistent-state paths and build identity have local and live validation evidence. The approved isolated Azure resources are provisioned and the pipeline has passed the measured series. Public cutover preparation remains separate. No DNS change or catalog write has been made.
 
 IONOS is the confirmed DNS provider. On 2026-10-22 the user supplied an authenticated Edge session; the `library` CNAME and `asuid.library` TXT were verified in the DNS panel. The CNAME remains `pp-app-serv.azurewebsites.net`. DNS access is no longer a blocker; TLS, state transfer and pilot acceptance gates remain outstanding. The unrelated root, mail, Pete and other subdomain records are outside scope.
 

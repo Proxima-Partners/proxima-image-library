@@ -1,6 +1,6 @@
 # Image Library container implementation plan
 
-Date: 2026-10-22 (America/Los_Angeles). Status: approved; implementation in progress on the pilot branch. See `upgrade-status.md` for execution evidence.
+Date: 2026-10-22 (America/Los_Angeles). Status updated 2026-10-23: isolated read-only pilot passed on the pilot branch; public cutover remains separate. See `upgrade-status.md` and `PILOT_ACCEPTANCE.md` for execution evidence.
 Baseline commit: `0ddfd050160f5363a1ebb87ade588509b7a426e0`.
 
 **Approved adjustment, 2026-10-22:** the actual forward swap failed the state-

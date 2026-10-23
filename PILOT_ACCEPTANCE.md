@@ -1,7 +1,71 @@
 # Container pilot acceptance evidence
 
-As of 2026-10-22 PDT. **In-place promotion approved; validation in progress, not passed.**
+As of 2026-10-23 PDT. **Isolated read-only pilot PASSED with in-place promotion.**
 Legacy `library.liveproxima.org` remains v1.0.5 / `0ddfd05`; DNS is unchanged.
+
+## Final acceptance — 2026-10-23
+
+**PASS for the isolated, read-only container pilot using in-place promotion.**
+This does not authorize or claim a completed public production cutover.
+
+Five fresh workflows passed, with 255 tests actually executed on each attempt,
+exact-image smoke, SBOM/security gates, immutable publish, staging/main updates,
+state/configuration/authentication checks and verified temporary-access cleanup.
+Application/dependency/test code is identical across the series; only the workflow
+measurement label and immutable build identity differ. Dependency caches are warm;
+these are complete cached pipeline measurements, not cold-host or dependency-upgrade
+benchmarks. All samples, including the slower third run, are retained.
+
+Times below are seconds. Initial queue is separate; verified/complete start at
+first build-job start and INCLUDE inter-job waits (3–4 seconds). Complete also
+includes cleanup/artifact retention. Each rollout includes readiness/config/auth
+verification, not just Azure API submission.
+
+| Run | Initial queue | Build | Staging rollout | Main rollout | Verified main | Complete CI |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 / [39911985003](https://github.com/Proxima-Partners/proxima-image-library/actions/runs/39911985003) | 5 | 93 | 39.46 | 42.93 | 286.26 | 300 |
+| 2 / [39912581349](https://github.com/Proxima-Partners/proxima-image-library/actions/runs/39912581349) | 3 | 94 | 36.27 | 42.82 | 256.96 | 277 |
+| 3 / [39913096753](https://github.com/Proxima-Partners/proxima-image-library/actions/runs/39913096753) | 3 | 104 | 55.10 | 53.14 | 314.27 | 327 |
+| 4 / [39913746690](https://github.com/Proxima-Partners/proxima-image-library/actions/runs/39913746690) | 4 | 88 | 45.40 | 38.13 | 266.88 | 281 |
+| 5 / [39914306153](https://github.com/Proxima-Partners/proxima-image-library/actions/runs/39914306153) | 4 | 93 | 42.74 | 35.50 | 241.85 | 254 |
+
+Median verified-main time: **266.88 seconds (4m27s)**, below the five-minute target.
+Median complete CI: **281 seconds (4m41s)**. All ten warm image rollouts were
+**35.50–55.10 seconds**, below the two-minute target. Initial queue was 3–5 seconds.
+These measurements do not attribute the entire old shared-S1 deployment difference
+to containers: hardware, release method and validation scope differ.
+
+Final image on BOTH pilot slots:
+`proximaimagelibrary.azurecr.io/image-library@sha256:3a7a7c24a525de119c9c4808b61cba2881f4d62d62b31fa2d3f2fd5d22cddd31`
+(commit `f7c58f099dddd162af6ab47615bf9ee9d801721a`, build `39914306153-1`).
+
+Final direct checks:
+
+- Real Edge sessions completed Microsoft sign-in callbacks on both hosts;
+  both homepages show v2.0.0, six catalog categories totaling 280 records and
+  populated recent thumbnails. Authenticated maintenance status on both:
+  `active_work=0, draining=false, read_only=true`.
+- Independent Kudu VFS hashes match runtime state: main `23417242…`, staging
+  `c4ed3373…`. Each remains its original pre-swap/recovery identity. Runtime
+  UID/GID remains 65532 and ingestion is off.
+- Both ingress configurations contain only `pilot-operator` and `Deny all`,
+  with default Deny; no temporary `pilot-ci-*` rules remain.
+- Insights for this exact build contains 85 requests, 56 dependency events
+  (42 Graph, eight Microsoft login, four SDK-monitor and two startup), zero
+  dependency failures and zero exceptions at the observation snapshot. Four
+  `/api/pending-count` polls received 401; subsequent real sign-in callbacks,
+  catalog reads, authenticated badge/status requests and thumbnails succeeded.
+  The auth-denial events are retained, not hidden or claimed as zero failures.
+- `library.liveproxima.org` still reports v1.0.5 / `0ddfd05`; CNAME remains
+  `pp-app-serv.azurewebsites.net`. Remote `main` remains `0ddfd05`. No public
+  cutover, legacy-app shutdown, catalog mutation, backfill or write canary was performed by this pilot.
+
+Pilot mode is now **hold** after the requested series, pending cutover preparation.
+The five raw scan files' hashes were independently checked against their release
+receipts. Full build/deploy artifacts are also downloaded under
+`/tmp/image-library-pilot-evidence.3zow09/accepted-1` through `accepted-5`.
+Exact running/rollback receipts are preserved in `pilot-evidence/release-receipts/`;
+structured timing evidence is `pilot-evidence/2026-10-23-complete-release-timings.json`.
 
 ## Completed gates
 
@@ -51,9 +115,8 @@ Alternative: externalize local state to separately managed, slot-sticky storage
 before retaining swaps. That adds infrastructure, access configuration and
 migration work not included in the current approved resource set.
 
-Automatic pilot deployments are being resumed with `IMAGE_LIBRARY_PILOT_MODE=run`
-after local validation and recovery rehearsals of the approved implementation.
-Legacy production/DNS remain unchanged.
+The measured series used `IMAGE_LIBRARY_PILOT_MODE=run`; mode is now `hold`
+after successful completion. Legacy production/DNS remain unchanged.
 
 ### In-place rehearsal progress
 
@@ -82,7 +145,7 @@ Legacy production/DNS remain unchanged.
   41.96 seconds, with original state and protected configuration unchanged.
   The candidate was NOT accepted as a successful release. This is distinct from
   the actual invalid-start and missing-image failure tests above.
-- Five-run complete-release timing remains pending.
+- Five-run complete-release timing subsequently passed; see final acceptance above.
 
 First complete CI release `39910716638-1` passed: 245.39 seconds from the first
 build job starting to verified main, 256 seconds through complete CI cleanup;
@@ -150,17 +213,17 @@ its total workflow duration is not a like-for-like CI comparison. Likewise,
 the old shared-S1 17m20s release is not evidence that containers alone save that
 time. Queue time, build time, image update and swap must remain separate.
 
-## Remaining gates
+## Gates remaining for public cutover (not part of the completed pilot)
 
-- At least five comparable complete cached releases including promotion, with
-  queue time separate; median target <=5 minutes, update/promotion targets <=2 minutes.
-- Final consolidated evidence and explicit acceptance decision. No old-app
-  shutdown, DNS cutover, asset deletion/backfill or write canary is included.
+- Validate protected state transfer, DNS/TLS/Entra custom-domain routing and rollback.
+- Complete the supervised cutover gates before enabling writes or ingest ownership.
+  No old-app shutdown, DNS cutover, asset deletion/backfill or write canary is included here.
 
 Sanitized restart, seed, failed-swap and recovery receipts are checked into
 `pilot-evidence/2026-10-22-*.json`. Full local downloaded evidence remains in
 `/tmp/image-library-pilot-evidence.3zow09/`.
-Authoritative CI artifacts are retained for 90 days on each cited GitHub run.
+The five accepted fresh-run artifacts have 90-day retention and local copies.
+The preliminary rerun artifact exception is explicitly documented above.
 
 ## Unattended pilot release procedure
 
@@ -190,6 +253,13 @@ Authoritative CI artifacts are retained for 90 days on each cited GitHub run.
 
 ## Maintenance observations retained for the next reviewed batch
 
+- Review-badge polling continues every 30 seconds, including hidden/expired
+  sessions. Pause on hidden tabs and 401 responses, and refresh after sign-in;
+  this reduces redundant requests and auth-denial alert noise without bypassing auth.
+- Before writable production cutover, add an explicit allowlisted slot label
+  to telemetry. Current service/build attribution works, but both pilot slots
+  share the role/build identity and the request-host aggregation returned empty.
+  Do not infer per-slot error rates from the combined final-build counts above.
 - Commits contain SSH signatures and signing remains enabled. GitHub currently
   reports `unknown_key` for the signing key, so these are NOT GitHub-verified
   signatures. Registering/trusting that key is a user-owned account follow-up;

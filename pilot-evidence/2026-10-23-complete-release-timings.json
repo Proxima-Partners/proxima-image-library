@@ -1,0 +1,67 @@
+{
+  "rows": [
+    {
+      "run": 39911985003,
+      "commit": "128358b3ba20f3c5f595a873f7bcf53ec8444d2f",
+      "queue_seconds": 5,
+      "build_seconds": 93,
+      "interjob_seconds": 4,
+      "staging_seconds": 39.46,
+      "main_seconds": 42.93,
+      "verified_seconds": 286.26,
+      "complete_seconds": 300,
+      "image": "proximaimagelibrary.azurecr.io/image-library@sha256:2fa1067522535d93376281ad2465e6c839c92e43ee0737d19262af9970525ebe"
+    },
+    {
+      "run": 39912581349,
+      "commit": "78eadaed9712d25dfd8b42ca2c51fe7d6580935b",
+      "queue_seconds": 3,
+      "build_seconds": 94,
+      "interjob_seconds": 3,
+      "staging_seconds": 36.27,
+      "main_seconds": 42.82,
+      "verified_seconds": 256.96,
+      "complete_seconds": 277,
+      "image": "proximaimagelibrary.azurecr.io/image-library@sha256:2c051a67e13ba8ad2d28e0b35780665d37780b68cd416ba50d32fc7df6b30e2d"
+    },
+    {
+      "run": 39913096753,
+      "commit": "0036f8218266d4e0c05571b08bf260a98756ee39",
+      "queue_seconds": 3,
+      "build_seconds": 104,
+      "interjob_seconds": 3,
+      "staging_seconds": 55.1,
+      "main_seconds": 53.14,
+      "verified_seconds": 314.27,
+      "complete_seconds": 327,
+      "image": "proximaimagelibrary.azurecr.io/image-library@sha256:aeff84bc4b1286005484748959cf92d6351cc7c621d6d3f3b45a11c11c204101"
+    },
+    {
+      "run": 39913746690,
+      "commit": "74df5d17ff453b420a0bdcec1f417fa1197d848d",
+      "queue_seconds": 4,
+      "build_seconds": 88,
+      "interjob_seconds": 4,
+      "staging_seconds": 45.4,
+      "main_seconds": 38.13,
+      "verified_seconds": 266.88,
+      "complete_seconds": 281,
+      "image": "proximaimagelibrary.azurecr.io/image-library@sha256:e743a538ee396977662d3e19231469480ccd2cd73ec990f51d7ae20fb118d2b3"
+    },
+    {
+      "run": 39914306153,
+      "commit": "f7c58f099dddd162af6ab47615bf9ee9d801721a",
+      "queue_seconds": 4,
+      "build_seconds": 93,
+      "interjob_seconds": 4,
+      "staging_seconds": 42.74,
+      "main_seconds": 35.5,
+      "verified_seconds": 241.85,
+      "complete_seconds": 254,
+      "image": "proximaimagelibrary.azurecr.io/image-library@sha256:3a7a7c24a525de119c9c4808b61cba2881f4d62d62b31fa2d3f2fd5d22cddd31"
+    }
+  ],
+  "median_verified_seconds": 266.88,
+  "median_complete_seconds": 281,
+  "max_rollout_seconds": 55.1
+}
