@@ -28,7 +28,8 @@ def main():
     verify_pilot_site(site, 'staging')
     configured = settings(APP, 'staging')
     for k, v in {'APP_READ_ONLY': 'true', 'INGEST_POLLER_ENABLED': 'false', 'TEST_MODE': 'false',
-                 'DEV_AUTH_BYPASS': 'false', 'WEBSITES_ENABLE_APP_SERVICE_STORAGE': 'true'}.items():
+                 'DEV_AUTH_BYPASS': 'false', 'WEBSITES_ENABLE_APP_SERVICE_STORAGE': 'true',
+                 'PILOT_STATE_PROBE_ENABLED': 'true'}.items():
         if configured.get(k) != v: raise RuntimeError('Unsafe pilot setting: ' + k)
     with urlopen('https://api.ipify.org', timeout=15) as response:
         ip = response.read().decode()
@@ -45,17 +46,29 @@ def main():
         az('webapp', 'config', 'access-restriction', 'add', '-g', RG, '-n', APP, '--slot', 'staging',
            '--rule-name', rule, '--action', 'Allow', '--ip-address', ip + '/32', '--priority', '110')
         rule_added = True
+        base = 'https://' + site['defaultHostName']
+        prior_state = None
+        try:
+            with urlopen(base + '/readyz', timeout=15) as response:
+                prior_state = json.load(response).get('pilot_state', {}).get('state_id')
+        except (HTTPError, URLError, TimeoutError, ValueError):
+            pass
+        rollout_started = time.monotonic()
         az('webapp', 'sitecontainers', 'create', '-g', RG, '-n', APP, '--slot', 'staging',
            '--container-name', 'main', '--image', image, '--target-port', '8080', '--is-main', 'true',
            '--system-assigned-identity', 'true')
         deadline = time.monotonic() + 600
-        base = 'https://' + site['defaultHostName']
         while time.monotonic() < deadline:
             try:
                 with urlopen(base + '/readyz', timeout=15) as response: ready = json.load(response)
                 if ready.get('commit') == os.environ['GITHUB_SHA'] and ready.get('build_id') == run_id + '-' + attempt:
                     if ready.get('version') != 'v2.0.0' or ready.get('status') != 'ready' or not ready.get('telemetry'):
                         raise RuntimeError('Readiness contract failed')
+                    probe = ready.get('pilot_state', {})
+                    if probe.get('uid') != 65532 or probe.get('gid') != 65532 or not re.fullmatch(r'[0-9a-f]{64}', probe.get('state_id', '')):
+                        raise RuntimeError('Nonroot persistent-state probe failed')
+                    if prior_state and probe['state_id'] != prior_state:
+                        raise RuntimeError('Pilot state changed across image deployment')
                     break
             except (HTTPError, URLError, TimeoutError, ValueError):
                 pass
@@ -70,7 +83,9 @@ def main():
         observed = az('webapp', 'sitecontainers', 'list', '-g', RG, '-n', APP, '--slot', 'staging')
         if not any(r.get('properties', r).get('image') == image for r in observed):
             raise RuntimeError('Configured digest verification failed')
-        output.update(status='ready', readiness=ready, elapsed_seconds=round(time.monotonic() - started, 2))
+        output.update(status='ready', readiness=ready, prior_state_id=prior_state,
+                      rollout_seconds=round(time.monotonic() - rollout_started, 2),
+                      elapsed_seconds=round(time.monotonic() - started, 2))
     finally:
         if rule_added:
             az('webapp', 'config', 'access-restriction', 'remove', '-g', RG, '-n', APP, '--slot', 'staging', '--rule-name', rule)

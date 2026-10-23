@@ -5,9 +5,13 @@ finish during drain. This is NOT a distributed lease or permission to scale out.
 """
 
 import functools
+import hashlib
 import os
+import re
+import stat
 import tempfile
 import threading
+import uuid
 from pathlib import Path
 
 _lock = threading.RLock()
@@ -132,3 +136,29 @@ def verify_state_directory():
         source = Path(temporary) / "probe"
         source.write_bytes(b"ready")
         source.rename(Path(temporary) / "renamed")
+    if os.getenv("PILOT_STATE_PROBE_ENABLED", "false").lower() != "true":
+        return None
+    if not read_only() or os.getenv("INGEST_POLLER_ENABLED", "false").lower() != "false":
+        raise RuntimeError("Persistent pilot probe requires read-only mode and ingestion disabled")
+    # A non-secret, pilot-only sentinel lets the operator prove the actual
+    # mounted state survives new image deployments, restarts and slot swaps.
+    # Never overwrite an existing file or follow a link into application data.
+    marker = path / ".image-library-pilot-state"
+    try:
+        fd = os.open(marker, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    except FileExistsError:
+        pass
+    else:
+        with os.fdopen(fd, "wb") as stream:
+            stream.write(uuid.uuid4().hex.encode("ascii"))
+            stream.flush()
+            os.fsync(stream.fileno())
+    fd = os.open(marker, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    with os.fdopen(fd, "rb") as stream:
+        if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
+            raise RuntimeError("Invalid pilot state sentinel")
+        data = stream.read(33)
+    if not re.fullmatch(rb"[a-f0-9]{32}", data):
+        raise RuntimeError("Invalid pilot state sentinel")
+    return {"state_id": hashlib.sha256(data).hexdigest(), "boot_id": uuid.uuid4().hex,
+            "uid": os.getuid(), "gid": os.getgid()}

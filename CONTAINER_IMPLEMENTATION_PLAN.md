@@ -119,6 +119,9 @@ During the window:
 3. Keep the new app read-only. Stop the old Image Library app/slot if necessary to guarantee a single writer; never stop the shared plan or Pete. Stopping occurs only after state export and rollback prerequisites are ready.
 4. Apply the approved custom-domain/DNS/TLS change to the new app. Keep the same public URL and production callback. Check any integration that stored the old direct Azure hostname; a CNAME change does not update those clients automatically.
 5. Verify TLS, sign-in, admin protection, catalog reads, visible thumbnails, MCP read delivery, exact commit/digest and telemetry at the real custom domain. User MFA, if required, remains a user-owned step.
+   Disable `PILOT_STATE_PROBE_ENABLED` before enabling normal writes; this
+   pilot-only check deliberately refuses startup unless the app is read-only
+   and ingestion is disabled. Preserve its non-secret sentinel as test evidence.
 6. Enable writes only after read/auth checks pass. Run at most the explicitly approved small canary (for example 1–3 named test assets); no automatic deletion afterward. Verify original/derivative files, rights, metadata and absence of duplicate records.
 7. Keep automatic ingest disabled until a single active owner is verified. Record whether normal ingest was resumed or remains paused. Never silently create a second consumer of the production ingest folder.
 8. Observe for 24 hours. Retain the old app, settings and artifacts for at least seven days; cleanup is a separate approval. The old shared S1 plan must remain because Pete uses it.

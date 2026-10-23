@@ -663,6 +663,7 @@ def readiness():
         "status": "ready" if _READY else "starting",
         "telemetry": _TELEMETRY_ENABLED,
         **_RELEASE,
+        **({"pilot_state": _PILOT_STATE} if _PILOT_STATE else {}),
     })
     response.headers["Cache-Control"] = "no-store"
     return response, 200 if _READY else 503
@@ -6442,8 +6443,9 @@ def api_maintenance_stock_api_update():
     return jsonify({"saved": saved, "test": test})
 
 
-# Warm local resources before accepting readiness/swap probes. No data writes.
-deployment.verify_state_directory()
+# Warm local resources before readiness. No catalog writes; an explicitly
+# enabled read-only pilot can retain its own non-secret persistence sentinel.
+_PILOT_STATE = deployment.verify_state_directory()
 app.jinja_env.get_template("index.html")
 PILImage.init()
 from PIL import features as _pillow_features

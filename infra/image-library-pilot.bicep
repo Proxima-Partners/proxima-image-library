@@ -91,6 +91,7 @@ resource sticky 'Microsoft.Web/sites/config@2024-04-01' = {
       'APP_READ_ONLY'
       'INGEST_POLLER_ENABLED'
       'INGEST_OWNER_HOSTNAME'
+      'PILOT_STATE_PROBE_ENABLED'
       'APP_BASE_URL'
       'MSAL_REDIRECT_URI'
       'CORS_ORIGINS'

@@ -52,6 +52,23 @@ name as the local CLI. The target guard now accepts either documented plan-ID
 shape, requires the exact resource/plan IDs, and rejects conflicting fields.
 Eight regression cases cover compatibility and incorrect resource targets.
 
+Corrected commit `942685e`, pilot run `39903706929`, passed build, scan, publish
+and Azure staging deployment. Digest
+`sha256:bdd6e501308d5f41c5e1b0deb87f447ea4e258d8c8bdf2844f0b67c502ee1243`
+was ready with matching commit/build and telemetry enabled. Deployment helper
+elapsed 27.93 seconds (includes preflight; not yet a separately timed pull).
+Temporary CI IP access was removed. Real Entra sign-in in Edge succeeded, the
+homepage visibly displays v2.0.0, and catalog categories/thumbnails loaded.
+Application Insights received 45 requests and 28 dependencies for this build;
+the sole failed request was an unmatched 404, with zero failed dependencies.
+This is a partial pilot pass, not final acceptance. Persistence across Azure
+restart/swap, recovery rehearsals and controlled performance comparison remain.
+
+A read-only pilot-only sentinel is now covered by tests so actual mounted-state
+identity can be compared across new image deployments, restarts and swaps.
+The sentinel never follows symlinks or overwrites an existing invalid file.
+It is disabled by default and must be disabled before production writes resume.
+
 ## Container migration
 
 - Source: `PP-App-Serv` and staging on shared `proxima-plan-s1`, West US 2.

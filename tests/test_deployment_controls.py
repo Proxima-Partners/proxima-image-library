@@ -11,6 +11,7 @@ def isolated_controls(monkeypatch, tmp_path):
     monkeypatch.setenv("APP_READ_ONLY", "false")
     monkeypatch.delenv("INGEST_POLLER_ENABLED", raising=False)
     monkeypatch.delenv("INGEST_OWNER_HOSTNAME", raising=False)
+    monkeypatch.delenv("PILOT_STATE_PROBE_ENABLED", raising=False)
     assert controls.snapshot()["active_work"] == 0
     yield
     assert controls.snapshot()["active_work"] == 0
@@ -82,6 +83,47 @@ def test_state_directory_probe_and_paths(monkeypatch, tmp_path):
         monkeypatch.setenv("APP_STATE_DIR", invalid)
         with pytest.raises(RuntimeError, match="existing absolute"):
             controls.verify_state_directory()
+
+
+def test_pilot_sentinel_persists_and_reports_fresh_boot(monkeypatch, tmp_path):
+    monkeypatch.setenv('APP_READ_ONLY', 'true')
+    monkeypatch.setenv('PILOT_STATE_PROBE_ENABLED', 'true')
+    first = controls.verify_state_directory()
+    second = controls.verify_state_directory()
+    assert first['state_id'] == second['state_id']
+    assert first['boot_id'] != second['boot_id']
+    assert len(first['state_id']) == 64
+    assert len(list(tmp_path.iterdir())) == 1
+
+
+@pytest.mark.parametrize('key,value', [('APP_READ_ONLY', 'false'), ('INGEST_POLLER_ENABLED', 'true'), ('INGEST_POLLER_ENABLED', 'typo')])
+def test_pilot_sentinel_requires_safe_mode(monkeypatch, tmp_path, key, value):
+    monkeypatch.setenv('APP_READ_ONLY', 'true')
+    monkeypatch.setenv('PILOT_STATE_PROBE_ENABLED', 'true')
+    monkeypatch.setenv(key, value)
+    with pytest.raises(RuntimeError, match='requires read-only'):
+        controls.verify_state_directory()
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_pilot_sentinel_never_replaces_invalid_existing_file(monkeypatch, tmp_path):
+    monkeypatch.setenv('APP_READ_ONLY', 'true')
+    monkeypatch.setenv('PILOT_STATE_PROBE_ENABLED', 'true')
+    marker = tmp_path / '.image-library-pilot-state'
+    marker.write_bytes(b'existing-data')
+    with pytest.raises(RuntimeError, match='Invalid pilot'):
+        controls.verify_state_directory()
+    assert marker.read_bytes() == b'existing-data'
+
+
+def test_pilot_sentinel_does_not_follow_symlinks(monkeypatch, tmp_path):
+    monkeypatch.setenv('APP_READ_ONLY', 'true')
+    monkeypatch.setenv('PILOT_STATE_PROBE_ENABLED', 'true')
+    target = tmp_path / 'application-data'
+    target.write_bytes(b'protected')
+    (tmp_path / '.image-library-pilot-state').symlink_to(target)
+    with pytest.raises(OSError): controls.verify_state_directory()
+    assert target.read_bytes() == b'protected'
 
 
 @pytest.mark.parametrize("class_name,method", [

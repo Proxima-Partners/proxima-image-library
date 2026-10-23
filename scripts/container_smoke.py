@@ -73,6 +73,7 @@ def smoke(image, commit, build_id):
                "--security-opt", "no-new-privileges", "--tmpfs", "/tmp:rw,nosuid,size=64m",
                "--mount", f"type=volume,source={volume},target=/home",
                "--env", "FLASK_SECRET_KEY", "--env", "TELEMETRY_ENABLED=false",
+               "--env", "PILOT_STATE_PROBE_ENABLED=true",
                "--env", f"EXPECTED_COMMIT={commit}", "--env", f"EXPECTED_BUILD_ID={build_id}",
                image, env=run_env)
 
@@ -93,6 +94,12 @@ def smoke(image, commit, build_id):
             raise RuntimeError(f"SIGTERM did not shut down cleanly: exit {exit_code}")
         docker("start", name)
         second = ready()
+        if first['pilot_state']['state_id'] != second['pilot_state']['state_id']:
+            raise RuntimeError('Pilot persistence sentinel changed across restart')
+        if first['pilot_state']['boot_id'] == second['pilot_state']['boot_id']:
+            raise RuntimeError('Restart did not produce a fresh application boot')
+        if second['pilot_state']['uid'] != 65532 or second['pilot_state']['gid'] != 65532:
+            raise RuntimeError('Pilot probe did not run as nonroot')
         docker("exec", name, "python", "-c",
                "from pathlib import Path; assert Path('/home/smoke-state').read_text() == 'persisted'")
         print(json.dumps({"image": image, "first": first, "restart": second,
