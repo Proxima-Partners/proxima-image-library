@@ -12,6 +12,7 @@ from PIL import Image as PILImage
 from PIL import ImageCms, ImageOps
 
 from src.config import Config
+from src.telemetry import traced
 from src.image_metadata import finalize_rights, license_summary, validate_rights, write_metadata
 
 # Approved website derivatives. Width is authoritative; height follows the
@@ -159,6 +160,7 @@ def _encode_webp(img: PILImage.Image, target_width: int) -> dict:
     }
 
 
+@traced("image.derivatives")
 def generate_web_derivatives(image_bytes: bytes, *, include_png: bool = True) -> dict:
     """Generate standard and, when eligible, hero derivatives without upscaling.
 
@@ -224,7 +226,7 @@ def compute_perceptual_hash(image_bytes: bytes, hash_size: int = 8) -> str:
     """
     with PILImage.open(BytesIO(image_bytes)) as img:
         img = img.convert("L").resize((hash_size + 1, hash_size), PILImage.LANCZOS)
-        pixels = list(img.getdata())
+        pixels = list(img.get_flattened_data())
 
     bits = []
     for row in range(hash_size):
@@ -263,6 +265,7 @@ def _unique_slug(base_slug: str, list_client, existing_filenames: Optional[set] 
 # Core pipeline
 # ---------------------------------------------------------------------------
 
+@traced("image.process")
 def process_image(
     file_bytes: bytes,
     original_filename: str,

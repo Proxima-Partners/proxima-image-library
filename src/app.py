@@ -11,6 +11,7 @@ import sys
 import tempfile
 import threading
 import time
+_STARTED_NS = time.time_ns()
 import uuid
 import csv
 from datetime import date, datetime
@@ -35,6 +36,8 @@ from werkzeug.exceptions import RequestEntityTooLarge
 from src.local_client import LocalClient
 from src import __version__
 from src.config import Config
+from src.release import release_info
+from src.telemetry import initialize_telemetry, tracer
 from src.mcp_delivery import verify_delivery
 from src import ingest_poller
 from src.maintenance_helpers import (
@@ -73,6 +76,9 @@ load_dotenv()
 Config.validate_runtime()
 
 app = Flask(__name__, template_folder="../templates", static_folder="../static")
+_RELEASE = release_info()
+_TELEMETRY_ENABLED = initialize_telemetry(app, commit=_RELEASE["commit"])
+_READY = False
 app.secret_key = Config.FLASK_SECRET_KEY
 app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
@@ -584,13 +590,15 @@ def health():
 
 @app.route("/api/version")
 def api_version():
-    import subprocess
-    try:
-        sha = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
-        short = sha[:7]
-    except Exception:
-        sha, short = "unknown", "unknown"
-    return jsonify({"version": __version__, "commit": sha, "short": short})
+    return jsonify(_RELEASE)
+
+
+@app.route("/readyz")
+def readiness():
+    # No Graph/AI calls: upstream outages must not cause platform recycle loops.
+    response = jsonify({"status": "ready" if _READY else "starting", **_RELEASE})
+    response.headers["Cache-Control"] = "no-store"
+    return response, 200 if _READY else 503
 
 
 @app.route("/debug/metrics")
@@ -6349,6 +6357,16 @@ def api_maintenance_stock_api_update():
     test = _test_stock_provider(provider)
     return jsonify({"saved": saved, "test": test})
 
+
+# Warm local resources before accepting readiness/swap probes. No data writes.
+app.jinja_env.get_template("index.html")
+PILImage.init()
+from PIL import features as _pillow_features
+if not _pillow_features.check("webp"):
+    raise RuntimeError("WebP codec is required")
+_READY = True
+with tracer().start_as_current_span("app.startup", start_time=_STARTED_NS):
+    pass
 
 # Start background ingest poller (SharePoint mode only)
 if Config.STORAGE_MODE == "sharepoint" and Config.SHAREPOINT_INGEST_FOLDER:

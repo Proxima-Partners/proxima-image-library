@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Optional, Union
 from anthropic import Anthropic
 from PIL import Image as PILImage
+from src.telemetry import SpanKind, traced
 
 # Maps file extensions to MIME types for the Claude API
 _MEDIA_TYPES = {
@@ -26,6 +27,10 @@ class AltTextGenerator:
 
     def __init__(self):
         self.client = Anthropic()
+
+    @traced("ai.messages", kind=SpanKind.CLIENT)
+    def _create_message(self, **kwargs):
+        return self.client.messages.create(**kwargs)
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -73,7 +78,7 @@ class AltTextGenerator:
     def _vision_message(self, source: Union[str, bytes], filename: str, prompt: str) -> str:
         """Send a vision request to Claude and return the response text."""
         image_data, media_type = self._encode(source, filename)
-        message = self.client.messages.create(
+        message = self._create_message(
             model="claude-sonnet-4-6",
             max_tokens=150,
             messages=[{
@@ -297,7 +302,7 @@ Approved tags: {allowed_tags}
             prompt += "\n\nReturn ONLY the three labeled lines (CATEGORY:, ALT:, TAGS:), nothing else."
 
             image_data, media_type = self._encode(source, filename)
-            message = self.client.messages.create(
+            message = self._create_message(
                 model="claude-sonnet-4-6",
                 max_tokens=300,
                 messages=[{
@@ -377,7 +382,7 @@ Approved tags: {allowed_tags}
             prompt += "\n\nReturn ONLY the two labeled lines (ALT:, TAGS:), nothing else."
 
             image_data, media_type = self._encode(source, filename)
-            message = self.client.messages.create(
+            message = self._create_message(
                 model="claude-sonnet-4-6",
                 max_tokens=250,
                 messages=[{

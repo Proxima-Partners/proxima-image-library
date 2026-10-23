@@ -1,6 +1,6 @@
 #!/bin/bash
 # Azure App Service startup script
-# SSE streams need long timeout; 2 workers avoids port contention on App Service
+# One process preserves current in-memory state. Concurrency changes are Phase 3.
 gunicorn \
   --bind=0.0.0.0:${PORT:-8000} \
   --workers=1 \

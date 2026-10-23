@@ -64,9 +64,7 @@ def _now_iso() -> str:
 
 
 def _python_bin() -> str:
-    venv_py = REPO_ROOT / ".venv" / "bin" / "python3"
-    if venv_py.exists():
-        return str(venv_py)
+    # Exercise the dependency set running the suite, not an older checkout venv.
     return sys.executable
 
 

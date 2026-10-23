@@ -5,75 +5,57 @@ on:
     branches: [main]
   workflow_dispatch: {}
 
+permissions:
+  contents: read
+
+# Never cancel a running deployment/swap when a newer commit arrives.
 concurrency:
   group: image-library-deploy
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
+  validate:
+    uses: ./.github/workflows/t1-regression.yml
+
   deploy-image-library:
+    needs: validate
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 30
-
     steps:
       - uses: actions/checkout@v4
 
-      - name: Confirm authoritative target
-        run: |
-          echo "Image Library production target: PP-App-Serv"
-          echo "Do not deploy Image Library code to PP-MCP-Server."
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-          cache: 'pip'
 
-      - name: Install dependencies
-        run: pip install -r requirements.txt --target=".python_packages/lib/site-packages"
+      - name: Package source-only release
+        run: python scripts/package_release.py release.zip
 
       - name: Azure Login
         uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      - name: Revert run-from-package (caused a stuck deploy / 503)
+      - name: Check staging deployment configuration without restarting it
+        shell: bash
         run: |
-          az webapp config appsettings set \
-            --resource-group PP-Resources \
-            --name PP-App-Serv \
-            --slot staging \
-            --settings WEBSITE_RUN_FROM_PACKAGE=0 \
-            --output none
-          # Give the app-settings-triggered restart time to settle before
-          # the next step pushes a new zip — deploying immediately after
-          # an appsettings change is the suspected cause of the last hang.
-          sleep 30
+          set -euo pipefail
+          settings=$(az webapp config appsettings list -g PP-Resources -n PP-App-Serv --slot staging -o json)
+          # Python requires Oryx; run-from-package is not supported.
+          jq -e 'any(.[]; .name == "SCM_DO_BUILD_DURING_DEPLOYMENT" and (.value | ascii_downcase) == "true") and (all(.[]; .name != "WEBSITE_RUN_FROM_PACKAGE" or .value == "0" or .value == ""))' <<< "$settings" > /dev/null
+          unset settings
+          echo "Verified PP-App-Serv staging configuration; PP-MCP-Server is never a target."
 
-      - name: Deploy to staging slot
+      - name: Deploy source to staging (Azure builds dependencies once)
         uses: azure/webapps-deploy@v3
         with:
           app-name: PP-App-Serv
           slot-name: staging
-          startup-command: 'bash startup.sh'
+          package: release.zip
 
-      - name: Wait for staging slot to become healthy
-        run: |
-          # The prior in-place-restart deploy could sever requests hitting
-          # production mid-restart (see incident notes above). Deploying to
-          # staging first and only swapping once it's actually answering
-          # health checks means production never runs a half-started process.
-          url="https://pp-app-serv-staging.azurewebsites.net/health"
-          for i in $(seq 1 20); do
-            code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "$url" || echo "000")
-            if [ "$code" = "200" ]; then
-              echo "Staging healthy after $i attempt(s)."
-              exit 0
-            fi
-            echo "Attempt $i: staging returned $code, retrying in 15s..."
-            sleep 15
-          done
-          echo "Staging slot never became healthy — aborting before swap."
-          exit 1
+      - name: Verify exact staging release before swap
+        run: python scripts/verify_release.py https://pp-app-serv-staging.azurewebsites.net "$GITHUB_SHA"
 
       - name: Swap staging into production
         run: |
@@ -84,17 +66,15 @@ jobs:
             --target-slot production \
             --output none
 
-      - name: Verify production after swap
+      - name: Verify custom domain and direct production host
         run: |
-          url="https://library.liveproxima.org/health"
-          for i in $(seq 1 10); do
-            code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "$url" || echo "000")
-            if [ "$code" = "200" ]; then
-              echo "Production healthy after swap ($i attempt(s))."
-              exit 0
-            fi
-            echo "Attempt $i: production returned $code, retrying in 10s..."
-            sleep 10
-          done
-          echo "Production did not report healthy after swap."
-          exit 1
+          python scripts/verify_release.py https://library.liveproxima.org "$GITHUB_SHA"
+          python scripts/verify_release.py https://pp-app-serv.azurewebsites.net "$GITHUB_SHA"
+
+      - name: Record release evidence
+        if: always()
+        run: |
+          echo "Target: PP-App-Serv (staging -> production)" >> "$GITHUB_STEP_SUMMARY"
+          echo "Commit: $GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
+          echo "Outcome: ${{ job.status }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "No data migrations or backfills were run." >> "$GITHUB_STEP_SUMMARY"
