@@ -29,7 +29,9 @@ env:
 
 jobs:
   build:
-    if: github.ref == 'refs/heads/perf/container-pilot'
+    # Explicit control permits evidence-only checkpoints while a pilot gate
+    # awaits an approved architecture adjustment. Unknown/unset values hold.
+    if: github.ref == 'refs/heads/perf/container-pilot' && vars.IMAGE_LIBRARY_PILOT_MODE == 'run'
     runs-on: ubuntu-24.04
     environment: image-library-build
     timeout-minutes: 25

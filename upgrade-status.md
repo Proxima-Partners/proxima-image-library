@@ -4,6 +4,15 @@ Updated: 2026-10-22 (America/Los_Angeles).
 
 ## Current execution checkpoint
 
+**Pilot is not passed.** A forward slot swap exposed a state-ownership mismatch:
+the two pilot `/home` sentinels exchanged hostnames with the content. Runtime and
+independent Kudu VFS hashes agree. No files were lost and legacy production/DNS
+were untouched. Reverse-swap recovery PASSED in 84.70 seconds against the
+original image/state checkpoint, including both nonroot/auth checks. Recommend changing promotion to tested-digest updates
+in place with a bounded restart/one rollback, rather than adding unapproved
+external storage. See PILOT_ACCEPTANCE.md. Automatic pilot deployments are held
+pending this material plan adjustment; build-only validation stays enabled.
+
 User approved the exact-image applicability review and requested unattended
 execution until the pilot passes. All eight candidate package findings have
 individual validation receipts. The ncurses PoC aborts the unpatched control

@@ -1,6 +1,6 @@
 # Container pilot acceptance evidence
 
-As of 2026-10-22 PDT. **In progress, not a production cutover.**
+As of 2026-10-22 PDT. **Pilot blocked on state-safe promotion design; not passed.**
 Legacy `library.liveproxima.org` remains v1.0.5 / `0ddfd05`; DNS is unchanged.
 
 ## Completed gates
@@ -17,6 +17,43 @@ Legacy `library.liveproxima.org` remains v1.0.5 / `0ddfd05`; DNS is unchanged.
 - Source/Oryx and container were compared on the SAME dedicated P2v3, same
   commit `8e460140d8f80ca2d02f0228c5cd10cb9f027fd4`, same authoritative data,
   one synchronous worker, real authentication and read-only mode.
+- Restart passed in 41.35 seconds: fresh boot, unchanged persistent-state ID,
+  UID/GID 65532, exact image and enforced authentication.
+- Seeded the new app's main slot with an earlier tested digest in 32 seconds;
+  its source-baseline persistent state survived the switch to containers.
+
+## Blocking swap result and proposed adjustment
+
+The forward swap completed at the platform level but **failed application
+acceptance**: the persistent `/home` state moved with the slot content. This was
+confirmed independently by BOTH runtime readiness and Kudu VFS hashes:
+
+| Public pilot hostname | Before swap state ID prefix | After swap state ID prefix |
+| --- | --- | --- |
+| New app main | `23417242` | `c4ed3373` |
+| New app staging | `c4ed3373` | `23417242` |
+
+No files were lost, but production-local checkpoints, quota counters and staged
+uploads must not be replaced by staging state during a normal release. Both
+slots remained read-only. The failure report is retained. Reverse recovery
+passed in 84.70 seconds against the ORIGINAL checkpoint: both images, both
+persistent-state IDs, nonroot execution and authentication were restored.
+This recovery is not treated as a pass of the forward-swap acceptance gate.
+
+**Recommended plan adjustment, awaiting approval:** keep staging validation,
+then update the new main app to the same tested immutable digest in place.
+Keep its own `/home` state and credentials, accept a bounded restart, and restore
+the previous approved digest once if post-deploy verification fails. This uses
+the existing approved resources and matches the user's downtime tolerance.
+It still needs a new five-run complete-release measurement and recovery gates.
+
+Alternative: externalize local state to separately managed, slot-sticky storage
+before retaining swaps. That adds infrastructure, access configuration and
+migration work not included in the current approved resource set.
+
+Automatic pilot deployments are held with `IMAGE_LIBRARY_PILOT_MODE=hold`;
+build-only validation remains active. Resume requires an explicit `run` value
+after the promotion decision. Legacy production/DNS remain unchanged.
 
 ## Comparable read experiment
 
@@ -60,9 +97,10 @@ time. Queue time, build time, image update and swap must remain separate.
 
 ## Remaining gates
 
-- Restart persistence and fresh-boot proof.
-- Seed new-app main slot with a tested container while retaining its source
-  baseline state; forward/reverse swap and auth/state/identity checks.
+- Resolve the promotion design without weakening the state-preservation gate.
+- Reconfirm protected credentials and state ownership under the approved new
+  promotion procedure. If swaps are retained, make the per-slot MCP secret
+  sticky as well as externalizing state; it currently follows content.
 - Failed-readiness and failed-pull rejection and one bounded recovery each.
 - At least five comparable complete cached releases including promotion, with
   queue time separate; median target <=5 minutes, update/swap targets <=2 minutes.

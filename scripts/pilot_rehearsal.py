@@ -108,8 +108,9 @@ def expected_from(snapshot):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action', choices=['restart', 'seed-main', 'swap', 'failed-readiness', 'failed-pull'])
+    parser.add_argument('action', choices=['restart', 'seed-main', 'swap', 'restore-swap', 'failed-readiness', 'failed-pull'])
     parser.add_argument('--release', help='Downloaded passing CI release.json; required for seed/swap')
+    parser.add_argument('--checkpoint', type=Path, help='Failed completed-swap report to restore exactly')
     parser.add_argument('--report', type=Path, required=True)
     args = parser.parse_args()
     if args.report.exists():
@@ -133,10 +134,14 @@ def main():
             prior = before['production']['readiness']
             if not prior or not prior.get('pilot_state'):
                 raise RuntimeError('Complete source baseline/state verification before seeding')
-            az('webapp', 'config', 'appsettings', 'set', *slot_args('production'),
-               '--settings', 'SCM_DO_BUILD_DURING_DEPLOYMENT=false', 'PORT=8080')
             az('webapp', 'config', 'set', *slot_args('production'),
                '--linux-fx-version', 'sitecontainers', '--startup-file', '')
+            # Runtime conversions may remove container-specific settings.
+            # Reassert persistence AFTER switching modes, before starting image.
+            az('webapp', 'config', 'appsettings', 'set', *slot_args('production'),
+               '--settings', 'SCM_DO_BUILD_DURING_DEPLOYMENT=false', 'PORT=8080',
+               'WEBSITES_ENABLE_APP_SERVICE_STORAGE=true',
+               '--slot-settings', 'PILOT_STATE_PROBE_ENABLED=true')
             deploy_digest('production', release['registry_image'])
             expected = dict(release, host=before['production']['host'], image=release['registry_image'])
             report['verified'] = verify_ready('production', expected, prior['pilot_state']['state_id'])
@@ -145,6 +150,19 @@ def main():
             az('webapp', 'restart', *slot_args('staging'))
             report['verified'] = verify_ready('staging', expected, expected['pilot_state']['state_id'],
                                               fresh_boot=expected['pilot_state']['boot_id'])
+        elif args.action == 'restore-swap':
+            checkpoint = json.loads(args.checkpoint.read_text())
+            if checkpoint.get('action') != 'swap' or checkpoint.get('status') != 'failed':
+                raise RuntimeError('An inspected failed-swap checkpoint is required')
+            original = checkpoint['before']
+            for current, prior in [('production', 'staging'), ('staging', 'production')]:
+                if before[current]['image'] != original[prior]['image']:
+                    raise RuntimeError('Current images do not match the confirmed completed swap')
+            az('webapp', 'deployment', 'slot', 'swap', *slot_args('staging'), '--target-slot', 'production')
+            report['verified'] = {slot: verify_ready(slot, expected_from(original[slot]),
+                original[slot]['readiness']['pilot_state']['state_id']) for slot in ('production', 'staging')}
+            report['restored_checkpoint'] = str(args.checkpoint)
+            report['original_swap_gate_still_failed'] = True
         elif args.action == 'swap':
             release = load_release(args.release)
             main, staging = expected_from(before['production']), expected_from(before['staging'])
