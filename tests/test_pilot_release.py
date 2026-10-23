@@ -52,3 +52,22 @@ def test_pilot_target_guard_rejects_ambiguous_or_wrong_resources(case):
     elif case == 'wrong_slot': site['id'] = APP_ID
     elif case == 'conflicting_fields': site['appServicePlanId'] = 'different'
     with pytest.raises(RuntimeError, match='Unexpected pilot'): verify_pilot_site(site, 'staging')
+
+
+@pytest.mark.parametrize('case', ['legacy_app', 'unsafe_setting', 'existing_container'])
+def test_source_baseline_refuses_unsafe_target_before_mutation(monkeypatch, case):
+    from scripts import pilot_source_baseline as baseline
+    from scripts.configure_container_pilot import SUB
+    site = {'id': APP_ID, 'serverFarmId': PLAN_ID}
+    if case == 'legacy_app': site['id'] = APP_ID.replace('pp-image-library', 'PP-App-Serv')
+    def fake_az(*args):
+        if args == ('account', 'show'): return {'id': SUB}
+        if args[:2] == ('webapp', 'show'): return site
+        if args[:3] == ('webapp', 'sitecontainers', 'list'): return [{'name': 'existing'}]
+        raise AssertionError('Unexpected mutation')
+    monkeypatch.setattr(baseline, 'az', fake_az)
+    config = {'APP_READ_ONLY': 'true', 'INGEST_POLLER_ENABLED': 'false',
+              'TEST_MODE': 'false', 'DEV_AUTH_BYPASS': 'false'}
+    if case == 'unsafe_setting': config['APP_READ_ONLY'] = 'false'
+    monkeypatch.setattr(baseline, 'settings', lambda _app: config)
+    with pytest.raises(RuntimeError): baseline.main()

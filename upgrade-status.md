@@ -69,6 +69,20 @@ identity can be compared across new image deployments, restarts and swaps.
 The sentinel never follows symlinks or overwrites an existing invalid file.
 It is disabled by default and must be disabled before production writes resume.
 
+Persistence-enabled commit `68ae9ed`, run `39904263261`, passed all 219 tests,
+scan/publish and Azure readiness. Actual Azure UID/GID are 65532. The runtime's
+state ID `c4ed33732aa65098c8b4536a5c8ef7fc1dc804df435a147741df59b965a38115`
+matches the sentinel hash retrieved independently from the slot's Kudu VFS,
+confirming the application writes the mounted persistent storage, not just an
+image-local directory. No application/catalog files were altered by this probe.
+
+Prepared a separate same-P2v3 source/Oryx baseline workflow. It targets only the
+currently empty NEW app's production slot, leaves the container staging slot
+intact, requires read-only/no-bypass settings, and refuses to replace an existing
+container. The source archive uses the existing allowlist and single-worker
+startup. Temporary CI IP access is removed in cleanup. Legacy production and
+DNS remain unchanged; this is solely the approved controlled comparison.
+
 ## Container migration
 
 - Source: `PP-App-Serv` and staging on shared `proxima-plan-s1`, West US 2.
