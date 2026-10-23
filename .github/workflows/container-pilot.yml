@@ -1,0 +1,92 @@
+name: Deploy isolated Image Library pilot
+
+on:
+  workflow_dispatch: {}
+  push:
+    branches: [perf/container-pilot]
+    paths: [.github/workflows/container-pilot.yml]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: image-library-deploy
+  cancel-in-progress: false
+
+env:
+  AZURE_TENANT_ID: a87255bb-ca4b-4ada-9354-5e0579f6e68f
+  AZURE_SUBSCRIPTION_ID: 9528fb58-4fa4-43f8-9940-e5c3e1f1903f
+
+jobs:
+  build:
+    if: github.ref == 'refs/heads/perf/container-pilot'
+    runs-on: ubuntu-24.04
+    environment: image-library-build
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      image: ${{ steps.publish.outputs.image }}
+    env:
+      IMAGE: proximaimagelibrary.azurecr.io/image-library:pilot-${{ github.run_id }}-${{ github.run_attempt }}
+      BUILD_CACHE_REF: proximaimagelibrary.azurecr.io/image-library-buildcache:pilot
+      TRIVY_IMAGE: aquasec/trivy:0.76.1@sha256:790fd66d1697395d8693d1acaa1ea702406a20f109b6fc7bac8db623eca6c06c
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: azure/login@7184910d9eb2b1c5e48f7073824a90609bb9b6d6 # v2
+        with:
+          client-id: ${{ vars.AZURE_IMAGE_BUILD_CLIENT_ID }}
+          tenant-id: ${{ env.AZURE_TENANT_ID }}
+          subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - name: Authenticate only to approved private registry
+        run: az acr login --name proximaimagelibrary --only-show-errors
+      - name: Build once, test, smoke, inventory and gate exact image
+        run: bash scripts/validate_container.sh
+      - name: Publish validated image and bind registry digest to scan
+        id: publish
+        run: |
+          docker push "$IMAGE"
+          image_ref=$(docker image inspect "$IMAGE" --format '{{index .RepoDigests 0}}')
+          docker buildx imagetools inspect --raw "$image_ref" > reports/registry-manifest.json
+          python3 -m scripts.pilot_release_manifest "$image_ref"
+          printf 'image=%s\n' "$image_ref" >> "$GITHUB_OUTPUT"
+      - name: Retain all evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: pilot-build-${{ github.run_id }}-${{ github.run_attempt }}
+          path: reports/
+          retention-days: 90
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-24.04
+    environment: image-library-pilot
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      RELEASE_IMAGE: ${{ needs.build.outputs.image }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: azure/login@7184910d9eb2b1c5e48f7073824a90609bb9b6d6 # v2
+        with:
+          client-id: ${{ vars.AZURE_IMAGE_DEPLOY_CLIENT_ID }}
+          tenant-id: ${{ env.AZURE_TENANT_ID }}
+          subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
+      - name: Deploy exact digest to isolated staging and verify readiness
+        run: python3 -m scripts.deploy_container_pilot
+      - name: Retain pilot deployment evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: pilot-deploy-${{ github.run_id }}-${{ github.run_attempt }}
+          path: reports/
+          retention-days: 90

@@ -12,18 +12,37 @@ The four util-linux CVEs concern components absent from the final image.
 
 An exact-image, 30-day-expiring gate and 31 negative/positive regression tests
 have been implemented. Raw scans are preserved with 90-day retention. Clean CI
-is the next gate before provisioning. Production, DNS, main and the shared plan
+passed before provisioning. Production, DNS, main and the shared plan
 remain unchanged. See CONTAINER_VALIDATION.md for current evidence; earlier red
 scan results below are historical and remain retained.
 
-Local verification: 197 tests pass; actionlint and git diff --check pass.
-Commit creation failed because the user's 1Password SSH signing key was locked
-(`failed to fill whole buffer`; no commit object was written).
-Signing is not bypassed or disabled. The code is staged, but this checkpoint has
-not yet been committed/pushed and clean CI/pilot provisioning has not started.
-Resume after the user unlocks 1Password and authorizes the retried Git signing request;
-do not select broad approval for all applications. Verify the commit completed
-before pushing `perf/container-pilot`, then open the resulting live Actions log.
+After the user unlocked 1Password, signed commit `99ab28b` was pushed to the
+pilot branch. CI `39901906332` passed in 70 seconds, including all 197 tests,
+runtime smoke, SBOM and the image-bound applicability gate. Signing was not
+disabled. Production remains `v1.0.5` / `0ddfd05`.
+
+The approved infrastructure was validated with Bicep and ARM validation. What-if
+showed only new pilot resources/roles; all existing resources were Ignore.
+Deployment `image-library-container-pilot` succeeded after aligning the staging
+slot kind with Azure's normalized `app,linux` parent. Created dedicated P2v3
+one-instance plan, Premium ACR (ABAC, admin/anonymous access disabled), new app
+and staging, separate build/deploy OIDC identities and narrowly scoped roles.
+GitHub build/pilot environments allow only `perf/container-pilot`.
+
+Pilot endpoints are IP-restricted to the operator, with per-run temporary CI
+access removed on completion. Runtime pulls use system-assigned identities with
+repository-only Reader; publisher has Writer only for release/cache repos and
+registry control-plane Reader. Deployment identity is Website Contributor on
+the new app only. No permission on the legacy app or Pete was granted.
+
+Configuration copy is verified for both new slots, and exactly two pilot sign-in
+callback URIs were added while retaining the production callback. Read-only is
+enabled, ingestion and authentication bypass are disabled. Secrets never enter
+repository files or CI artifacts. All 205 local tests pass. The pilot pipeline reuses the same validation
+script and binds the published registry manifest to the tested/scanned config.
+This is a workflow provenance receipt, not a claim of a signed SLSA attestation.
+Azure readiness alone does not satisfy SSO, state, telemetry, rollback or speed
+acceptance. Main, production, DNS and catalog writes remain untouched.
 
 ## Container migration
 
@@ -49,11 +68,11 @@ An in-place dedicated-plan move is not established: the app retains the legacy `
 
 Production and staging both configure the same ingest folder, and importing the web application can start a writing/deleting poller. The pilot and every nonproduction slot must have writers disabled; a single user does not prevent duplicate background jobs. This is a detected risk, not evidence that duplication occurred.
 
-Implementation is in progress on `perf/container-pilot`; `main` and production remain unchanged. Writer/drain controls, persistent-state paths and build identity have local validation evidence below. The checkpoint is isolated to the pilot branch and its build-only workflow. No Azure resource mutation, DNS change or catalog write has been made during this implementation stage.
+Implementation is in progress on `perf/container-pilot`; `main` and production remain unchanged. Writer/drain controls, persistent-state paths and build identity have local validation evidence below. The approved isolated Azure resources are now provisioned; the first publish/deploy pipeline is next. No DNS change or catalog write has been made.
 
 IONOS is the confirmed DNS provider. On 2026-10-22 the user supplied an authenticated Edge session; the `library` CNAME and `asuid.library` TXT were verified in the DNS panel. The CNAME remains `pp-app-serv.azurewebsites.net`. DNS access is no longer a blocker; TLS, state transfer and pilot acceptance gates remain outstanding. The unrelated root, mail, Pete and other subdomain records are outside scope.
 
-## Local implementation evidence
+## Historical local implementation evidence (superseded by current checkpoint)
 
 - Homepage/shared application version changed from `v1.0.5` to `v2.0.0` at the user's request. Exact homepage badge and API value covered by tests. Public production still reports `v1.0.5` / `0ddfd05`.
 - 155 local Python 3.12 tests passed, including read-only GET/SSE/POST guards, admin/origin checks, detached-worker/child drain accounting and immutable build identity.

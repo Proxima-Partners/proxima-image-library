@@ -27,59 +27,8 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Full regression suite on shellless non-root runtime
-        run: docker build --platform linux/amd64 --target test --tag image-library:tests .
-
-      - name: Build final non-root runtime
-        run: |
-          mkdir -p reports
-          docker build --platform linux/amd64 --target runtime \
-            --build-arg "COMMIT_SHA=$GITHUB_SHA" \
-            --build-arg "BUILD_ID=$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" \
-            --tag "$IMAGE" .
-          docker image inspect "$IMAGE" --format '{{json .}}' > reports/image.json
-
-      - name: Offline exact-image authentication, restart and storage checks
-        run: |
-          python3 scripts/container_smoke.py "$IMAGE" "$GITHUB_SHA" \
-            "$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" | tee reports/smoke.json
-
-      - name: Export image for isolated scanner
-        run: |
-          mkdir -p scan-input scan-cache
-          docker save --output scan-input/runtime.tar "$IMAGE"
-
-      - name: Generate package inventory SBOM
-        run: |
-          docker run --rm --user "$(id -u):$(id -g)" --cap-drop ALL --security-opt no-new-privileges \
-            --volume "$PWD/scan-input:/input:ro" --volume "$PWD/reports:/reports" \
-            --volume "$PWD/scan-cache:/cache" "$TRIVY_IMAGE" image \
-            --cache-dir /cache --input /input/runtime.tar \
-            --format cyclonedx --output /reports/sbom.cdx.json
-
-      - name: Record unfiltered high and critical image vulnerabilities
-        run: |
-          # Exit 42 means findings exist, not a scanner error. Preserve both the
-          # raw report and original exit status; the next gate decides applicability.
-          set +e
-          docker run --rm --user "$(id -u):$(id -g)" --cap-drop ALL --security-opt no-new-privileges \
-            --volume "$PWD/scan-input:/input:ro" --volume "$PWD/reports:/reports" \
-            --volume "$PWD/scan-cache:/cache" "$TRIVY_IMAGE" image \
-            --cache-dir /cache --input /input/runtime.tar --scanners vuln \
-            --format json --output /reports/vulnerabilities.json \
-            --severity HIGH,CRITICAL --exit-code 42
-          scan_status=$?
-          set -e
-          printf '%s\n' "$scan_status" > reports/raw-scan-exit-code.txt
-          test "$scan_status" -eq 0 || test "$scan_status" -eq 42
-
-      - name: Enforce expiring image-bound applicability policy
-        run: |
-          python3 scripts/container_security_gate.py \
-            --policy security/container-review.json \
-            --scan reports/vulnerabilities.json --archive scan-input/runtime.tar \
-            --commit "$GITHUB_SHA" --build-id "$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" \
-            --output reports/security-gate.json
+      - name: Build, regression, exact-image smoke, SBOM and security gates
+        run: bash scripts/validate_container.sh
 
       - name: Retain evidence even when a gate fails
         if: always()
