@@ -2,7 +2,7 @@ name: Validate Image Library container
 
 on:
   push:
-    branches: [perf/container-pilot]
+    branches: [perf/container-pilot, perf/unattended-operations]
   pull_request:
     branches: [main]
   workflow_dispatch: {}
@@ -29,6 +29,9 @@ jobs:
 
       - name: Build, regression, exact-image smoke, SBOM and security gates
         run: bash scripts/validate_container.sh
+
+      - name: Browser polling behavior (no network or browser credentials)
+        run: node --test tests/js/*.test.cjs
 
       - name: Retain evidence even when a gate fails
         if: always()

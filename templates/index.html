@@ -708,6 +708,7 @@
   </div>
 </div>
 
+<script src="{{ url_for('static', filename='review-badge.js') }}"></script>
 <script>
 (function () {
   // ── State ──────────────────────────────────────────────────────────────────
@@ -773,23 +774,9 @@
     document.getElementById('grid-status').textContent = 'Could not load library.';
   });
 
-  function refreshReviewBadge() {
-    fetch('/api/pending-count').then(r => r.json()).then(d => {
-      const b = document.getElementById('review-badge');
-      if (d.count > 0) {
-        b.textContent = d.count;
-        b.style.display = '';
-      } else {
-        b.style.display = 'none';
-      }
-    }).catch(() => {});
-  }
-  refreshReviewBadge();
-  setInterval(refreshReviewBadge, 30000); // poll every 30 s
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') refreshReviewBadge();
-  });
-  window.addEventListener('pageshow', () => refreshReviewBadge());
+  const reviewBadgePoller = createReviewBadgePoller({ document, window, fetch });
+  function refreshReviewBadge() { return reviewBadgePoller.refresh(); }
+  reviewBadgePoller.start();
 
   // ── Hero ───────────────────────────────────────────────────────────────────
   function renderCategoryTiles(folders) {
