@@ -44,3 +44,5 @@ IONOS is the confirmed DNS provider. On 2026-10-22 the user supplied an authenti
 Raw local scan evidence: `/tmp/image-library-container.cufej1/vulnerabilities.json` and `vulnerabilities-trixie.json`. Local preview images are explicitly marked `local-uncommitted-*`; they are NOT release artifacts. A release must be rebuilt from the committed branch by CI with the exact Git SHA/run ID and verified digest.
 
 Vendor advisory references and next decision are recorded in [CONTAINER_VALIDATION.md](CONTAINER_VALIDATION.md). The image gate is deliberately red; publishing a build-only pilot branch does not approve a production exception or deploy to Azure.
+
+Pilot checkpoint `83f2e18` pushed. First CI run `39894903794` passed tests/build/runtime smoke, but its SBOM step failed on scanner-cache permissions before vulnerability scanning. A runner UID/GID correction is being validated; no scan result is inferred from that failed job. Docker's shellless hardened Python base was also inspected/scanned separately; it still needs a scoped, reviewed VEX/applicability policy and startup changes before adoption. No such policy has been enabled.

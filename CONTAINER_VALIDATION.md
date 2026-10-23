@@ -49,3 +49,19 @@ Local reports: `/tmp/image-library-container.cufej1/`; `vulnerabilities-trixie.j
 ## Still unverified
 
 Azure-mounted `/home` permissions/persistence, private registry pull/OIDC, real SSO callback, telemetry ingestion, forward/reverse swap, same-compute performance, protected state transfer and DNS/TLS rollback. Production remains on `0ddfd05`, `v1.0.5`. IONOS access is verified, but DNS records remain unchanged.
+
+## CI checkpoint and minimal-image investigation
+
+Commit `83f2e18` was pushed only to `perf/container-pilot`. [Run 39894903794](https://github.com/Proxima-Partners/proxima-image-library/actions/runs/39894903794) passed the regression suite, image build and offline runtime smoke, then failed before the vulnerability gate because the scanner could not create its cache in a runner-owned bind mount. The corrective workflow change runs the scanner as the runner's UID/GID while keeping all capabilities dropped. It does not relax filesystem permissions or scanning policy.
+
+An additional read-only/offline investigation pulled Docker's minimal runtime image:
+
+- `dhi.io/python:3.12-debian13@sha256:a67245096d56c6ce891b9bec78a8090850907af9314185597c6b5d75438ca999` (Python 3.12.15, UID 65532, no shell/package manager).
+- The matching builder digest is `sha256:a3d43f90a9e72d5fa53efa18c692f020604c95e89bc7de62aa9cafad7ee9c795` for `dhi.io/python:3.12-debian13-dev`.
+- Raw base-only scan: eight HIGH package findings across five distinct CVEs, zero CRITICAL. This is not an application-image scan and not a passing release gate.
+- Vendor OpenVEX metadata exists for those five CVEs in `docker-hardened-images/advisories` at commit `5af0d37bd8bb54871bd74a4627439b6db56f7f6d`. It marks them `not_affected`, citing Debian no-DSA decisions and inability for an adversary to control the vulnerable code. A no-DSA classification alone is not proof that vulnerable code is absent.
+- No VEX suppression or risk exception was applied. The application's Dockerfile still uses the strict-scan Debian 13 candidate, not DHI.
+
+Proposed next adjustment: adopt the vendor-maintained minimal runtime with a matching builder, replace the Bash entrypoint with exec-form Python/Gunicorn startup, rerun the full suite against the actual runtime, and add a reviewable vulnerability-applicability policy. Preserve the unfiltered scan; accept only exact-image/package vendor assessments corroborated for this workload, with a review deadline. New, unmatched, expired or exploitable findings remain blocking. This is a policy/base-image adjustment to present before adoption, not permission to bypass the current failing gate.
+
+[Docker's Python migration guidance](https://docs.docker.com/dhi/migration/examples/python/) and [scanner/VEX guidance](https://docs.docker.com/dhi/how-to/scan/) describe the runtime and scanning requirements. CI access to the DHI registry must also be verified; successful access on the developer's machine does not prove runner access.
