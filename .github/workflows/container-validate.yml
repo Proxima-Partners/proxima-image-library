@@ -1,0 +1,76 @@
+name: Validate Image Library container
+
+on:
+  push:
+    branches: [perf/container-pilot]
+  pull_request:
+    branches: [main]
+  workflow_dispatch: {}
+
+# Build-only: no Azure secrets, OIDC, publish or production deployment permission.
+permissions:
+  contents: read
+
+concurrency:
+  group: image-library-container-validation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  container:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      IMAGE: image-library:validation
+      TRIVY_IMAGE: aquasec/trivy:0.76.1@sha256:790fd66d1697395d8693d1acaa1ea702406a20f109b6fc7bac8db623eca6c06c
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+
+      - name: Full regression suite inside Linux image
+        run: docker build --platform linux/amd64 --target test --tag image-library:tests .
+
+      - name: Build final non-root runtime
+        run: |
+          mkdir -p reports
+          docker build --platform linux/amd64 --target runtime \
+            --build-arg "COMMIT_SHA=$GITHUB_SHA" \
+            --build-arg "BUILD_ID=$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" \
+            --tag "$IMAGE" .
+          docker image inspect "$IMAGE" --format '{{json .}}' > reports/image.json
+
+      - name: Offline exact-image authentication, restart and storage checks
+        run: |
+          python3 scripts/container_smoke.py "$IMAGE" "$GITHUB_SHA" \
+            "$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" | tee reports/smoke.json
+
+      - name: Export image for isolated scanner
+        run: |
+          mkdir -p scan-input scan-cache
+          docker save --output scan-input/runtime.tar "$IMAGE"
+
+      - name: Generate package inventory SBOM
+        run: |
+          docker run --rm --cap-drop ALL --security-opt no-new-privileges \
+            --volume "$PWD/scan-input:/input:ro" --volume "$PWD/reports:/reports" \
+            --volume "$PWD/scan-cache:/cache" "$TRIVY_IMAGE" image \
+            --cache-dir /cache --input /input/runtime.tar \
+            --format cyclonedx --output /reports/sbom.cdx.json
+
+      - name: Block high and critical image vulnerabilities
+        run: |
+          docker run --rm --cap-drop ALL --security-opt no-new-privileges \
+            --volume "$PWD/scan-input:/input:ro" --volume "$PWD/reports:/reports" \
+            --volume "$PWD/scan-cache:/cache" "$TRIVY_IMAGE" image \
+            --cache-dir /cache --input /input/runtime.tar --scanners vuln \
+            --format json --output /reports/vulnerabilities.json \
+            --severity HIGH,CRITICAL --exit-code 1
+
+      - name: Retain evidence even when a gate fails
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: container-validation-${{ github.run_id }}-${{ github.run_attempt }}
+          path: reports/
+          retention-days: 14
+          if-no-files-found: warn

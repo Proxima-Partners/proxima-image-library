@@ -8,13 +8,14 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 
-def check_release(base_url, expected_commit, *, require_telemetry=False):
+def check_release(base_url, expected_commit, *, require_telemetry=False, expected_build_id=None):
     request = Request(base_url.rstrip("/") + "/readyz", headers={"Cache-Control": "no-cache"})
     try:
         with urlopen(request, timeout=10) as response:
             data = json.load(response)
             return (response.status == 200 and isinstance(data, dict) and data.get("status") == "ready"
                     and data.get("commit") == expected_commit
+                    and (expected_build_id is None or data.get("build_id") == expected_build_id)
                     and (not require_telemetry or data.get("telemetry") is True))
     except (HTTPError, URLError, TimeoutError, ValueError, OSError):
         return False
@@ -27,9 +28,11 @@ if __name__ == "__main__":
     parser.add_argument("--attempts", type=int, default=30)
     parser.add_argument("--interval", type=float, default=10)
     parser.add_argument("--require-telemetry", action="store_true")
+    parser.add_argument("--build-id", help="Require exact immutable-image build identity")
     args = parser.parse_args()
     for attempt in range(1, args.attempts + 1):
-        if check_release(args.url, args.commit, require_telemetry=args.require_telemetry):
+        if check_release(args.url, args.commit, require_telemetry=args.require_telemetry,
+                         expected_build_id=args.build_id):
             print(f"Verified {args.commit[:7]} at {args.url} after {attempt} attempt(s)")
             break
         print(f"Attempt {attempt}: expected release not ready", flush=True)

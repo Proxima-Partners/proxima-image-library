@@ -7,6 +7,7 @@ from pathlib import Path, PurePosixPath
 from typing import List, Tuple
 
 import requests
+from src.deployment_controls import writable
 
 
 class SharePointClient:
@@ -176,6 +177,7 @@ class SharePointClient:
         # Fallback: direct download URL
         return meta.get("@microsoft.graph.downloadUrl", "")
 
+    @writable
     def upload_file(self, folder_path: str, filename: str, content_bytes: bytes) -> dict:
         """Upload a file to SharePoint, creating intermediate folders as needed.
 
@@ -194,6 +196,7 @@ class SharePointClient:
         resp.raise_for_status()
         return resp.json()
 
+    @writable
     def delete_file(self, sharepoint_path: str) -> bool:
         """Delete a file by its full path from the drive root.
 
@@ -213,6 +216,7 @@ class SharePointClient:
         resp.raise_for_status()
         return False
 
+    @writable
     def _upload_session(self, path: str, content_bytes: bytes) -> dict:
         """Upload large files using the Graph API resumable upload session."""
         url = f"{self.GRAPH_BASE}/drives/{self.drive_id}/root:/{path}:/createUploadSession"

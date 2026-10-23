@@ -8,6 +8,7 @@ from collections import deque
 from datetime import datetime, timezone
 from pathlib import PurePosixPath
 from typing import Callable, Deque, Dict, List, Optional
+from src import deployment_controls as deployment
 
 logger = logging.getLogger(__name__)
 
@@ -241,7 +242,10 @@ def _poll_loop(interval_seconds: int) -> None:
             _emit("info", "Previous run still in progress — skipping this cycle")
             continue
         try:
-            _run_once()
+            with deployment.Work():
+                _run_once()
+        except deployment.WritesDisabled:
+            continue
         except Exception as exc:
             _emit("error", f"Unexpected poller error: {exc}")
         finally:
@@ -251,6 +255,8 @@ def _poll_loop(interval_seconds: int) -> None:
 def start(interval_seconds: int = 300) -> None:
     """Start the background poller thread. Safe to call multiple times — only starts once."""
     global _poller_thread
+    if not deployment.poller_enabled():
+        return
     if _poller_thread is not None and _poller_thread.is_alive():
         return
     _poller_thread = threading.Thread(
@@ -267,6 +273,7 @@ def run_now(on_progress: Optional[Callable[[str], None]] = None) -> Dict:
     if not _run_lock.acquire(blocking=False):
         return {"error": "A run is already in progress"}
     try:
-        return _run_once(on_progress=on_progress)
+        with deployment.Work():
+            return _run_once(on_progress=on_progress)
     finally:
         _run_lock.release()

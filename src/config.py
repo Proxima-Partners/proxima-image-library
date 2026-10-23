@@ -3,15 +3,14 @@
 import os
 from pathlib import Path
 from dotenv import load_dotenv
+from src.deployment_controls import state_path
 
 # Load .env from the project root regardless of working directory
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
-# On Azure App Service, the deployed directory is read-only when running
-# from a package, so keys saved via the maintenance UI persist to /home
-# instead. Loaded second — load_dotenv never overrides an already-set var.
-if Path("/home").exists() and os.getenv("WEBSITE_INSTANCE_ID"):
-    load_dotenv("/home/proxima_stock_keys.env")
+# Keep mutable provider settings outside deployed code, including containers.
+# Loaded second; load_dotenv never overrides an already-set environment value.
+load_dotenv(state_path("proxima_stock_keys.env", Path(__file__).resolve().parent.parent / ".env"))
 
 
 class Config:

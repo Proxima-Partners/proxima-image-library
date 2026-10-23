@@ -10,8 +10,13 @@ from src import __version__
 
 def release_info(root=None):
     root = Path(root) if root else Path(__file__).resolve().parents[1]
+    build_id = ""
     try:
-        sha = json.loads((root / "build_info.json").read_text())["commit"]
+        info = json.loads((root / "build_info.json").read_text())
+        sha = info["commit"]
+        candidate = info.get("build_id", "")
+        if isinstance(candidate, str) and re.fullmatch(r"[a-zA-Z0-9._-]{1,100}", candidate):
+            build_id = candidate
     except (OSError, ValueError, KeyError, TypeError):
         try:
             sha = subprocess.check_output(
@@ -22,4 +27,7 @@ def release_info(root=None):
             sha = "unknown"
     if not isinstance(sha, str) or not re.fullmatch(r"[0-9a-f]{40}", sha):
         sha = "unknown"
-    return {"version": __version__, "commit": sha, "short": sha[:7]}
+    result = {"version": __version__, "commit": sha, "short": sha[:7]}
+    if build_id:
+        result["build_id"] = build_id
+    return result

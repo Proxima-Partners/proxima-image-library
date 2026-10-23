@@ -7,6 +7,7 @@ from typing import Dict, List, Optional
 import requests
 
 from src.sharepoint_client import SharePointClient
+from src.deployment_controls import writable
 
 
 class SharePointListClient(SharePointClient):
@@ -106,6 +107,7 @@ class SharePointListClient(SharePointClient):
             url = data.get("@odata.nextLink")
         return False
 
+    @writable
     def create_record(
         self,
         filename: str,
@@ -154,6 +156,7 @@ class SharePointListClient(SharePointClient):
             print(f"Error creating SharePoint list item: {e}{detail}")
             return None
 
+    @writable
     def update_record(self, record_id: str, alt_text: str, status: str = "reviewed") -> bool:
         try:
             resp = requests.patch(
@@ -168,6 +171,7 @@ class SharePointListClient(SharePointClient):
             print(f"Error updating SharePoint list item {record_id}: {e}")
             return False
 
+    @writable
     def patch_fields(self, record_id: str, fields: dict) -> bool:
         """Update arbitrary fields on a record. Keys are app field names."""
         sp_fields = {self._TO_SP[k]: v for k, v in fields.items() if k in self._TO_SP}
@@ -186,6 +190,7 @@ class SharePointListClient(SharePointClient):
             print(f"Error patching SharePoint list item {record_id}: {e}")
             return False
 
+    @writable
     def bulk_patch_fields(self, patches: List[tuple[str, Dict]], max_workers: int = 4) -> Dict:
         """Update many records with bounded parallelism."""
         if not patches:
@@ -223,6 +228,7 @@ class SharePointListClient(SharePointClient):
 
         return {"updated": updated, "failed_ids": failed_ids, "missing_ids": []}
 
+    @writable
     def bulk_delete_records(self, record_ids: List[str], max_workers: int = 4) -> int:
         """Delete many records with bounded parallelism."""
         ids = [str(rid or "").strip() for rid in record_ids if str(rid or "").strip()]
@@ -255,6 +261,7 @@ class SharePointListClient(SharePointClient):
                     continue
         return deleted
 
+    @writable
     def delete_records(self, record_ids: List[str]) -> int:
         deleted = 0
         for rid in record_ids:
@@ -270,6 +277,7 @@ class SharePointListClient(SharePointClient):
                 print(f"Error deleting SharePoint list item {rid}: {e}")
         return deleted
 
+    @writable
     def delete_all_records(self) -> int:
         print("Fetching all record IDs...")
         ids = self.get_all_record_ids()

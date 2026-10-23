@@ -5,9 +5,28 @@ from zipfile import ZipFile
 import pytest
 
 from scripts import package_release, verify_release
+from scripts.write_build_info import write_build_info
 from src.release import release_info
 
 SHA = "a" * 40
+
+
+@pytest.mark.parametrize("commit,build_id", [("short", "123"), (SHA, ""), (SHA, "invalid/id")])
+def test_invalid_container_identity_is_rejected(tmp_path, commit, build_id):
+    with pytest.raises(ValueError):
+        write_build_info(commit, build_id, tmp_path / "build_info.json")
+    assert not (tmp_path / "build_info.json").exists()
+
+
+def test_image_identity_requires_build_id_in_addition_to_commit(tmp_path, monkeypatch):
+    build_id = "12345-1"
+    (tmp_path / "build_info.json").write_text(json.dumps({"commit": SHA, "build_id": build_id}))
+    assert release_info(tmp_path)["build_id"] == build_id
+    for actual, expected in [(build_id, True), ("12345-2", False), (None, False)]:
+        response = io.BytesIO(json.dumps({"commit": SHA, "build_id": actual, "status": "ready"}).encode())
+        response.status = 200
+        monkeypatch.setattr(verify_release, "urlopen", lambda *a, **k: response)
+        assert verify_release.check_release("https://example.org", SHA, expected_build_id=build_id) is expected
 
 
 def test_release_identity_comes_from_artifact_without_git(tmp_path, monkeypatch):

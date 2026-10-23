@@ -28,7 +28,7 @@ import functools
 
 import msal
 import requests
-from flask import Flask, Response, jsonify, redirect, render_template, request, send_file, session, stream_with_context, url_for
+from flask import Flask, Response, g, jsonify, redirect, render_template, request, send_file, session, stream_with_context, url_for
 from flask_cors import CORS
 from PIL import Image as PILImage
 from werkzeug.exceptions import RequestEntityTooLarge
@@ -40,6 +40,7 @@ from src.release import release_info
 from src.telemetry import initialize_telemetry, tracer
 from src.mcp_delivery import verify_delivery
 from src import ingest_poller
+from src import deployment_controls as deployment
 from src.maintenance_helpers import (
     MAINTENANCE_PURGE_STATUSES as _MAINTENANCE_PURGE_STATUSES,
     MAINTENANCE_CANONICAL_CATEGORIES as _MAINTENANCE_CANONICAL_CATEGORIES,
@@ -77,7 +78,7 @@ Config.validate_runtime()
 
 app = Flask(__name__, template_folder="../templates", static_folder="../static")
 _RELEASE = release_info()
-_TELEMETRY_ENABLED = initialize_telemetry(app, commit=_RELEASE["commit"])
+_TELEMETRY_ENABLED = initialize_telemetry(app, commit=_RELEASE["commit"], build_id=_RELEASE.get("build_id", ""))
 _READY = False
 app.secret_key = Config.FLASK_SECRET_KEY
 app.config.update(
@@ -407,6 +408,68 @@ def enforce_maintenance_admin_access():
     return render_template("login_error.html", error="Admin access required"), 403
 
 
+# Explicitly reviewed reads. Unknown/new routes cannot write in pilot mode,
+# including legacy GET/SSE mutations. This does not replace existing auth.
+_DEPLOYMENT_READ_ENDPOINTS = {
+    "static", "health", "readiness", "api_version", "login", "auth_callback", "logout",
+    "index", "debug_metrics", "api_folders", "api_tags", "api_images", "api_pending_count",
+    "thumbnail", "image", "image_download", "api_image_info", "api_image_variations",
+    "api_mcp_thumbnail", "api_mcp_asset", "api_mcp_rights", "api_tag_library_get",
+    "deployment_status", "maintenance", "review", "tags_page", "tag_manager", "upload",
+}
+
+
+@app.before_request
+def enforce_deployment_controls():
+    if request.endpoint is None or request.method == "OPTIONS":
+        return None
+    if request.endpoint == "deployment_drain":
+        return None  # Existing maintenance admin and CSRF guards still apply.
+    if request.method in {"GET", "HEAD"} and request.endpoint in _DEPLOYMENT_READ_ENDPOINTS:
+        return None
+    try:
+        g.deployment_work = deployment.Work()
+    except deployment.WritesDisabled:
+        response = jsonify({"error": "Application is read-only or draining"})
+        response.status_code = 503
+        response.headers["Retry-After"] = "60"
+        response.headers["Cache-Control"] = "no-store"
+        return response
+
+
+@app.after_request
+def finish_deployment_work(response):
+    work = g.pop("deployment_work", None)
+    if work:
+        if response.is_streamed:
+            response.call_on_close(work.close)
+        else:
+            work.close()
+    return response
+
+
+@app.teardown_request
+def release_failed_deployment_work(_exception):
+    work = g.pop("deployment_work", None)
+    if work:
+        work.close()
+
+
+@app.get("/api/maintenance/deployment-status")
+@login_required
+def deployment_status():
+    return jsonify(deployment.snapshot())
+
+
+@app.post("/api/maintenance/deployment-drain")
+@login_required
+def deployment_drain():
+    body = request.get_json(silent=True) or {}
+    if not isinstance(body, dict) or not isinstance(body.get("enabled"), bool):
+        return jsonify({"error": "enabled must be boolean"}), 400
+    return jsonify(deployment.set_drain(body["enabled"]))
+
+
 @app.route("/login")
 def login():
     if _auth_bypass_enabled():
@@ -646,32 +709,60 @@ def index():
 # ------------------------------------------------------------------
 
 def _stream_command(cmd: list, env: dict = None):
-    """Run a command and stream its output as SSE events."""
+    """Keep commands counted and their pipes drained after an SSE disconnect."""
     run_env = os.environ.copy()
     if env:
         run_env.update(env)
 
-    def generate():
-        yield "data: [START]\n\n"
+    output = queue.Queue(maxsize=256)
+    disconnected = threading.Event()
+
+    def emit(message):
+        while not disconnected.is_set():
+            try:
+                output.put(message, timeout=0.25)
+                return
+            except queue.Full:
+                continue
+
+    def worker():
+        proc = None
         try:
             proc = subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                bufsize=1,
-                env=run_env,
+                cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                text=True, bufsize=1, env=run_env,
                 cwd=str(Path(__file__).parent.parent),
             )
             for line in proc.stdout:
                 line = line.rstrip("\n")
                 if line:
-                    yield f"data: {line}\n\n"
+                    emit(f"data: {line}\n\n")
             proc.wait()
             status = "DONE" if proc.returncode == 0 else f"ERROR (exit {proc.returncode})"
-            yield f"data: [{status}]\n\n"
-        except Exception as e:
-            yield f"data: [ERROR] {e}\n\n"
+            emit(f"data: [{status}]\n\n")
+        except Exception:
+            app.logger.exception("Maintenance command failed")
+            emit("data: [ERROR] Maintenance command failed; see server logs\n\n")
+        finally:
+            if proc is not None:
+                # Never report idle while a detached child is still writing.
+                # Normally EOF already means the child has exited.
+                if proc.stdout is not None:
+                    proc.stdout.close()
+                proc.wait()
+
+    def generate():
+        thread = deployment.WorkThread(target=worker, daemon=True)
+        thread.start()
+        try:
+            yield "data: [START]\n\n"
+            while thread.is_alive() or not output.empty():
+                try:
+                    yield output.get(timeout=1)
+                except queue.Empty:
+                    yield ": heartbeat\n\n"
+        finally:
+            disconnected.set()
 
     return Response(
         stream_with_context(generate()),
@@ -947,7 +1038,7 @@ def api_catalog_stock():
             except Exception:
                 q.put(("error", "Processing failed"))
 
-        t = threading.Thread(target=worker, daemon=True)
+        t = deployment.WorkThread(target=worker, daemon=True)
         t.start()
         yield from _sse_poll_loop(t, q, 180, "Processing timed out after 3 minutes")
 
@@ -4456,7 +4547,7 @@ def api_maintenance_retag_run():
             except Exception:
                 q.put(("error", "Bulk operation failed"))
 
-        t = threading.Thread(target=worker, daemon=True)
+        t = deployment.WorkThread(target=worker, daemon=True)
         t.start()
         yield from _sse_poll_loop(t, q, 1800, "Bulk re-tag timed out after 30 minutes",
                                   invalidate_cache=True)
@@ -5030,7 +5121,7 @@ def api_maintenance_sync_highres():
             except Exception:
                 q.put(("error", "Maintenance sync failed"))
 
-        t = threading.Thread(target=worker, daemon=True)
+        t = deployment.WorkThread(target=worker, daemon=True)
         t.start()
         yield from _sse_poll_loop(t, q, 600, "Maintenance sync timed out after 10 minutes",
                                   invalidate_cache=True)
@@ -5063,7 +5154,7 @@ def api_maintenance_folder_ingest():
             except Exception as exc:
                 q.put(("error", f"Folder ingest failed: {exc}"))
 
-        t = threading.Thread(target=worker, daemon=True)
+        t = deployment.WorkThread(target=worker, daemon=True)
         t.start()
         yield from _sse_poll_loop(t, q, 600, "Folder ingest timed out after 10 minutes")
 
@@ -5939,10 +6030,7 @@ _UPLOAD_ALLOWED = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
 
 def _staged_root() -> Path:
     """Return the directory used to stage uploaded files between requests."""
-    if Path("/home").exists() and os.getenv("WEBSITE_INSTANCE_ID"):
-        root = Path("/home/proxima_staged_uploads")
-    else:
-        root = Path(tempfile.gettempdir()) / "proxima_staged_uploads"
+    root = deployment.state_path("proxima_staged_uploads", Path(tempfile.gettempdir()) / "proxima_staged_uploads")
     root.mkdir(parents=True, exist_ok=True)
     return root
 
@@ -6119,7 +6207,7 @@ def api_upload_process():
                     f"Processing failed during: {last_step}. The error was recorded in server logs.",
                 ))
 
-        t = threading.Thread(target=worker, daemon=True)
+        t = deployment.WorkThread(target=worker, daemon=True)
         t.start()
         yield from _sse_poll_loop(
             t,
@@ -6143,11 +6231,7 @@ def api_upload_process():
 
 SS_QUOTA_LIMIT = 10
 # /home persists on Azure App Service; fall back to project root locally
-_SS_COUNTER_PATH = Path(
-    "/home/proxima_ss_counter.json"
-    if Path("/home").exists() and os.getenv("WEBSITE_INSTANCE_ID")
-    else "proxima_ss_counter.json"
-)
+_SS_COUNTER_PATH = deployment.state_path("proxima_ss_counter.json", "proxima_ss_counter.json")
 _ss_lock = threading.Lock()
 
 
@@ -6208,11 +6292,7 @@ _STOCK_API_PROVIDERS = {
     },
 }
 
-_DOT_ENV_PATH = Path(
-    "/home/proxima_stock_keys.env"
-    if Path("/home").exists() and os.getenv("WEBSITE_INSTANCE_ID")
-    else Path(__file__).resolve().parent.parent / ".env"
-)
+_DOT_ENV_PATH = deployment.state_path("proxima_stock_keys.env", Path(__file__).resolve().parent.parent / ".env")
 
 
 def _mask(value: str) -> str:
@@ -6363,6 +6443,7 @@ def api_maintenance_stock_api_update():
 
 
 # Warm local resources before accepting readiness/swap probes. No data writes.
+deployment.verify_state_directory()
 app.jinja_env.get_template("index.html")
 PILImage.init()
 from PIL import features as _pillow_features
@@ -6373,7 +6454,7 @@ with tracer().start_as_current_span("app.startup", start_time=_STARTED_NS):
     pass
 
 # Start background ingest poller (SharePoint mode only)
-if Config.STORAGE_MODE == "sharepoint" and Config.SHAREPOINT_INGEST_FOLDER:
+if Config.STORAGE_MODE == "sharepoint" and Config.SHAREPOINT_INGEST_FOLDER and deployment.poller_enabled():
     ingest_poller.start(Config.INGEST_POLL_INTERVAL_SECONDS)
 
 if __name__ == "__main__":

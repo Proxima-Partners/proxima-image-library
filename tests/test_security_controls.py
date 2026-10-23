@@ -26,6 +26,9 @@ def security_app(monkeypatch, tmp_path):
         "RATE_LIMIT_AUTH_REQUESTS": "5",
         "RATE_LIMIT_STREAM_REQUESTS": "3",
         "MCP_INTERNAL_SECRET": "test-mcp-secret",
+        "APP_STATE_DIR": str(tmp_path),
+        "APP_READ_ONLY": "false",
+        "INGEST_POLLER_ENABLED": "false",
     }
     for key, value in env.items():
         monkeypatch.setenv(key, value)
@@ -48,6 +51,88 @@ def _login(client, email="user@example.com", csrf_token="test-csrf-token"):
     with client.session_transaction() as sess:
         sess["user"] = {"preferred_username": email}
         sess["_csrf_token"] = csrf_token
+
+
+def test_read_only_rejects_post_and_legacy_sse_mutations(client, monkeypatch):
+    monkeypatch.setenv("APP_READ_ONLY", "true")
+    _login(client, email="admin@example.com")
+    headers = {"Origin": "http://localhost", "Referer": "http://localhost/maintenance"}
+    for path in ["/api/upload/stage", "/run/scan-live"]:
+        response = client.post(path, json={}, headers=headers)
+        assert response.status_code == 503
+        assert response.headers["Retry-After"] == "60"
+    for path in ["/api/upload/process", "/api/maintenance/retag-run"]:
+        response = client.get(path, query_string={"csrf_token": "test-csrf-token"})
+        assert response.status_code == 503
+    assert client.get("/health").status_code == 200
+    assert client.get("/readyz").status_code == 200
+    assert client.get("/").status_code == 200
+
+
+def test_deployment_drain_requires_admin_and_same_origin(client):
+    path = "/api/maintenance/deployment-drain"
+    headers = {"Origin": "http://localhost"}
+    assert client.post(path, json={"enabled": True}, headers=headers).status_code == 401
+    _login(client)
+    assert client.get("/api/maintenance/deployment-status").status_code == 403
+    assert client.post(path, json={"enabled": True}, headers=headers).status_code == 403
+    _login(client, email="admin@example.com")
+    assert client.post(path, json={"enabled": True}).status_code == 403
+    assert client.post(path, json=[True], headers=headers).status_code == 400
+    response = client.post(path, json={"enabled": True}, headers=headers)
+    assert response.json == {"read_only": False, "draining": True, "active_work": 0}
+    assert client.post("/run/scan-live", headers=headers).status_code == 503
+    assert client.get("/readyz").status_code == 200
+    assert client.post(path, json={"enabled": False}, headers=headers).json["draining"] is False
+
+
+def test_read_only_unknown_get_is_denied_before_handler(security_app, monkeypatch):
+    monkeypatch.setenv("APP_READ_ONLY", "true")
+    security_app.add_url_rule("/future-job", "future_job", lambda: pytest.fail("Unknown route executed"))
+    assert security_app.test_client().get("/future-job").status_code == 503
+
+
+def test_command_stays_tracked_after_sse_disconnect(security_app, monkeypatch):
+    import threading
+    from src import app as module
+    from src import deployment_controls as controls
+
+    finish = threading.Event()
+    threads = []
+    class TrackedThread(controls.WorkThread):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            threads.append(self)
+    class Process:
+        returncode = 0
+        def __init__(self, *_args, **_kwargs):
+            self.stdout = self.lines()
+        def lines(self):
+            yield "started\n"
+            finish.wait(5)
+            # Exceed queue capacity after disconnect: reader must not block.
+            for _ in range(1000):
+                yield "output\n"
+        def wait(self):
+            finish.wait(5)
+            return 0
+    monkeypatch.setattr(controls, "WorkThread", TrackedThread)
+    monkeypatch.setattr(module.subprocess, "Popen", Process)
+    try:
+        with security_app.test_request_context("/run/scan-live"):
+            response = module._stream_command(["offline-fixture"])
+            assert next(response.response) == "data: [START]\n\n"
+            response.close()
+        assert controls.set_drain(True)["active_work"] == 1
+        with pytest.raises(controls.WritesDisabled):
+            controls.Work()
+    finally:
+        finish.set()
+        for thread in threads:
+            thread.join(5)
+        controls.set_drain(False)
+    assert not any(thread.is_alive() for thread in threads)
+    assert controls.snapshot()["active_work"] == 0
 
 
 def test_security_headers_present(client):

@@ -19,7 +19,10 @@ jobs:
 
   deploy-image-library:
     needs: validate
-    if: github.ref == 'refs/heads/main'
+    # Default remains legacy source until the supervised cutover. Set the repo
+    # variable to hold during migration, or container after acceptance. Unknown
+    # modes fail closed. The container pilot never targets this source app.
+    if: github.ref == 'refs/heads/main' && (vars.IMAGE_LIBRARY_RELEASE_MODE == '' || vars.IMAGE_LIBRARY_RELEASE_MODE == 'source')
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:

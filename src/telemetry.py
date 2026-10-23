@@ -77,7 +77,7 @@ class SafeTraceExporter(SpanExporter):
         return self.delegate.force_flush(timeout_millis)
 
 
-def initialize_telemetry(app, *, commit="unknown") -> bool:
+def initialize_telemetry(app, *, commit="unknown", build_id="") -> bool:
     """Use the existing Insights resource; never enable exporters in local tests."""
     global _provider
     connection = os.getenv("APPLICATIONINSIGHTS_CONNECTION_STRING", "").strip()
@@ -95,8 +95,9 @@ def initialize_telemetry(app, *, commit="unknown") -> bool:
             resource = Resource({
                 # A warmed process survives a slot swap. Use a stable role;
                 # sanitized request host distinguishes production from staging.
-                "service.name": "image-library",
+                "service.name": "image-library-container" if build_id else "image-library",
                 "service.version": commit if re.fullmatch(r"[0-9a-f]{40}", commit) else "unknown",
+                "service.instance.id": build_id if re.fullmatch(r"[a-zA-Z0-9._-]{1,100}", build_id) else "source",
             })
             provider = TracerProvider(resource=resource)
             exporter = AzureMonitorTraceExporter(
