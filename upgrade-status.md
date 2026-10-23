@@ -4,14 +4,20 @@ Updated: 2026-10-22 (America/Los_Angeles).
 
 ## Current execution checkpoint
 
-**Pilot is not passed.** A forward slot swap exposed a state-ownership mismatch:
+**Pilot is not passed; approved in-place implementation is in progress.**
+The user approved staging validation followed by the same tested digest update
+in place, preserving main-slot state/settings and accepting a brief restart.
+One verified rollback is permitted; ambiguous updates require reconciliation.
+Pilot deployments remain held until the revised local checks pass.
+
+A forward slot swap exposed a state-ownership mismatch:
 the two pilot `/home` sentinels exchanged hostnames with the content. Runtime and
 independent Kudu VFS hashes agree. No files were lost and legacy production/DNS
 were untouched. Reverse-swap recovery PASSED in 84.70 seconds against the
-original image/state checkpoint, including both nonroot/auth checks. Recommend changing promotion to tested-digest updates
+original image/state checkpoint, including both nonroot/auth checks. Approval changes promotion to tested-digest updates
 in place with a bounded restart/one rollback, rather than adding unapproved
 external storage. See PILOT_ACCEPTANCE.md. Automatic pilot deployments are held
-pending this material plan adjustment; build-only validation stays enabled.
+pending implementation validation; build-only validation stays enabled.
 
 User approved the exact-image applicability review and requested unattended
 execution until the pilot passes. All eight candidate package findings have

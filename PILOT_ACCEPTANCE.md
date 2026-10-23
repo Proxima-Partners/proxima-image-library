@@ -1,6 +1,6 @@
 # Container pilot acceptance evidence
 
-As of 2026-10-22 PDT. **Pilot blocked on state-safe promotion design; not passed.**
+As of 2026-10-22 PDT. **In-place promotion approved; validation in progress, not passed.**
 Legacy `library.liveproxima.org` remains v1.0.5 / `0ddfd05`; DNS is unchanged.
 
 ## Completed gates
@@ -22,7 +22,7 @@ Legacy `library.liveproxima.org` remains v1.0.5 / `0ddfd05`; DNS is unchanged.
 - Seeded the new app's main slot with an earlier tested digest in 32 seconds;
   its source-baseline persistent state survived the switch to containers.
 
-## Blocking swap result and proposed adjustment
+## Failed swap result and approved adjustment
 
 The forward swap completed at the platform level but **failed application
 acceptance**: the persistent `/home` state moved with the slot content. This was
@@ -40,7 +40,7 @@ passed in 84.70 seconds against the ORIGINAL checkpoint: both images, both
 persistent-state IDs, nonroot execution and authentication were restored.
 This recovery is not treated as a pass of the forward-swap acceptance gate.
 
-**Recommended plan adjustment, awaiting approval:** keep staging validation,
+**User-approved plan adjustment, 2026-10-22:** keep staging validation,
 then update the new main app to the same tested immutable digest in place.
 Keep its own `/home` state and credentials, accept a bounded restart, and restore
 the previous approved digest once if post-deploy verification fails. This uses
@@ -53,7 +53,7 @@ migration work not included in the current approved resource set.
 
 Automatic pilot deployments are held with `IMAGE_LIBRARY_PILOT_MODE=hold`;
 build-only validation remains active. Resume requires an explicit `run` value
-after the promotion decision. Legacy production/DNS remain unchanged.
+after local validation of the approved in-place implementation. Legacy production/DNS remain unchanged.
 
 ## Comparable read experiment
 
@@ -97,13 +97,13 @@ time. Queue time, build time, image update and swap must remain separate.
 
 ## Remaining gates
 
-- Resolve the promotion design without weakening the state-preservation gate.
+- Validate the approved in-place promotion without weakening the state-preservation gate.
 - Reconfirm protected credentials and state ownership under the approved new
-  promotion procedure. If swaps are retained, make the per-slot MCP secret
-  sticky as well as externalizing state; it is not presently marked sticky.
+  promotion procedure. Compare all settings in memory, never log secret values
+  or their hashes. No settings are copied and no swaps are performed.
 - Failed-readiness and failed-pull rejection and one bounded recovery each.
 - At least five comparable complete cached releases including promotion, with
-  queue time separate; median target <=5 minutes, update/swap targets <=2 minutes.
+  queue time separate; median target <=5 minutes, update/promotion targets <=2 minutes.
 - Final consolidated evidence and explicit acceptance decision. No old-app
   shutdown, DNS cutover, asset deletion/backfill or write canary is included.
 

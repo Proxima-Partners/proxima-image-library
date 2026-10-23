@@ -78,12 +78,15 @@ jobs:
     needs: build
     runs-on: ubuntu-24.04
     environment: image-library-pilot
-    timeout-minutes: 20
+    # Two bounded rollouts plus one possible recovery and cleanup.
+    timeout-minutes: 35
     permissions:
       contents: read
+      actions: read
       id-token: write
     env:
       RELEASE_IMAGE: ${{ needs.build.outputs.image }}
+      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
@@ -93,8 +96,14 @@ jobs:
           client-id: ${{ vars.AZURE_IMAGE_DEPLOY_CLIENT_ID }}
           tenant-id: ${{ env.AZURE_TENANT_ID }}
           subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
-      - name: Deploy exact digest to isolated staging and verify readiness
-        run: python3 -m scripts.deploy_container_pilot
+      - name: Retrieve this exact build receipt
+        run: |
+          gh run download "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" \
+            --name "pilot-build-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" --dir release-evidence
+      - name: Validate staging then promote same digest in place with bounded recovery
+        run: |
+          python3 -m scripts.pilot_inplace_release --release release-evidence/release.json \
+            --report reports/pilot-release.json
       - name: Retain pilot deployment evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

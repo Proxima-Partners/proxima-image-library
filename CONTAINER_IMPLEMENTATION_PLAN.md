@@ -3,6 +3,15 @@
 Date: 2026-10-22 (America/Los_Angeles). Status: approved; implementation in progress on the pilot branch. See `upgrade-status.md` for execution evidence.
 Baseline commit: `0ddfd050160f5363a1ebb87ade588509b7a426e0`.
 
+**Approved adjustment, 2026-10-22:** the actual forward swap failed the state-
+ownership gate and reverse recovery restored both slots. The user approved
+staging validation followed by updating the SAME tested digest in place on the
+new main app, with a brief restart and at most one verified rollback. No more
+slot swaps are used for releases. Preserve every main-slot setting/credential
+and its `/home` state; never copy staging configuration. Ambiguous Azure results
+require reconciliation, not another mutation. This supersedes swap-specific
+steps below; the failed swap remains recorded, not reclassified as a pass.
+
 ## 1. Decision and scope
 
 Build the application image in GitHub Actions and run it on Azure App Service for Linux. Use a new, dedicated P2v3 plan with one instance and a new Image Library app with a staging slot. Store images in a private Azure Container Registry (ACR) in West US 2. Keep SharePoint as the authoritative asset/catalog store and retain Application Insights.
@@ -54,7 +63,7 @@ Proposed resources, all subject to name availability, policy, quota and approval
 - Compute: dedicated Linux P2v3, one instance, Always On; candidate plan name `asp-image-library-p2v3`.
 - App: candidate `pp-image-library`, with one `staging` slot. Confirm the final generated default hostnames rather than constructing them from names.
 - Registry: dedicated private ACR Premium, same region. Premium is a speed-first choice for greater image throughput; it is not a claim that this small application's pulls need its full capacity. No geo-replication or private-network redesign in the first release. [ACR tiers](https://learn.microsoft.com/en-us/azure/container-registry/container-registry-skus).
-- Container configuration: one main container using App Service `sitecontainers`; no extra sidecars. Set explicit `targetPort=8080` and matching `PORT=8080`. Do not mix classic `WEBSITES_PORT` configuration into this mode. Rehearse forward/reverse slot swaps and storage behavior on the pilot. [Container configuration](https://learn.microsoft.com/en-us/azure/app-service/configure-sidecar).
+- Container configuration: one main container using App Service `sitecontainers`; no extra sidecars. Set explicit `targetPort=8080` and matching `PORT=8080`. Do not mix classic `WEBSITES_PORT` configuration into this mode. Rehearse in-place forward/reverse digest updates and storage behavior on the pilot. [Container configuration](https://learn.microsoft.com/en-us/azure/app-service/configure-sidecar).
 - Keep one process initially. A dedicated P2v3 provides headroom but does not make process-local state safe across processes or instances.
 
 ## 4. Implementation work packages
@@ -96,7 +105,7 @@ GitHub OIDC and container deployment are supported App Service patterns. [Micros
 3. Add only the required pilot callback URI to the intended Entra registration, after approval; production keeps `https://library.liveproxima.org/auth/callback`. Check `APP_BASE_URL`, CORS, cookie behavior, MCP delivery URLs and direct-host clients. Do not publish pilot URLs into the real catalog.
 4. Enable and verify `/home` persistence deliberately for the chosen container mode; do not infer persistence from directory existence or an image declaration. Keep pilot and production state separate. Keep all automatic ingestion off.
 5. Keep privacy-filtered telemetry and a distinct app/slot role. Check actual ingestion, not just the `/readyz` initialization flag. Do not put credentials, asset content or donor/user identifiers into new build or diagnostic reports.
-6. Exercise cold pull, cached update, restart, forward/reverse slot swap, failed readiness, failed pull and recovery to an earlier digest. Confirm state remains with the intended slot and pull permissions remain valid after swap.
+6. Exercise cold pull, cached update, restart, forward/reverse in-place digest updates, failed readiness, failed pull and recovery to an earlier digest. Confirm state and protected configuration remain with each hostname. A passing unexpired CI receipt must match the prior rollback image/build before any update.
 7. To separate container benefits from hardware benefits, benchmark the same fixture workload on the same P2v3 size using source/Oryx and container deployment before finalizing the pilot. Report the old-S1 to new-P2 improvement separately; do not attribute all of it to containers.
 
 ### D. Controlled production cutover
@@ -155,7 +164,7 @@ Performance targets (measure, do not promise):
 | --- | --- |
 | Cached code-only release | Median at most 5 minutes from workflow start to verified production across at least five comparable runs; report queue time separately |
 | Image rollout | At most 2 minutes from digest update to exact readiness on a warm host |
-| Slot swap | At most 2 minutes on the dedicated plan; include restart/warm-up, not just API submission |
+| In-place main promotion | At most 2 minutes on the dedicated plan; include restart/warm-up and verification, not just API submission |
 | Cold deployment | Report full pull/start separately; do not discard slow uncached samples |
 | Application reads | No material regression: compare identical authenticated route samples/cache state on identical compute; separately track thumbnails and Graph/AI waits |
 | Subsequent app optimization | Work toward warm read p95 <500 ms and usable grid <1.5 s; these are not container acceptance promises |
@@ -166,7 +175,7 @@ Low traffic is not evidence that the app is fast. Use bounded fixture/synthetic 
 
 Two different rollback procedures are necessary:
 
-1. **Normal container release:** before promotion, a failed gate leaves production unchanged. After promotion, use the already-tested prior digest/slot and verify the public host. Allow at most one automated rollback under a preapproved policy; stop and alert if recovery fails. Do not oscillate between versions.
+1. **Normal container release:** before promotion, a failed staging gate leaves main unchanged. After an acknowledged update, reconcile the configured digest and unchanged protected configuration before restoring the already-tested prior digest in place. Verify the original state identity, exact build, authentication and settings. Allow at most one automated rollback; stop if recovery fails or a control-plane result is ambiguous. Do not oscillate between versions or swap slots.
 2. **Initial old-app to new-app migration:** retain the old source app and protected state snapshot. If TLS/auth/readiness/state validation fails, keep writes disabled, restore the documented domain/DNS/TLS route and verify the old app before resuming writes. If the new app has already accepted writes, first reconcile its changed local state; never overwrite newer state with the old snapshot or reverse SharePoint changes automatically. DNS rollback can take time.
 
 Use a cutover checkpoint after 20 minutes without a healthy authenticated target: begin the documented rollback rather than making open-ended production changes. Do not begin the outage at all without a workable certificate/domain rollback path. No data/schema migration is included in this release, which limits rollback complexity.
@@ -187,7 +196,7 @@ Use a cutover checkpoint after 20 minutes without a healthy authenticated target
 | --- | --- | --- |
 | 1 | Writer/drain/read-only controls, Dockerfile, `.dockerignore`, runtime/image tests | Local/CI parity; no live deployment |
 | 2 | Build-only/pilot workflow, digest/build manifest, cache, SBOM/scans, narrow infrastructure definitions | Reviewed exact resource and permission diff; no production-target ambiguity |
-| 3 | Approved dedicated P2v3, ACR, new app/slot and identity setup; pilot runs | State, auth, restart, swap/rollback and performance evidence |
+| 3 | Approved dedicated P2v3, ACR, new app/slot and identity setup; pilot runs | State, auth, restart, in-place promotion/rollback and performance evidence |
 | 4 | Approved DNS/TLS/config/state cutover runbook and execution | Verified real public host; user can browse and approved canary passes |
 | 5 | Container-only normal release pipeline, monitoring and read-only maintenance schedule | 24-hour observation; documented rollback retained |
 | Later | Threaded request handling, HTTP pooling/cache coalescing, derivative/background work, latest-runtime adoption | Separate tests and measurements; no automatic scale-out |
