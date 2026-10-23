@@ -4,6 +4,28 @@ Updated: 2026-10-23 (America/Los_Angeles).
 
 ## Current execution checkpoint
 
+**Supervised production cutover PASSED.** `https://library.liveproxima.org` now
+serves writable **v2.0.0**, commit `2ffc0ff` / build `40019125172-1`, on the
+dedicated P2v3 container app. Final stopped-writer backup, Azure-aware no-overwrite
+state transfer, custom-domain TLS/Microsoft sign-in/admin reads, all 280 catalog
+records, thumbnails and signed MCP delivery passed. The single approved canary
+completed in 15 seconds; its original, WebP, PNG, metadata and JPEG thumbnail were
+independently verified. Only its record and four files were removed, with exact
+ownership/ETag checks and 404 readback. All original catalog fields are unchanged.
+The accepted configuration/state backup passed readback and the deployment lease
+is verified available/unlocked.
+
+Legacy production and staging are stopped and retained; the shared plan and Pete
+were not changed. New staging remains read-only. **Automatic ingestion remains
+off, pilot mode remains `hold`, and unattended production promotion is not enabled.**
+Remote `main` remains unchanged. Observe for 24 hours; retain old apps/configuration
+at least through October 30, with cleanup requiring separate approval. This is a
+completed supervised cutover, not a claim of completed unattended automation or
+representative production performance benchmarking. See
+`cutover-evidence/2026-10-23-production-cutover.json` and the runbook.
+
+### Pre-cutover read-only readiness (historical)
+
 **Fresh candidate and read-only Azure acceptance passed. Final cutover is next.**
 Build `40019125172-1` / commit `2ffc0ff` passed 487 tests, exact-image security and
 smoke gates, and both in-place deployments. Both real workers passed the Azure

@@ -1,6 +1,6 @@
 # Image Library container implementation plan
 
-Date: 2026-10-22 (America/Los_Angeles). Status updated 2026-10-23: isolated read-only pilot passed on the pilot branch; public cutover remains separate. See `upgrade-status.md` and `PILOT_ACCEPTANCE.md` for execution evidence.
+Date: 2026-10-22 (America/Los_Angeles). Status updated 2026-10-23: isolated pilot and subsequent supervised production cutover passed on the pilot branch. The 24-hour observation and unattended production automation gates remain open. See `upgrade-status.md`, `PRODUCTION_RELEASE_RUNBOOK.md`, and `cutover-evidence/2026-10-23-production-cutover.json` for current evidence. The steps below retain the original planning context.
 Baseline commit: `0ddfd050160f5363a1ebb87ade588509b7a426e0`.
 
 **Approved adjustment, 2026-10-22:** the actual forward swap failed the state-

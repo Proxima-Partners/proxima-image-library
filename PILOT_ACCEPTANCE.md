@@ -1,7 +1,10 @@
 # Container pilot acceptance evidence
 
 As of 2026-10-23 PDT. **Isolated read-only pilot PASSED with in-place promotion.**
-Legacy `library.liveproxima.org` remains v1.0.5 / `0ddfd05`; DNS is unchanged.
+The pilot evidence below is historical. The subsequent supervised public cutover
+also passed; the custom domain now serves writable v2.0.0. See
+`cutover-evidence/2026-10-23-production-cutover.json` and
+`PRODUCTION_RELEASE_RUNBOOK.md` for current state and remaining automation gates.
 
 ## Final acceptance — 2026-10-23
 

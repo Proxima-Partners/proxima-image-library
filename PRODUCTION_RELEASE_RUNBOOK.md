@@ -1,8 +1,77 @@
-# Production release preparation and remaining gates
+# Production release runbook and remaining automation gates
 
-Updated 2026-10-23. Scope: `perf/container-pilot`, approved private release
-storage/TLS, protected checkpoints, legacy staging containment and DNS TTL
-preparation. Public production cutover has not occurred.
+Updated 2026-10-23. Scope: approved supervised production cutover on
+`perf/container-pilot`; no `main` push or unattended production promotion.
+
+## Accepted production checkpoint
+
+**Production cutover and the single disposable write canary PASSED.** The public
+custom domain serves writable v2.0.0 / `2ffc0ff` / `40019125172-1`, exact image
+`sha256:1a1d24ede2eb7bfd81cb1ea2b11ea5518f0df5c4441dd714f2ef49ab5e1afa9a`.
+See `cutover-evidence/2026-10-23-production-cutover.json` for the sanitized report.
+
+- Legacy `PP-App-Serv` production and staging are **Stopped**. Do not restart
+  either while the new app can write. Do not stop/resize the shared S1 plan or Pete.
+- New production is writable; new staging is read-only. Both ingestion pollers
+  remain disabled. Normal manual uploads work; watched-folder ingestion does not
+  resume automatically. Scheduled maintenance remains disabled.
+- `library` CNAME now points to `pp-image-library.azurewebsites.net`, TTL 300;
+  all four authoritative servers and the operator resolver verified it. TXT and
+  `www.library` records and the old certificate binding are intact. New main app
+  ingress is open behind application authentication; SCM remains independently
+  operator-only/default Deny. Staging stays operator-only.
+- Final private backups use `pilrelease9528/rollback-backups/9946fbe74da346bebac8e725316ff4ff/`.
+  They include the stopped legacy config/state/Git source, prepared target,
+  280-record baseline and the verified disposable-canary ownership manifest.
+  `accepted-production.json.gz` preserves the verified writable configuration and
+  state. Exact readback passed; the final release lease was explicitly released
+  and independently verified **available/unlocked**. The owner recovery record is
+  retained locally; it is not permission to reacquire or replay that operation.
+  No private settings, file contents or integrity hashes belong in Git/CI logs.
+- Exactly 806 bytes in two state entries were installed into empty target roots
+  with exclusive isolated restore and per-root no-overwrite rename. Source state
+  and target state still match exactly after the canary. The transfer payload was
+  removed; the installation journal is retained. No credential file, staging
+  history, quota reset or staged-upload replay was involved.
+- Fresh Microsoft callbacks, authenticated admin status, 280 records, 20 loaded
+  thumbnails, original-secret signed MCP JPEG delivery and invalid-auth rejection
+  passed on the real custom domain. One actual UID/GID 65532 worker is verified.
+- The 1800×1100 disposable PNG produced exact original bytes, 1600×978 WebP/PNG,
+  a 240×147 JPEG thumbnail and a matching metadata sidecar. Its one new record
+  (`507`) and four owned files were removed through ETag-conditional Graph calls;
+  each was verified absent. All original 280 record IDs/fields remain unchanged.
+  Normal DriveItem deletion moves files to the recycle bin; no purge was used.
+  [Microsoft Graph deletion semantics](https://learn.microsoft.com/en-us/graph/api/driveitem-delete?view=graph-rest-1.0).
+- Telemetry confirms the production slot/build, successful callbacks and upload.
+  The observed window has zero dependency failures/5xx responses, five deliberate
+  401 tests and one unmatched 404 whose path is intentionally not recorded.
+  Do not report zero request failures. The 15-second small-fixture upload is not
+  a workload benchmark; its processing span was 14.922 seconds, versus 4.252 seconds
+  for AI and 0.334 seconds for derivatives. SSE HTTP span duration is not job time.
+
+### Operating boundaries after cutover
+
+Keep `IMAGE_LIBRARY_PILOT_MODE=hold` and the legacy workflow disabled. The old
+read-only pilot workflow is not a writable-production release procedure. Do not
+dispatch it against the now-live app. Remote `main` still contains the legacy
+source; main integration and a container-only production workflow are separate
+reviewed work. No slot swaps, automatic undrain or automatic state restore.
+
+The 24-hour observation gate remains open; no continuous monitor was created.
+Retain old apps, settings, TLS binding and backups at least through **2026-10-30**;
+deletion is a separate approval. Resume watched-folder ingestion only after
+explicit approval and verification of a single active owner. Finish trusted CI
+receipt retrieval, shared lease participation, runner storage/SCM network and
+role access, and supervised recovery before enabling unattended promotion.
+
+Initial-cutover rollback now requires checking for **new writes** first. Stop or
+drain the new writer, capture and reconcile current local state and SharePoint
+changes, then restore the old route/app only under the same exclusive lease.
+Never overwrite new state with the old backup or reverse SharePoint writes.
+At acceptance the disposable canary is cleaned and local state matches the old
+snapshot, but that fact will become stale as soon as normal use resumes.
+
+### Pre-cutover readiness (historical)
 
 **Current checkpoint:** `2ffc0ff` / `40019125172-1` passed 487 target-Linux tests,
 security/smoke gates and both immutable in-place deployments. Actual Azure worker
