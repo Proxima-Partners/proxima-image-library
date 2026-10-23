@@ -69,7 +69,12 @@ def writable(func):
     def wrapped(*args, **kwargs):
         if read_only():
             raise WritesDisabled("Application is read-only")
-        return func(*args, **kwargs)
+        try:
+            return func(*args, **kwargs)
+        finally:
+            # Invalidate even an ambiguous/partial write, never replay it.
+            from src.read_cache import catalog_cache
+            catalog_cache.invalidate()
     return wrapped
 
 

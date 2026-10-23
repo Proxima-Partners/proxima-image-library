@@ -37,6 +37,7 @@ from src import __version__
 from src.config import Config, stock_credentials
 from src.stock_credentials import PROVIDERS as _STOCK_API_PROVIDERS, ManagedCredentialError
 from src.release import release_info
+from src.read_cache import catalog_cache
 from src.telemetry import initialize_telemetry, tracer
 from src.mcp_delivery import verify_delivery
 from src import ingest_poller
@@ -560,9 +561,7 @@ def test_expire_session():
 
 _client = None
 _sp_client = None
-_records_cache: Optional[List] = None
-_cache_time: float = 0
-CACHE_TTL = 300  # 5-minute cache
+_client_lock = threading.Lock()
 
 
 def _sse_safe(s: str) -> str:
@@ -609,8 +608,7 @@ def _sse_poll_loop(t: threading.Thread, q: "queue.Queue", timeout_seconds: int,
             yield f"data: {_sse_safe(value)}\n\n"
         elif kind == "done":
             if invalidate_cache:
-                global _records_cache
-                _records_cache = None
+                catalog_cache.invalidate()
             yield f"data: [RESULT] {json.dumps(value, ensure_ascii=False)}\n\n"
             yield "data: [DONE]\n\n"
             break
@@ -623,29 +621,27 @@ def _sse_poll_loop(t: threading.Thread, q: "queue.Queue", timeout_seconds: int,
 
 def get_client():
     global _client
-    if _client is None:
-        if Config.TEST_MODE:
-            _client = LocalClient()
-        else:
-            from src.sharepoint_list_client import SharePointListClient
-            _client = SharePointListClient()
+    with _client_lock:
+        if _client is None:
+            if Config.TEST_MODE:
+                _client = LocalClient()
+            else:
+                from src.sharepoint_list_client import SharePointListClient
+                _client = SharePointListClient()
     return _client
 
 
 def get_sp_client():
     global _sp_client
-    if _sp_client is None:
-        from src.sharepoint_client import SharePointClient
-        _sp_client = SharePointClient()
+    with _client_lock:
+        if _sp_client is None:
+            from src.sharepoint_client import SharePointClient
+            _sp_client = SharePointClient()
     return _sp_client
 
 
 def get_all_records() -> list:
-    global _records_cache, _cache_time
-    if _records_cache is None or time.time() - _cache_time > CACHE_TTL:
-        _records_cache = get_client().get_all_records()
-        _cache_time = time.time()
-    return _records_cache
+    return catalog_cache.get(lambda: get_client().get_all_records())
 
 
 @app.route("/health")
@@ -693,8 +689,8 @@ def debug_metrics():
     return jsonify({
         "rss_mb": round(rss_mb, 1) if rss_mb is not None else "psutil not installed",
         "sp_url_cache_size": len(_sp_url_cache),
-        "records_cache_live": _records_cache is not None,
-        "records_cache_size": len(_records_cache) if _records_cache else 0,
+        "records_cache_live": catalog_cache.stats()["live"],
+        "records_cache_size": catalog_cache.stats()["size"],
         "active_threads": threading.active_count(),
     })
 
@@ -2191,8 +2187,7 @@ def api_image_status():
     ok = list_client.patch_fields(record_id, fields)
 
     if ok:
-        global _records_cache
-        _records_cache = None  # invalidate so pending-count reflects the change
+        catalog_cache.invalidate()
         return jsonify({"ok": True})
     return jsonify({"error": "Record not found or update failed"}), 404
 
@@ -2436,8 +2431,7 @@ def api_image_delete():
 
     deleted = _bulk_delete_records(get_client(), [record_id])
 
-    global _records_cache
-    _records_cache = None
+    catalog_cache.invalidate()
 
     if not deleted:
         return jsonify({"error": "Failed to delete record"}), 500
@@ -3433,8 +3427,7 @@ def api_maintenance_purge_status():
 
     deleted_records = _bulk_delete_records(get_client(), record_ids)
 
-    global _records_cache
-    _records_cache = None
+    catalog_cache.invalidate()
 
     result = {
         "status": status,
@@ -3507,8 +3500,7 @@ def api_maintenance_orphans_delete_records():
 
     deleted = _bulk_delete_records(get_client(), record_ids)
 
-    global _records_cache
-    _records_cache = None
+    catalog_cache.invalidate()
 
     result = {
         "requested": len(record_ids),
@@ -3577,8 +3569,7 @@ def api_maintenance_orphans_flag_missing():
     failed_ids = patch_result["failed_ids"]
 
     if updated > 0:
-        global _records_cache
-        _records_cache = None
+        catalog_cache.invalidate()
 
     return jsonify({
         "requested": len(record_ids),
@@ -3691,8 +3682,7 @@ def api_maintenance_orphans_register_files():
         except Exception as exc:
             failed.append({"path": rel_path, "error": str(exc)})
 
-    global _records_cache
-    _records_cache = None
+    catalog_cache.invalidate()
 
     _maintenance_append_audit(
         action="orphans-register-files",
@@ -3846,8 +3836,7 @@ def api_maintenance_duplicates_resolve():
 
     deleted = _bulk_delete_records(client, delete_ids)
 
-    global _records_cache
-    _records_cache = None
+    catalog_cache.invalidate()
 
     result = {
         "action": action,
@@ -3974,8 +3963,7 @@ def api_maintenance_duplicates_resolve_all():
         total_failed += max(0, len(delete_ids) - deleted)
         groups_processed += 1
 
-    global _records_cache
-    _records_cache = None
+    catalog_cache.invalidate()
 
     _maintenance_append_audit(
         action="duplicates-resolve-all",
@@ -4708,8 +4696,7 @@ def api_maintenance_status_reset():
     failed_ids.extend(patch_result["failed_ids"])
     failed = invalid_id_failures + len([fid for fid in failed_ids if fid])
 
-    global _records_cache
-    _records_cache = None
+    catalog_cache.invalidate()
 
     return jsonify({
         "matched_count": len(matches),
@@ -4833,8 +4820,7 @@ def api_maintenance_broken_thumbnails_delete_records():
 
     deleted = _bulk_delete_records(get_client(), record_ids)
 
-    global _records_cache
-    _records_cache = None
+    catalog_cache.invalidate()
 
     result = {
         "requested": len(record_ids),
@@ -4897,8 +4883,7 @@ def api_maintenance_broken_thumbnails_relink():
     if not client.patch_fields(record_id, patch):
         return jsonify({"error": "Failed to update record"}), 500
 
-    global _records_cache
-    _records_cache = None
+    catalog_cache.invalidate()
 
     return jsonify({
         "ok": True,
@@ -5152,8 +5137,7 @@ def api_maintenance_folder_ingest():
                 if "error" in result:
                     q.put(("error", result["error"]))
                 else:
-                    global _records_cache
-                    _records_cache = None
+                    catalog_cache.invalidate()
                     q.put(("done", result))
             except Exception as exc:
                 q.put(("error", f"Folder ingest failed: {exc}"))
@@ -5366,8 +5350,7 @@ def api_maintenance_quality_drift_queue_mark():
 
     result = _bulk_patch_fields(get_client(), patches)
     if result.get("updated", 0) > 0:
-        global _records_cache
-        _records_cache = None
+        catalog_cache.invalidate()
 
     payload = {
         "requested": len(record_ids),
@@ -5457,8 +5440,7 @@ def api_maintenance_category_normalization_apply():
 
     result = _bulk_patch_fields(get_client(), patches)
     if result.get("updated", 0) > 0:
-        global _records_cache
-        _records_cache = None
+        catalog_cache.invalidate()
 
     payload = {
         "requested": len(selected_ids),
@@ -5550,8 +5532,7 @@ def api_maintenance_checkpoints_restore():
     local_client = LocalClient()
     _atomic_json_write(Path(local_client.db_path), checkpoint_records)
 
-    global _records_cache
-    _records_cache = None
+    catalog_cache.invalidate()
 
     restore_result = {
         "checkpoint_id": checkpoint_id,
@@ -5935,8 +5916,7 @@ def api_tag_library_discard_suggestion():
 
     if patches:
         client.bulk_patch_fields(patches)
-        global _records_cache
-        _records_cache = None
+        catalog_cache.invalidate()
 
     return jsonify({"ok": True, "records_updated": len(patches)})
 
@@ -5975,8 +5955,7 @@ def _clear_promoted_suggestions_from_records(promoted_tags: list[str]) -> int:
 
     if patches:
         client.bulk_patch_fields(patches)
-        global _records_cache
-        _records_cache = None
+        catalog_cache.invalidate()
 
     return len(patches)
 

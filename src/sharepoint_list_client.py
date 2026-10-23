@@ -67,7 +67,7 @@ class SharePointListClient(SharePointClient):
 
     def get_records(self, limit: int = 100) -> List[Dict]:
         url = f"{self._list_url}/items?expand=fields&$top={limit}"
-        resp = requests.get(url, headers=self._headers(), timeout=15)
+        resp = self._reads.get(url, headers=self._headers(), timeout=15)
         resp.raise_for_status()
         return [self._to_app_record(i) for i in resp.json().get("value", [])]
 
@@ -75,7 +75,7 @@ class SharePointListClient(SharePointClient):
         url = f"{self._list_url}/items?expand=fields&$top=999"
         records = []
         while url:
-            resp = requests.get(url, headers=self._headers(), timeout=15)
+            resp = self._reads.get(url, headers=self._headers(), timeout=15)
             resp.raise_for_status()
             data = resp.json()
             records.extend(self._to_app_record(i) for i in data.get("value", []))
@@ -86,7 +86,7 @@ class SharePointListClient(SharePointClient):
         url = f"{self._list_url}/items?$select=id&$top=999"
         ids: List[str] = []
         while url:
-            resp = requests.get(url, headers=self._headers(), timeout=15)
+            resp = self._reads.get(url, headers=self._headers(), timeout=15)
             resp.raise_for_status()
             data = resp.json()
             ids.extend(str(i["id"]) for i in data.get("value", []))
@@ -98,7 +98,7 @@ class SharePointListClient(SharePointClient):
         # Fetch all item titles and check locally to avoid that requirement.
         url = f"{self._list_url}/items?$expand=fields($select=Title)&$top=999"
         while url:
-            resp = requests.get(url, headers=self._headers(), timeout=15)
+            resp = self._reads.get(url, headers=self._headers(), timeout=15)
             resp.raise_for_status()
             data = resp.json()
             for item in data.get("value", []):

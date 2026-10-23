@@ -44,6 +44,18 @@ write tests and schedule activation are separate approval gates.
   2 MiB per response and 20 MiB total. Budget exhaustion is incomplete, not healthy.
   Reference/orphan counts remain unknown unless both inventories finish.
   Counts are point-in-time observations, never authorization for repair/deletion.
+- Batch 1 CI `40029086741` passed: target-image regression, smoke, release-channel
+  checks, security gate, SBOM and browser behavior. No publish/deploy permissions.
+- Batch 2: thread-owned pooled Graph reads; at most one retry for explicit
+  429/503/504 responses within the read budget, never a shortened Retry-After.
+  Token refresh is serialized. Writes/download semantics are not retried/changed.
+  Catalog refresh is single-flight, returns private copies, discards snapshots
+  invalidated during a fetch, and invalidates after partial/uncertain writes.
+  Five simultaneous fixture reads cause one fetch, not five. This is a request-
+  count result, not a live latency benchmark. Worker/process count unchanged.
+- Batch 2 target-Linux container: **548 passed**; JS **7 passed**. Reused isolated
+  Python 3.12 developer validation: 541 passed/7 Linux-only skipped. Production
+  remains unchanged; live concurrency/browser-performance acceptance is pending.
 
 ## Activation gates (not granted by implementation approval)
 
