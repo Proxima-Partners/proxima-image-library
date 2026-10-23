@@ -102,7 +102,7 @@ def initialize_telemetry(app, *, commit="unknown") -> bool:
             exporter = AzureMonitorTraceExporter(
                 connection_string=connection, disable_offline_storage=True,
                 tracer_provider=provider,
-                connection_timeout=2, read_timeout=5, retry_total=1,
+                timeout=2, read_timeout=5, retry_total=1,
             )
             provider.add_span_processor(BatchSpanProcessor(
                 SafeTraceExporter(exporter), max_queue_size=2048,
@@ -114,9 +114,11 @@ def initialize_telemetry(app, *, commit="unknown") -> bool:
             _provider = provider
         FlaskInstrumentor.instrument_app(app, tracer_provider=_provider)
         return True
-    except Exception:
+    except Exception as exc:
         # Diagnostics must not take the application down or print credentials.
-        logging.getLogger(__name__).warning("Application Insights tracing unavailable")
+        logging.getLogger(__name__).warning(
+            "Application Insights tracing unavailable (%s)", type(exc).__name__,
+        )
         return False
 
 

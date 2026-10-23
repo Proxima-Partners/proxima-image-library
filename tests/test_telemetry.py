@@ -106,14 +106,23 @@ def test_enabled_configuration_exports_safe_requests_and_is_idempotent(monkeypat
 
     sink = InMemorySpanExporter()
     created = []
+    real_exporter = azure_exporter.AzureMonitorTraceExporter
+    # Exercise the real SDK constructor (which validates/forwards kwargs), but
+    # replace transport/export and disable SDK auxiliary network workers.
+    monkeypatch.setenv("APPLICATIONINSIGHTS_STATSBEAT_DISABLED_ALL", "true")
+    monkeypatch.setenv("APPLICATIONINSIGHTS_CONTROLPLANE_DISABLED", "true")
+    monkeypatch.setattr(real_exporter, "export", lambda self, spans: sink.export(spans))
 
     def factory(**kwargs):
         created.append(kwargs)
-        return sink
+        return real_exporter(**kwargs)
 
     monkeypatch.setattr(azure_exporter, "AzureMonitorTraceExporter", factory)
     monkeypatch.setattr(telemetry, "_provider", None)
-    monkeypatch.setenv("APPLICATIONINSIGHTS_CONNECTION_STRING", "test-only")
+    monkeypatch.setenv(
+        "APPLICATIONINSIGHTS_CONNECTION_STRING",
+        "InstrumentationKey=00000000-0000-0000-0000-000000000001;IngestionEndpoint=https://example.invalid/",
+    )
     monkeypatch.setenv("TEST_MODE", "false")
     monkeypatch.setenv("TELEMETRY_ENABLED", "true")
     app = Flask(__name__)
