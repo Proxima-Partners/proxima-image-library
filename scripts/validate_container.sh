@@ -9,7 +9,9 @@ if [[ -n "${BUILD_CACHE_REF:-}" ]]; then
   cache_args=(--cache-from "type=registry,ref=$BUILD_CACHE_REF" --cache-to "type=registry,ref=$BUILD_CACHE_REF,mode=max")
   test_cache_args=(--cache-from "type=registry,ref=${BUILD_CACHE_REF}-tests" --cache-to "type=registry,ref=${BUILD_CACHE_REF}-tests,mode=max")
 fi
-docker buildx build --platform linux/amd64 --target test --load \
+# Reuse dependency/source layers, never a cached pytest result. Every release
+# attempt must execute the suite again on the actual target runtime/identity.
+docker buildx build --platform linux/amd64 --target test --no-cache-filter test --load \
   "${test_cache_args[@]}" --tag image-library:tests .
 docker buildx build --platform linux/amd64 --target runtime --load \
   "${cache_args[@]}" --build-arg "COMMIT_SHA=$GITHUB_SHA" \

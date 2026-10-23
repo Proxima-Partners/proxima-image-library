@@ -84,6 +84,15 @@ Legacy production/DNS remain unchanged.
   the actual invalid-start and missing-image failure tests above.
 - Five-run complete-release timing remains pending.
 
+First complete CI release `39910716638-1` passed: 245.39 seconds from the first
+build job starting to verified main, 256 seconds through complete CI cleanup;
+initial queue 4 seconds. Staging/main rollouts were 31.04/39.08 seconds, with
+both temporary access rules removed and both state/configuration checks passed.
+This is preliminary, not the five-run acceptance statistic. A repeat-build cache
+review found pytest could itself be cached. The pipeline now disables cache for
+the disposable test stage only, keeping dependency caches; five comparable runs
+will be measured with fresh test execution on every attempt.
+
 ## Comparable read experiment
 
 One warm-up then 20 interleaved, sequential authenticated `/api/images` requests
@@ -159,3 +168,16 @@ Authoritative CI artifacts are retained for 90 days on each cited GitHub run.
 - This procedure covers the read-only isolated pilot only. Public cutover,
   writable production promotion, scheduled catalog work and cleanup remain
   governed by their separate gates and approvals.
+
+## Maintenance observations retained for the next reviewed batch
+
+- Commits contain SSH signatures and signing remains enabled. GitHub currently
+  reports `unknown_key` for the signing key, so these are NOT GitHub-verified
+  signatures. Registering/trusting that key is a user-owned account follow-up;
+  no account key or access configuration was changed during this pilot.
+- CI warns that the pinned upload-artifact, azure/login and setup-buildx Actions
+  target deprecated Node 20 and are being run under Node 24 by the runner.
+  Refresh those reviewed SHA pins to native supported-runtime releases in a
+  separate dependency batch, with full CI validation. No warning was suppressed.
+- The reviewed CVE applicability policy expires on 2026-11-21 at 23:59:59 UTC.
+  Rebuild/rescan and review before expiry; do not automatically extend it.
