@@ -1,5 +1,5 @@
 name: Deploy isolated Image Library pilot
-# Fresh-run measurement series: 3. Do not rerun a deployed release workflow;
+# Fresh-run measurement series: 4. Do not rerun a deployed release workflow;
 # preserve its artifacts and use a new workflow run for every measurement.
 
 on:
