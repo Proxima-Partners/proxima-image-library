@@ -1,6 +1,7 @@
 """Single-worker stock credentials: environment wins; file updates are atomic.
 
-Only this dedicated, allowlisted file is parsed when dotenv loading is disabled.
+Azure never reads or writes a credential file on its shared /home mount.
+Outside Azure, only this dedicated, allowlisted file is parsed when dotenv is disabled.
 Never load arbitrary application settings or interpolate values from it. Provider
 keys supplied by Azure/the parent environment are intentionally not UI-editable.
 """
@@ -28,6 +29,13 @@ class ManagedCredentialError(ValueError):
     pass
 
 
+def environment_only(environ):
+    flag = environ.get("STOCK_CREDENTIALS_ENV_ONLY", "false")
+    if flag not in {"true", "false"}:
+        raise ValueError("STOCK_CREDENTIALS_ENV_ONLY must be true or false")
+    return "WEBSITE_INSTANCE_ID" in environ or flag == "true"
+
+
 def validated_value(value):
     if (not isinstance(value, str) or not value.strip() or len(value) > 4096
             or any(ord(char) < 32 or ord(char) > 126 for char in value)):
@@ -41,6 +49,9 @@ class StockCredentials:
         self.environ = os.environ if environ is None else environ
         self._lock = threading.RLock()
         self._external = KEYS.intersection(self.environ)
+        # Presence (even empty) identifies Azure; an explicit false cannot
+        # downgrade its policy. Missing provider keys remain non-editable.
+        self.environment_only = environment_only(self.environ)
         values = self._read()
         for key, value in values.items():
             if key not in self._external:
@@ -48,6 +59,12 @@ class StockCredentials:
         self._values = values
 
     def _read(self):
+        if self.environment_only:
+            try:
+                self.path.lstat()  # Refuse files, directories and dangling links; never read secrets.
+            except FileNotFoundError:
+                return {}
+            raise ManagedCredentialError("Credential file forbidden in environment-only mode")
         try:
             fd = os.open(self.path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
         except FileNotFoundError:
@@ -71,7 +88,7 @@ class StockCredentials:
         return values
 
     def editable(self, provider):
-        return not self._external.intersection(PROVIDERS[provider]["keys"])
+        return not self.environment_only and not self._external.intersection(PROVIDERS[provider]["keys"])
 
     def sources(self, provider):
         return {key: ("environment" if key in self._external else

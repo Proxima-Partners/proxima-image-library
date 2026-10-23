@@ -19,6 +19,10 @@ MAX_BYTES = 64 * 1024 * 1024
 MAX_ENTRIES = 1000
 
 
+class StateChangedError(ValueError):
+    """A read-only capture observed unstable metadata or bytes; not a valid snapshot."""
+
+
 def capture(root):
     root = Path(root)
     if not root.is_absolute() or root.is_symlink() or not root.is_dir():
@@ -39,7 +43,7 @@ def capture(root):
             fd = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent)
             try:
                 if signature(os.fstat(fd)) != signature(info):
-                    raise ValueError("State changed while capturing")
+                    raise StateChangedError("State changed while capturing")
                 entries.append(dict(entry, kind="directory"))
                 children = sorted(os.listdir(fd))
                 if len(children) + len(entries) > MAX_ENTRIES:
@@ -47,7 +51,7 @@ def capture(root):
                 for child in children:
                     visit(fd, child, relative + "/" + child)
                 if children != sorted(os.listdir(fd)) or signature(os.fstat(fd)) != signature(info):
-                    raise ValueError("State changed while capturing")
+                    raise StateChangedError("State changed while capturing")
             finally:
                 os.close(fd)
         elif stat.S_ISREG(info.st_mode):
@@ -57,19 +61,19 @@ def capture(root):
             with os.fdopen(fd, "rb") as stream:
                 opened = os.fstat(stream.fileno())
                 if not stat.S_ISREG(opened.st_mode) or signature(opened) != signature(info):
-                    raise ValueError("State changed while capturing")
+                    raise StateChangedError("State changed while capturing")
                 value = stream.read(MAX_BYTES - total + 1)
                 after = os.fstat(stream.fileno())
             if (len(value) != info.st_size or signature(opened) != signature(after)
                     or len(value) + total > MAX_BYTES):
-                raise ValueError("State changed or exceeded byte limit")
+                raise StateChangedError("State changed or exceeded byte limit")
             total += len(value)
             entries.append(dict(entry, kind="file", size=len(value), sha256=hashlib.sha256(value).hexdigest(),
                                 content=base64.b64encode(value).decode()))
         else:
             raise ValueError("State contains link or special file")
         if signature(os.stat(name, dir_fd=parent, follow_symlinks=False)) != signature(info):
-            raise ValueError("State changed while capturing")
+            raise StateChangedError("State changed while capturing")
 
     descriptor = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
     try:
@@ -85,7 +89,7 @@ def capture(root):
                 os.stat(name, dir_fd=descriptor, follow_symlinks=False)
             except FileNotFoundError:
                 continue
-            raise ValueError("State changed while capturing")
+            raise StateChangedError("State changed while capturing")
     finally:
         os.close(descriptor)
     return {"schema": 1, "entries": entries, "missing": missing, "bytes": total}

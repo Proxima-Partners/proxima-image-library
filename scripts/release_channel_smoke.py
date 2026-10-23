@@ -69,6 +69,9 @@ def smoke(image, commit, build_id):
         ready()
         first = control("status")
         assert first["draining"] is False
+        filesystem = control("state_probe")["state_probe"]
+        assert filesystem["uid"] == filesystem["gid"] == 65532
+        assert filesystem["read_write_rename"] and filesystem["cleanup_verified"]
         assert control("drain")["draining"] is True
         docker("stop", "--time", "15", name)
         assert docker("inspect", "--format", "{{.State.ExitCode}}", name) == "0"
@@ -82,6 +85,7 @@ def smoke(image, commit, build_id):
         print(json.dumps({"status": "passed", "image": image, "build_id": build_id,
             "network": "none", "workers": 1, "drain_survived_restart": True,
             "mount_preserved": True, "fresh_boot": True, "shutdown_exit": 0,
+            "worker_filesystem_probe": filesystem,
             "azure_scm_or_graph_verified": False}))
     finally:
         subprocess.run(["docker", "rm", "--force", name], check=False, stdout=subprocess.DEVNULL)

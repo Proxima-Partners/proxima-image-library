@@ -6,6 +6,107 @@ import pytest
 
 from scripts.release_state_archive import capture
 from scripts.release_state_restore import restore_isolated, install_isolated, validate
+from scripts import release_state_restore as recovery
+
+
+def test_settled_capture_retries_only_reads_and_requires_two_equal(monkeypatch):
+    sequence = iter([recovery.StateChangedError("changed"), {"bytes": 1}, {"bytes": 2}, {"bytes": 2}])
+    def read(root):
+        result = next(sequence)
+        if isinstance(result, Exception):
+            raise result
+        return result
+    pauses = []
+    monkeypatch.setattr(recovery, "capture", read)
+    assert recovery.capture_settled("unused", pause=pauses.append) == {"bytes": 2}
+    assert pauses == [0.5]*3
+
+
+def test_settled_capture_never_retries_invalid_archive(monkeypatch):
+    def read(root):
+        raise ValueError("special file")
+    monkeypatch.setattr(recovery, "capture", read)
+    with pytest.raises(ValueError, match="special file"):
+        recovery.capture_settled("unused", pause=lambda _: pytest.fail("No retry"))
+
+
+def test_settled_capture_is_bounded(monkeypatch):
+    count = []
+    def read(root):
+        count.append(1)
+        return {"different_every_read": len(count)}
+    monkeypatch.setattr(recovery, "capture", read)
+    with pytest.raises(recovery.StateChangedError, match="did not settle"):
+        recovery.capture_settled("unused", pause=lambda _: None)
+    assert len(count) == 12
+
+
+@pytest.mark.parametrize("root", ["proxima_stock_keys.env", "proxima_staged_uploads/pending.bin"])
+def test_azure_policy_rejects_secrets_and_staged_content_before_creation(tmp_path, root):
+    source = tmp_path / "input"
+    source.mkdir()
+    path = source / root
+    path.parent.mkdir(exist_ok=True)
+    path.write_bytes(b"fixture")
+    destination = tmp_path.resolve() / "restore"
+    with pytest.raises(ValueError):
+        restore_isolated(capture(source), destination, policy="azure_shared")
+    assert not destination.exists()
+
+
+def test_azure_policy_requires_actual_fixed_mount_metadata(tmp_path):
+    source = tmp_path / "input"
+    source.mkdir()
+    destination = tmp_path.resolve() / "restore"
+    with pytest.raises(ValueError, match="metadata differs"):
+        restore_isolated(capture(source), destination, policy="azure_shared")
+    assert not destination.exists()
+
+
+@pytest.mark.parametrize("kwargs", [{"policy": "fallback"},
+    {"policy": "azure_shared", "uid": 65532, "gid": 65532}])
+def test_no_implicit_policy_or_false_owner_claim(tmp_path, kwargs):
+    source = tmp_path / "input"
+    source.mkdir()
+    with pytest.raises(ValueError):
+        restore_isolated(capture(source), tmp_path.resolve()/"restore", **kwargs)
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Linux atomic rename contract")
+def test_simulated_azure_fixed_metadata_no_chmod_or_chown(tmp_path, monkeypatch):
+    # Unit simulation is NOT evidence of Azure mount behavior; live rehearsal required.
+    source = tmp_path / "input"
+    source.mkdir()
+    (source / "proxima_maintenance_state.json").write_bytes(b'{"history":[]}')
+    bundle = capture(source)
+    actual_capture = recovery.capture
+    def mounted_capture(path):
+        observed = actual_capture(path)
+        for entry in observed["entries"]:
+            entry.update(uid=65534, gid=65534, mode=0o777)
+        return observed
+    monkeypatch.setattr(recovery, "capture", mounted_capture)
+    monkeypatch.setattr(recovery, "_metadata", lambda info: recovery.AZURE_METADATA)
+    def forbidden(*args):
+        raise AssertionError("Azure policy cannot claim to chmod/chown the share")
+    monkeypatch.setattr(os, "fchmod", forbidden)
+    monkeypatch.setattr(os, "fchown", forbidden)
+    restored, target = tmp_path.resolve()/"restore", tmp_path.resolve()/"target"
+    target.mkdir()
+    result = restore_isolated(bundle, restored, policy="azure_shared")
+    assert result["uid"] == 65534 and not result["owner_only_permissions"]
+    assert install_isolated(bundle, restored, target, policy="azure_shared")["verified"]
+    assert validate(capture(target)) == validate(bundle)
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Linux atomic rename contract")
+def test_azure_install_rejects_wrong_mount_before_journal(tmp_path):
+    source, target = tmp_path.resolve()/"input", tmp_path.resolve()/"target"
+    source.mkdir()
+    target.mkdir()
+    with pytest.raises(ValueError, match="metadata differs"):
+        install_isolated(capture(source), source, target, policy="azure_shared")
+    assert not (source/".install-journal.jsonl").exists()
 
 
 @pytest.fixture

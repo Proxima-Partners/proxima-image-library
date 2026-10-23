@@ -74,7 +74,7 @@ class AzureProductionAdapter:
 
     def _rpc(self, slot, action):
         self.assert_lease()
-        if slot not in SCM or action not in {"status", "probe", "drain"} or (action == "drain" and slot != "production"):
+        if slot not in SCM or action not in {"status", "probe", "state_probe", "drain"} or (action == "drain" and slot != "production"):
             raise AzureIOError("Unapproved runtime control action")
         nonce = uuid.uuid4().hex
         self.nonces[slot].add(nonce)

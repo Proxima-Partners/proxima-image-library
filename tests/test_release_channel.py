@@ -39,6 +39,42 @@ def test_status_is_fresh_private_and_no_catalog_contents(runtime):
     assert stat.S_IMODE((runtime.directory / "response.json").stat().st_mode) == 0o600
 
 
+def test_state_probe_actual_identity_and_cleanup(runtime):
+    request(runtime, action="state_probe")
+    assert runtime.process_once()
+    result = response(runtime)
+    assert result["ok"]
+    assert result["state_probe"] == {"uid": os.getuid(), "gid": os.getgid(),
+        "file_uid": os.getuid(), "file_gid": os.getgid(), "file_mode": 0o600,
+        "read_write_rename": True, "cleanup_verified": True}
+    assert not list(runtime.directory.parent.glob(".image-library-state-probe-*"))
+
+
+@pytest.mark.parametrize("kind", ["directory", "symlink"])
+def test_state_probe_never_adopts_existing_path(runtime, kind):
+    path = runtime.directory.parent / (".image-library-state-probe-" + "a"*32)
+    if kind == "directory":
+        path.mkdir()
+        (path / "precious").write_text("keep")
+    else:
+        path.symlink_to(runtime.directory, target_is_directory=True)
+    request(runtime, action="state_probe")
+    assert runtime.process_once() and response(runtime)["ok"] is False
+    assert path.exists()
+    if kind == "directory":
+        assert (path / "precious").read_text() == "keep"
+
+
+def test_state_probe_failure_retains_fixture_and_redacts(runtime, monkeypatch):
+    def failed(*args, **kwargs):
+        raise OSError("SECRET-fixture")
+    monkeypatch.setattr(os, "rename", failed)
+    request(runtime, action="state_probe")
+    assert runtime.process_once() and response(runtime)["ok"] is False
+    assert "SECRET" not in (runtime.directory / "response.json").read_text()
+    assert (runtime.directory.parent / (".image-library-state-probe-" + "a"*32) / "original").is_file()
+
+
 @pytest.mark.parametrize("updates", [
     {"protocol": True}, {"protocol": 2}, {"expires": True}, {"expires": 1000},
     {"expires": 1061}, {"expires": "1060"}, {"nonce": "wrong"}, {"nonce": []},

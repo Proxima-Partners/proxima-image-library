@@ -36,7 +36,8 @@ ENV PATH=/opt/venv/bin:$PATH PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 \
     TAG_LIBRARY_PATH=/home/tag_library.json APP_READ_ONLY=true \
     INGEST_POLLER_ENABLED=false TEST_MODE=false DEV_AUTH_BYPASS=false
 # Build-time ownership only. The vendor's nonroot identity remains the runtime
-# user. Actual Azure-mounted storage must separately pass the ownership probe.
+# user. Azure's mount replaces these modes/owners; separately prove worker access
+# and keep credentials environment-only rather than claiming POSIX privacy there.
 USER 0
 RUN ["python", "-c", "import os; os.chown('/home', 65532, 65532)"]
 WORKDIR /app

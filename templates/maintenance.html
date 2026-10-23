@@ -1487,7 +1487,7 @@
       </button>
       <div class="tool-body">
         <p class="sub" style="margin-bottom:14px;">
-          Check credentials for the four stock photo providers. Environment-managed providers are read-only here; change them in Azure configuration. Other updates are saved atomically to the persistent <code>proxima_stock_keys.env</code> file before taking effect, and survive restart.
+          Check credentials for the four stock photo providers. In Azure, all providers are read-only here, including unconfigured ones; change credentials in Azure application settings. Local installations may save non-environment-managed keys atomically to <code>proxima_stock_keys.env</code>. Azure never reads or writes that credential file.
         </p>
 
         <div class="controls" style="margin-bottom:16px;">

@@ -4,11 +4,16 @@ Updated 2026-10-23. Scope: `perf/container-pilot`, approved private release
 storage/TLS, protected checkpoints, legacy staging containment and DNS TTL
 preparation. Public production cutover has not occurred.
 
-**Cutover and unattended production promotion remain NO-GO.** The implementation
-below awaits a fresh pilot-branch CI build/deployment. Legacy `azure-deploy.yml` is now
+**Cutover and unattended production promotion remain NO-GO.** Candidate
+`a15474c` / build `40016044994-1` passed 459 target-Linux tests, exact-image
+smoke/security gates and both in-place read-only deployments. Its staging SCM
+release channel proved one actual UID/GID 65532 worker and a bounded catalog read.
+The newly approved Azure-aware state policy below requires a fresh candidate.
+Legacy `azure-deploy.yml` is now
 disabled, old staging is stopped, and only the library CNAME TTL changed from
-3600 to 300 seconds; its destination remains the old app. Application settings,
-provider/MCP credentials and catalog data have not changed. Dedicated storage,
+3600 to 300 seconds; its destination remains the old app. Only staging's release
+control/probe/telemetry flags changed. Provider/MCP credentials and catalog data
+have not changed. Dedicated storage,
 its scoped grants, target TLS and private backups are described below. Historical
 findings in `PRODUCTION_CUTOVER_PREFLIGHT.md` must be refreshed before execution.
 
@@ -17,8 +22,16 @@ findings in `PRODUCTION_CUTOVER_PREFLIGHT.md` must be refreshed before execution
 ### Persistent provider credentials
 
 `src/stock_credentials.py` owns the four stock providers' five allowlisted keys.
-It parses only `APP_STATE_DIR/proxima_stock_keys.env` (Azure: `/home`), without
-interpolation and independently of `PYTHON_DOTENV_DISABLED`. Local development
+**Approved policy adjustment, 2026-10-23:** Azure credentials are environment-only.
+Presence of `WEBSITE_INSTANCE_ID` enforces this, even with an explicit false flag;
+`STOCK_CREDENTIALS_ENV_ONLY=true` also enables it outside Azure. Invalid flag
+values fail closed. All providers are non-editable in Azure, including unset ones.
+Any existing dedicated credential file, directory or link prevents startup; it
+is never read, migrated, deleted or overwritten automatically. Keep credentials
+in Azure application settings, not the shared state filesystem.
+
+Only local/file-enabled installations parse `APP_STATE_DIR/proxima_stock_keys.env`,
+without interpolation and independently of `PYTHON_DOTENV_DISABLED`. Local development
 uses the same dedicated filename at the repo root; it is gitignored and excluded
 from the Docker context. Arbitrary bundled/parent `.env` discovery was removed
 from the app; the explicit project-root development file remains opt-out.
@@ -28,14 +41,14 @@ Policy:
 - Environment-supplied keys, including intentionally empty values, win. If any
   key for a provider is environment-managed, that provider is read-only in the UI
   and its update API returns 409. Change those values in Azure, not in two stores.
-- File-managed updates validate the entire request before any mutation, reject
+- Local file-managed updates validate the entire request before any mutation, reject
   unknown/multiline/empty values, serialize within the single process, use a 0600
   temporary file, fsync and atomic replacement, then update process memory.
 - A failed replacement leaves the previous file/environment intact. A failure
   after replacement is ambiguous: return 503 and reconcile/restart, never claim
   rollback or blindly retry. External file edits also require restart.
-- The file must be regular and not a symlink. Unknown/duplicate keys or malformed
-  syntax fail closed. Transfer ownership and restrictive permissions explicitly.
+- A local credential file must be regular and not a symlink. Unknown/duplicate keys
+  or malformed syntax fail closed. It is forbidden in Azure state transfers.
 - Responses expose presence/source only, not secret fragments. Password inputs
   clear after save/cancel. Existing login, admin, CSRF and read-only controls remain.
 - Unsplash download tracking now reads the current environment value instead of
@@ -95,7 +108,8 @@ identity/build only from the existing authenticated admin status endpoint.
 It requires an absolute state directory, an explicit telemetry slot and the
 pilot probe disabled. The pilot's read-only probe checks remain unchanged.
 The sentinel proves mount identity, not backup completeness or data integrity.
-Default behavior remains disabled; no new sentinel was created in Azure.
+Default behavior remains disabled; a new release sentinel was verified on staging
+without changing its original pilot sentinel. Main has not yet enabled this channel.
 
 ### Approved storage and authenticated control preparation
 
@@ -129,20 +143,32 @@ Default behavior remains disabled; no new sentinel was created in Azure.
   lease and apps drained; reconcile actual operations before manual release.
   See [Azure lease semantics](https://learn.microsoft.com/en-us/rest/api/storageservices/lease-blob).
 - `src/release_channel.py` is an opt-in filesystem channel behind existing SCM
-  publishing permission. It accepts only fresh bounded status/probe/drain-on
+  publishing permission (not Linux file modes on `/home`). It accepts only fresh
+  bounded status/probe/state_probe/drain-on
   requests, not undrain or arbitrary commands. Probe reads at most one record;
   returned metadata contains no record contents. Worker count comes from the
   actual Linux Gunicorn child process, not App Service instance count. Default
-  public/admin authentication remains unchanged. Live SCM file ownership and
-  response behavior still require rehearsal on a deployed candidate.
+  public/admin authentication remains unchanged. Live staging status/catalog
+  RPC passed; the new filesystem probe still needs deployment. It creates one
+  exclusive nonce-named non-secret fixture, proves actual-worker write/read/rename,
+  and deletes only that fixture. Failures preserve it for reconciliation.
 - `scripts/release_state_archive.py` captures only six approved state roots,
   bounded to 64 MiB/1,000 entries, rejecting links/special files and unstable
   snapshots. It preserves bytes/modes/owners. The adapter verifies private
   compressed backup bytes after upload and checks mount identity independently.
   Actual private backups and isolated nonroot recovery are now verified below.
-  `release_state_restore.py` validates the entire bundle, restores into a new
-  private directory with UID/GID 65532 and 0600/0700 permissions, and verifies
-  exact bytes. Its separate Linux `RENAME_NOREPLACE` install primitive refuses
+  `release_state_restore.py` validates the entire bundle. Default `strict_posix`
+  restores into a new owner-only directory with UID/GID 65532 and 0600/0700 modes.
+  Those local Linux tests do NOT establish Azure mount permission enforcement.
+  Explicit `azure_shared` verifies observed UID/GID 65534 and 0777 metadata,
+  without chmod/chown or owner-only claims. It forbids credential files and
+  unresolved staged-upload children. Secrets stay in Azure settings/protected
+  release storage; the shared mount relies on app isolation and SCM authorization.
+  Azure's just-written file metadata proved transiently unstable in the synthetic
+  rehearsal. Only read-only capture is retried (at most 12 attempts, 0.5s apart),
+  requiring two consecutive identical internally stable captures. No mutation
+  retry or weakened archive invariant is allowed. Persistent instability stops.
+  Both policies verify exact bytes. The separate Linux `RENAME_NOREPLACE` primitive refuses
   any existing target state. Per-root publication is atomic, not a group
   transaction: an interrupted install keeps its fsynced journal and partial
   state for reconciliation, never automatically retries or rolls back. It still

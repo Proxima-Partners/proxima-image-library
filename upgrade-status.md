@@ -4,8 +4,14 @@ Updated: 2026-10-23 (America/Los_Angeles).
 
 ## Current execution checkpoint
 
-**Private recovery checks passed; legacy staging is now contained. Public cutover
-is still pending.** Legacy deployment workflow is disabled; old staging is stopped
+**Azure-aware state policy approved and being validated; public cutover remains
+pending.** Fresh candidate `a15474c` / `40016044994-1` passed 459 target-Linux tests,
+security/smoke gates and both read-only in-place deployments. Live staging's SCM
+channel verified actual single-worker UID/GID 65532, zero active work and a bounded
+catalog read. The new environment-only credentials/shared-mount policy requires
+another fresh build; no real application state has been transferred.
+
+Legacy deployment workflow is disabled; old staging is stopped
 with a verified stopped-writer backup. Old production stays online at v1.0.5.
 All four preliminary private configuration/state/source backups passed readback;
 both legacy states passed isolated Linux recovery as UID/GID 65532. Separate
@@ -13,9 +19,10 @@ histories/quota were preserved, with no merge, reset or replay.
 
 Only the library CNAME TTL changed (3600 -> 300); its old destination is intact.
 All four authoritative DNS servers verified the change at 19:55:10 UTC; the old
-cache window expires conservatively at 20:55:10 UTC / 13:55:10 PDT. Both preparation
-leases are released/unlocked. No new image has been deployed, no main commit/push,
-no production stop, final state transfer, DNS destination change or write canary.
+cache window expires conservatively at 20:55:10 UTC / 13:55:10 PDT. Lease state must
+be checked live; synthetic mount rehearsal retains its lock on any ambiguity.
+No main commit/push, production stop, final state transfer, DNS destination change
+or write canary has occurred.
 See the current runbook and `cutover-evidence/2026-10-23-containment-and-backups.json`.
 
 ### Earlier TLS checkpoint (historical)

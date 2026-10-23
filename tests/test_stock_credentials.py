@@ -6,7 +6,58 @@ from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
-from src.stock_credentials import KEYS, ManagedCredentialError, StockCredentials
+from src.stock_credentials import KEYS, PROVIDERS, ManagedCredentialError, StockCredentials
+
+
+@pytest.mark.parametrize("env", [
+    {"WEBSITE_INSTANCE_ID": "instance"}, {"WEBSITE_INSTANCE_ID": ""},
+    {"WEBSITE_INSTANCE_ID": "instance", "STOCK_CREDENTIALS_ENV_ONLY": "false"},
+    {"STOCK_CREDENTIALS_ENV_ONLY": "true"},
+])
+def test_environment_only_including_unset_providers(tmp_path, env):
+    path = tmp_path / "keys.env"
+    env["PEXELS_API_KEY"] = "environment-fixture"
+    store = StockCredentials(path, env)
+    assert store.environment_only
+    assert store.sources("pexels") == {"PEXELS_API_KEY": "environment"}
+    assert store.sources("pixabay") == {"PIXABAY_API_KEY": "unset"}
+    for provider in PROVIDERS:
+        assert not store.editable(provider)
+        with pytest.raises(ManagedCredentialError):
+            store.update(provider, {PROVIDERS[provider]["keys"][0]: "forbidden"})
+    assert not path.exists()
+
+
+@pytest.mark.parametrize("kind", ["file", "directory", "dangling_symlink"])
+def test_environment_only_refuses_existing_path_without_reading(tmp_path, monkeypatch, kind):
+    path = tmp_path / "keys.env"
+    if kind == "file":
+        path.write_text("not even parsed")
+    elif kind == "directory":
+        path.mkdir()
+    else:
+        path.symlink_to(tmp_path / "missing")
+    def forbidden(*args, **kwargs):
+        raise AssertionError("Credential file must never be opened")
+    monkeypatch.setattr(os, "open", forbidden)
+    with pytest.raises(ManagedCredentialError, match="forbidden"):
+        StockCredentials(path, {"WEBSITE_INSTANCE_ID": "instance"})
+
+
+@pytest.mark.parametrize("flag", ["TRUE", "1", "", "yes", None])
+def test_invalid_environment_only_flag_fails_closed(tmp_path, flag):
+    with pytest.raises(ValueError, match="must be true or false"):
+        StockCredentials(tmp_path / "keys.env", {"STOCK_CREDENTIALS_ENV_ONLY": flag})
+
+
+@pytest.mark.parametrize("mode", ["WEBSITE_INSTANCE_ID", "STOCK_CREDENTIALS_ENV_ONLY"])
+def test_environment_only_also_disables_development_dotenv(tmp_path, mode):
+    env = dict(os.environ, APP_STATE_DIR=str(tmp_path), PYTHON_DOTENV_DISABLED="0")
+    env[mode] = "true"
+    subprocess.run([sys.executable, "-c", "import dotenv; "
+        "dotenv.load_dotenv=lambda *a,**k: (_ for _ in ()).throw(AssertionError('No dotenv in Azure')); "
+        "from src.config import stock_credentials; assert stock_credentials.environment_only"],
+        env=env, check=True)
 
 
 def test_restart_loads_file_with_dotenv_disabled_without_interpolation(tmp_path):

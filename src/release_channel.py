@@ -1,8 +1,9 @@
-"""SCM-only release RPC over the slot's private persistent filesystem.
+"""SCM-only release RPC over the slot's app-isolated persistent filesystem.
 
 No public HTTP endpoint, browser cookie, MCP secret or arbitrary command. Azure
-SCM publishing permission is the authentication boundary. Only status, a bounded
-one-record read probe and drain-on are accepted. Never undrain automatically.
+SCM publishing permission is the authentication boundary, NOT /home file modes.
+Only status, bounded catalog/filesystem probes and drain-on are accepted.
+No secrets or record contents are exchanged. Never undrain automatically.
 """
 import json
 import os
@@ -17,6 +18,52 @@ from src import deployment_controls as controls
 
 DIRECTORY = ".image-library-release-control"
 MAX_BYTES = 4096
+
+
+def state_probe(root, nonce):
+    """Prove actual worker access using only one exclusive non-secret fixture.
+
+    No caller-selected paths, recursive cleanup, existing-state writes or retry.
+    A failed probe preserves its fixture for explicit reconciliation.
+    """
+    if not isinstance(nonce, str) or not re.fullmatch(r"[a-f0-9]{32}", nonce):
+        raise ValueError("Invalid probe nonce")
+    root_fd = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    name = ".image-library-state-probe-" + nonce
+    directory = None
+    try:
+        os.mkdir(name, 0o700, dir_fd=root_fd)  # Never adopt or remove an existing directory.
+        directory = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=root_fd)
+        fd = os.open("original", os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                     0o600, dir_fd=directory)
+        data = b"image-library-nonsecret-state-probe-v1\n"
+        with os.fdopen(fd, "wb") as stream:
+            stream.write(data)
+            stream.flush()
+            os.fsync(stream.fileno())
+            info = os.fstat(stream.fileno())
+        os.rename("original", "renamed", src_dir_fd=directory, dst_dir_fd=directory)
+        os.fsync(directory)
+        fd = os.open("renamed", os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=directory)
+        with os.fdopen(fd, "rb") as stream:
+            if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode) or stream.read(len(data)+1) != data:
+                raise RuntimeError("State probe bytes differ")
+        os.unlink("renamed", dir_fd=directory)
+        os.fsync(directory)
+        os.rmdir(name, dir_fd=root_fd)
+        os.fsync(root_fd)
+        try:
+            os.stat(name, dir_fd=root_fd, follow_symlinks=False)
+        except FileNotFoundError:
+            return {"uid": os.getuid(), "gid": os.getgid(),
+                    "file_uid": info.st_uid, "file_gid": info.st_gid,
+                    "file_mode": stat.S_IMODE(info.st_mode),
+                    "read_write_rename": True, "cleanup_verified": True}
+        raise RuntimeError("State probe cleanup differs")
+    finally:
+        if directory is not None:
+            os.close(directory)
+        os.close(root_fd)
 
 
 def worker_count():
@@ -68,7 +115,7 @@ class ReleaseChannel:
                 or type(request["expires"]) is not int
                 or not now < request["expires"] <= now + 60
                 or not isinstance(request["action"], str)
-                or request["action"] not in {"status", "probe", "drain"}):
+                or request["action"] not in {"status", "probe", "state_probe", "drain"}):
             return False
         self.seen[nonce] = request["expires"]
         response = {"protocol": 1, "nonce": nonce, "action": request["action"],
@@ -90,6 +137,8 @@ class ReleaseChannel:
                     os.fsync(descriptor)
                 finally:
                     os.close(descriptor)
+            elif request["action"] == "state_probe":
+                response["state_probe"] = state_probe(self.directory.parent, nonce)
             elif request["action"] == "probe":
                 # Callback must read at most one record, not enumerate/download
                 # the catalog. No record contents leave this channel.
