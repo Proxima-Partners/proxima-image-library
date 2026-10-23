@@ -44,6 +44,14 @@ This is a workflow provenance receipt, not a claim of a signed SLSA attestation.
 Azure readiness alone does not satisfy SSO, state, telemetry, rollback or speed
 acceptance. Main, production, DNS and catalog writes remain untouched.
 
+First pilot run `39903322640` published digest
+`sha256:e76392db0b8c01ae857856a81b91ab30146cc32fb4c95195212448820f057253`
+after all 205 tests and security gates passed. Deployment failed before any
+slot mutation: the runner CLI does not expose `appServicePlanId` under the same
+name as the local CLI. The target guard now accepts either documented plan-ID
+shape, requires the exact resource/plan IDs, and rejects conflicting fields.
+Eight regression cases cover compatibility and incorrect resource targets.
+
 ## Container migration
 
 - Source: `PP-App-Serv` and staging on shared `proxima-plan-s1`, West US 2.

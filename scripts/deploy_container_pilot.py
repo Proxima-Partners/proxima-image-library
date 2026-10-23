@@ -10,7 +10,7 @@ import re
 import time
 from urllib.request import urlopen, build_opener, HTTPRedirectHandler
 from urllib.error import HTTPError, URLError
-from scripts.configure_container_pilot import az, settings, SUB, RG, APP
+from scripts.configure_container_pilot import az, settings, verify_pilot_site, SUB, RG, APP
 
 
 class NoRedirect(HTTPRedirectHandler):
@@ -25,8 +25,7 @@ def main():
         raise RuntimeError('Unexpected image target')
     if az('account', 'show')['id'] != SUB: raise RuntimeError('Wrong subscription')
     site = az('webapp', 'show', '-g', RG, '-n', APP, '--slot', 'staging')
-    if not site['appServicePlanId'].lower().endswith('/serverfarms/asp-image-library-p2v3'):
-        raise RuntimeError('Wrong hosting plan')
+    verify_pilot_site(site, 'staging')
     configured = settings(APP, 'staging')
     for k, v in {'APP_READ_ONLY': 'true', 'INGEST_POLLER_ENABLED': 'false', 'TEST_MODE': 'false',
                  'DEV_AUTH_BYPASS': 'false', 'WEBSITES_ENABLE_APP_SERVICE_STORAGE': 'true'}.items():

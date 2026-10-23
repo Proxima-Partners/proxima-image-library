@@ -18,6 +18,8 @@ RG = 'PP-Resources'
 APP = 'pp-image-library'
 SOURCE = 'PP-App-Serv'
 PRODUCTION_CALLBACK = 'https://library.liveproxima.org/auth/callback'
+APP_ID = f'/subscriptions/{SUB}/resourceGroups/{RG}/providers/Microsoft.Web/sites/{APP}'
+PLAN_ID = f'/subscriptions/{SUB}/resourceGroups/{RG}/providers/Microsoft.Web/serverfarms/asp-image-library-p2v3'
 COPY_KEYS = {
     'MSAL_CLIENT_ID', 'MSAL_CLIENT_SECRET', 'MSAL_TENANT_ID',
     'SHAREPOINT_CLIENT_ID', 'SHAREPOINT_CLIENT_SECRET', 'SHAREPOINT_TENANT_ID',
@@ -53,6 +55,16 @@ def settings(name, slot=None):
     return {r['name']: r['value'] for r in az(*args)}
 
 
+def verify_pilot_site(site, slot=None):
+    """Azure CLI releases expose the ARM plan ID under either of these keys."""
+    expected_id = APP_ID + ('/slots/' + slot if slot else '')
+    plans = [site[k] for k in ('appServicePlanId', 'serverFarmId') if site.get(k)]
+    if site.get('id', '').lower() != expected_id.lower():
+        raise RuntimeError('Unexpected pilot resource')
+    if not plans or any(p.lower() != PLAN_ID.lower() for p in plans):
+        raise RuntimeError('Unexpected pilot plan')
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--apply', action='store_true')
@@ -75,8 +87,7 @@ def main():
             show_args = ['webapp', 'show', '-g', RG, '-n', APP, '--subscription', SUB]
             if slot: show_args += ['--slot', slot]
             site = az(*show_args)
-            if site['appServicePlanId'].lower() != f'/subscriptions/{SUB}/resourcegroups/{RG}/providers/microsoft.web/serverfarms/asp-image-library-p2v3'.lower():
-                raise RuntimeError('Unexpected pilot plan')
+            verify_pilot_site(site, slot)
             host = site['defaultHostName']
             base = 'https://' + host
             merged = settings(APP, slot)

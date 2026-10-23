@@ -4,7 +4,17 @@ on:
   workflow_dispatch: {}
   push:
     branches: [perf/container-pilot]
-    paths: [.github/workflows/container-pilot.yml]
+    paths:
+      - .github/workflows/container-pilot.yml
+      - Dockerfile
+      - .dockerignore
+      - requirements*.txt
+      - src/**
+      - scripts/**
+      - templates/**
+      - static/**
+      - tests/**
+      - security/**
 
 permissions:
   contents: read

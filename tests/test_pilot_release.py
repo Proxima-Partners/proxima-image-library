@@ -4,6 +4,7 @@ import pytest
 from scripts.container_security_gate import sha
 from scripts.pilot_release_manifest import bind
 from scripts.deploy_container_pilot import main
+from scripts.configure_container_pilot import verify_pilot_site, APP_ID, PLAN_ID
 
 
 @pytest.fixture
@@ -34,3 +35,20 @@ def test_reject_different_or_unverified_release(release, case):
 def test_deploy_rejects_unapproved_target_before_azure(monkeypatch):
     monkeypatch.setenv('RELEASE_IMAGE', 'pete.azurecr.io/server:latest')
     with pytest.raises(RuntimeError, match='Unexpected image target'): main()
+
+
+@pytest.mark.parametrize('plan_key', ['serverFarmId', 'appServicePlanId'])
+def test_pilot_target_guard_supports_both_cli_shapes(plan_key):
+    verify_pilot_site({'id': APP_ID + '/slots/staging', plan_key: PLAN_ID.upper()}, 'staging')
+
+
+@pytest.mark.parametrize('case', ['missing_plan', 'wrong_plan', 'wrong_group', 'wrong_app', 'wrong_slot', 'conflicting_fields'])
+def test_pilot_target_guard_rejects_ambiguous_or_wrong_resources(case):
+    site = {'id': APP_ID + '/slots/staging', 'serverFarmId': PLAN_ID}
+    if case == 'missing_plan': site.pop('serverFarmId')
+    elif case == 'wrong_plan': site['serverFarmId'] = PLAN_ID.replace('asp-image-library-p2v3', 'proxima-plan-s1')
+    elif case == 'wrong_group': site['serverFarmId'] = PLAN_ID.replace('PP-Resources', 'another-rg')
+    elif case == 'wrong_app': site['id'] = site['id'].replace('pp-image-library', 'PP-App-Serv')
+    elif case == 'wrong_slot': site['id'] = APP_ID
+    elif case == 'conflicting_fields': site['appServicePlanId'] = 'different'
+    with pytest.raises(RuntimeError, match='Unexpected pilot'): verify_pilot_site(site, 'staging')
