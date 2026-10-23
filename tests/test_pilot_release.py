@@ -1,5 +1,6 @@
 import copy
 import json
+import io
 import pytest
 from scripts.container_security_gate import sha
 from scripts.pilot_release_manifest import bind
@@ -71,3 +72,41 @@ def test_source_baseline_refuses_unsafe_target_before_mutation(monkeypatch, case
     if case == 'unsafe_setting': config['APP_READ_ONLY'] = 'false'
     monkeypatch.setattr(baseline, 'settings', lambda _app: config)
     with pytest.raises(RuntimeError): baseline.main()
+
+
+def test_existing_pilot_state_must_be_observed_before_replacement(monkeypatch):
+    from scripts import deploy_container_pilot as deploy
+    monkeypatch.setattr(deploy, 'urlopen', lambda *_a, **_kw: io.BytesIO(
+        json.dumps({'pilot_state': {'state_id': 'a' * 64}}).encode()))
+    assert deploy.prior_persistent_state('https://pilot', True) == 'a' * 64
+    assert deploy.prior_persistent_state('https://pilot', False) is None
+    with pytest.raises(RuntimeError, match='could not be verified'):
+        deploy.prior_persistent_state('https://pilot', True, seconds=0)
+
+
+def test_rehearsal_slot_guard():
+    from scripts.pilot_rehearsal import slot_args
+    assert slot_args('staging')[-2:] == ['--slot', 'staging']
+    assert 'PP-App-Serv' not in slot_args('production')
+    with pytest.raises(ValueError): slot_args('legacy-production')
+
+
+def test_rehearsal_does_not_accept_state_loss(monkeypatch):
+    from scripts import pilot_rehearsal as rehearsal
+    expected = {'host': 'pilot', 'commit': 'a'*40, 'build_id': 'build-1'}
+    monkeypatch.setattr(rehearsal, 'read_ready', lambda _host: dict(expected,
+        pilot_state={'uid': 65532, 'gid': 65532, 'state_id': 'changed'}))
+    with pytest.raises(RuntimeError, match='Persistent state'):
+        rehearsal.verify_ready('staging', expected, 'original')
+
+
+@pytest.mark.parametrize('case', ['expired', 'unverified', 'moving_tag'])
+def test_rehearsal_refuses_untrusted_release_receipt(tmp_path, case):
+    from scripts.pilot_rehearsal import load_release
+    data = {'status': 'pass', 'registry_image': 'proximaimagelibrary.azurecr.io/image-library@sha256:' + 'a'*64,
+            'commit': 'b'*40, 'build_id': 'run-1', 'expires_at': '2000-01-01T00:00:00Z'}
+    if case == 'unverified': data['status'] = 'fail'
+    if case == 'moving_tag': data['registry_image'] = 'proximaimagelibrary.azurecr.io/image-library:latest'
+    path = tmp_path / 'release.json'
+    path.write_text(json.dumps(data))
+    with pytest.raises(ValueError): load_release(path)

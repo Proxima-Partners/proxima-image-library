@@ -18,6 +18,24 @@ class NoRedirect(HTTPRedirectHandler):
         return None
 
 
+def prior_persistent_state(base, has_existing_container, *, seconds=45):
+    if not has_existing_container:
+        return None
+    # Access-rule propagation can briefly return 403. A missing preflight
+    # response is not evidence that there is no state to preserve.
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        try:
+            with urlopen(base + '/readyz', timeout=10) as response:
+                state = json.load(response).get('pilot_state', {}).get('state_id', '')
+            if re.fullmatch(r'[0-9a-f]{64}', state):
+                return state
+        except (HTTPError, URLError, TimeoutError, ValueError):
+            pass
+        time.sleep(3)
+    raise RuntimeError('Existing pilot state could not be verified before deployment')
+
+
 def main():
     started = time.monotonic()
     image = os.environ['RELEASE_IMAGE']
@@ -47,12 +65,8 @@ def main():
            '--rule-name', rule, '--action', 'Allow', '--ip-address', ip + '/32', '--priority', '110')
         rule_added = True
         base = 'https://' + site['defaultHostName']
-        prior_state = None
-        try:
-            with urlopen(base + '/readyz', timeout=15) as response:
-                prior_state = json.load(response).get('pilot_state', {}).get('state_id')
-        except (HTTPError, URLError, TimeoutError, ValueError):
-            pass
+        existing = az('webapp', 'sitecontainers', 'list', '-g', RG, '-n', APP, '--slot', 'staging')
+        prior_state = prior_persistent_state(base, bool(existing))
         rollout_started = time.monotonic()
         az('webapp', 'sitecontainers', 'create', '-g', RG, '-n', APP, '--slot', 'staging',
            '--container-name', 'main', '--image', image, '--target-port', '8080', '--is-main', 'true',

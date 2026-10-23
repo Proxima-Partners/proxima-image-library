@@ -83,6 +83,15 @@ container. The source archive uses the existing allowlist and single-worker
 startup. Temporary CI IP access is removed in cleanup. Legacy production and
 DNS remain unchanged; this is solely the approved controlled comparison.
 
+Same-plan source baseline `39904604111` passed. Both modes use commit `8e46014`;
+20 interleaved authenticated warm reads each returned exactly the same 280
+records. Browser p95 was 193 ms for both modes; median source 128.5 ms vs
+container 124.5 ms. Actual Insights ingestion confirms source and container
+requests with zero API failures. Detailed evidence and remaining gates are in
+[PILOT_ACCEPTANCE.md](PILOT_ACCEPTANCE.md). Rehearsal helpers have 228 passing
+local regression tests. The CI preflight now waits for existing persistent-state
+identity instead of treating temporary ingress-propagation errors as no state.
+
 ## Container migration
 
 - Source: `PP-App-Serv` and staging on shared `proxima-plan-s1`, West US 2.
