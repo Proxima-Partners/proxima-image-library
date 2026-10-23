@@ -100,12 +100,14 @@ time. Queue time, build time, image update and swap must remain separate.
 - Resolve the promotion design without weakening the state-preservation gate.
 - Reconfirm protected credentials and state ownership under the approved new
   promotion procedure. If swaps are retained, make the per-slot MCP secret
-  sticky as well as externalizing state; it currently follows content.
+  sticky as well as externalizing state; it is not presently marked sticky.
 - Failed-readiness and failed-pull rejection and one bounded recovery each.
 - At least five comparable complete cached releases including promotion, with
   queue time separate; median target <=5 minutes, update/swap targets <=2 minutes.
 - Final consolidated evidence and explicit acceptance decision. No old-app
   shutdown, DNS cutover, asset deletion/backfill or write canary is included.
 
-Local downloaded evidence: `/tmp/image-library-pilot-evidence.3zow09/`.
+Sanitized restart, seed, failed-swap and recovery receipts are checked into
+`pilot-evidence/2026-10-22-*.json`. Full local downloaded evidence remains in
+`/tmp/image-library-pilot-evidence.3zow09/`.
 Authoritative CI artifacts are retained for 90 days on each cited GitHub run.
