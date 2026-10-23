@@ -596,7 +596,11 @@ def api_version():
 @app.route("/readyz")
 def readiness():
     # No Graph/AI calls: upstream outages must not cause platform recycle loops.
-    response = jsonify({"status": "ready" if _READY else "starting", **_RELEASE})
+    response = jsonify({
+        "status": "ready" if _READY else "starting",
+        "telemetry": _TELEMETRY_ENABLED,
+        **_RELEASE,
+    })
     response.headers["Cache-Control"] = "no-store"
     return response, 200 if _READY else 503
 

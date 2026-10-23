@@ -55,7 +55,7 @@ jobs:
           package: release.zip
 
       - name: Verify exact staging release before swap
-        run: python scripts/verify_release.py https://pp-app-serv-staging.azurewebsites.net "$GITHUB_SHA"
+        run: python scripts/verify_release.py https://pp-app-serv-staging.azurewebsites.net "$GITHUB_SHA" --require-telemetry
 
       - name: Swap staging into production
         run: |
@@ -68,8 +68,8 @@ jobs:
 
       - name: Verify custom domain and direct production host
         run: |
-          python scripts/verify_release.py https://library.liveproxima.org "$GITHUB_SHA"
-          python scripts/verify_release.py https://pp-app-serv.azurewebsites.net "$GITHUB_SHA"
+          python scripts/verify_release.py https://library.liveproxima.org "$GITHUB_SHA" --require-telemetry
+          python scripts/verify_release.py https://pp-app-serv.azurewebsites.net "$GITHUB_SHA" --require-telemetry
 
       - name: Record release evidence
         if: always()

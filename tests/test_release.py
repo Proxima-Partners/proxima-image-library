@@ -71,3 +71,11 @@ def test_readiness_no_upstream_calls_and_cached_identity(monkeypatch):
         assert response.json["commit"] == client.get("/api/version").json["commit"]
         monkeypatch.setattr(module, "_READY", False)
         assert client.get("/readyz").status_code == 503
+
+
+@pytest.mark.parametrize("telemetry,ok", [(True, True), (False, False), (None, False), ("true", False)])
+def test_release_gate_requires_initialized_tracing_when_requested(monkeypatch, telemetry, ok):
+    response = io.BytesIO(json.dumps({"commit": SHA, "status": "ready", "telemetry": telemetry}).encode())
+    response.status = 200
+    monkeypatch.setattr(verify_release, "urlopen", lambda *a, **k: response)
+    assert verify_release.check_release("https://example.org", SHA, require_telemetry=True) is ok
