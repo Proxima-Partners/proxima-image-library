@@ -4,6 +4,25 @@ Updated: 2026-10-23 (America/Los_Angeles).
 
 ## Current execution checkpoint
 
+**Fresh candidate and read-only Azure acceptance passed. Final cutover is next.**
+Build `40019125172-1` / commit `2ffc0ff` passed 487 tests, exact-image security and
+smoke gates, and both in-place deployments. Both real workers passed the Azure
+filesystem probe. Production's read-only restart and stopped-SCM recovery passed;
+file/directory no-overwrite transfer rehearsal also passed. Per-slot telemetry,
+original MCP-secret compatibility, matching direct JPEG thumbnails, custom-SNI
+TLS and authenticated staging v2.0.0/280-record UI are verified.
+
+New main now has the preserved production provider/MCP settings, limits/CORS and
+custom-domain callback, while both slots remain read-only with ingestion off.
+Its SCM rules are independently operator-only; main app ingress is still restricted.
+Legacy production remains live, old staging stopped, legacy workflow disabled,
+pilot mode `hold`, and remote `main` unchanged. All completed preparation leases
+are released. DNS still points to the old app; prior TTL expires at 20:55:10 UTC.
+No final transfer, public cutover or write canary has happened. See
+`cutover-evidence/2026-10-23-readonly-cutover-readiness.json` for exact gates.
+
+### Azure-aware policy preparation (historical)
+
 **Azure-aware state policy approved and being validated; public cutover remains
 pending.** Fresh candidate `a15474c` / `40016044994-1` passed 459 target-Linux tests,
 security/smoke gates and both read-only in-place deployments. Live staging's SCM

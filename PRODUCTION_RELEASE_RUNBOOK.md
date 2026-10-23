@@ -4,6 +4,21 @@ Updated 2026-10-23. Scope: `perf/container-pilot`, approved private release
 storage/TLS, protected checkpoints, legacy staging containment and DNS TTL
 preparation. Public production cutover has not occurred.
 
+**Current checkpoint:** `2ffc0ff` / `40019125172-1` passed 487 target-Linux tests,
+security/smoke gates and both immutable in-place deployments. Actual Azure worker
+filesystem probes, bounded reads, original MCP-key compatibility, separate slot
+telemetry, trusted custom-SNI TLS, read-only restart and stopped-target SCM recovery
+passed. Production provider/MCP settings, upload/rate limits, CORS and custom
+callback are preserved/prepared; staging retains its own credentials. SCM now
+has explicit operator-only rules independent of main ingress, which is still
+restricted. Both apps remain read-only/ingestion-off. No final state transfer,
+DNS destination cutover or write canary has happened. The prior TTL window ends
+20:55:10 UTC / 13:55:10 PDT. Completed preparation leases are released.
+See `cutover-evidence/2026-10-23-readonly-cutover-readiness.json` and the exact
+deployment report/receipts. Unattended production promotion is not enabled.
+
+### Earlier candidate checkpoint (historical)
+
 **Cutover and unattended production promotion remain NO-GO.** Candidate
 `a15474c` / build `40016044994-1` passed 459 target-Linux tests, exact-image
 smoke/security gates and both in-place read-only deployments. Its staging SCM

@@ -1,0 +1,121 @@
+{
+  "schema": 1,
+  "as_of": "2026-10-23T20:43:00Z",
+  "status": "readonly_target_ready_for_final_stopped_writer_transfer",
+  "public_cutover_complete": false,
+  "release": {
+    "commit": "2ffc0ff18ad191d1ccc1c185b4ce848b9442de4b",
+    "build_id": "40019125172-1",
+    "run": 40019125172,
+    "image": "proximaimagelibrary.azurecr.io/image-library@sha256:1a1d24ede2eb7bfd81cb1ea2b11ea5518f0df5c4441dd714f2ef49ab5e1afa9a",
+    "tests": 487,
+    "fresh_ci_passed": true,
+    "authenticated_workflow_provenance_verified": true,
+    "registry_manifest_bound_to_scanned_config": true,
+    "raw_vulnerability_hash_verified": true,
+    "unreviewed_high_critical": 0,
+    "staging_rollout_seconds": 34.74,
+    "main_rollout_seconds": 66.52,
+    "temporary_ci_ingress_removed_independently_verified": true,
+    "pilot_mode": "hold",
+    "remote_main_unchanged": true
+  },
+  "target_configuration": {
+    "both_slots_read_only": true,
+    "both_slots_ingestion_disabled": true,
+    "both_slots_environment_only_credentials": true,
+    "both_slots_release_controls_enabled": true,
+    "both_slots_pilot_probe_disabled": true,
+    "explicit_telemetry_slots": ["production", "staging"],
+    "main_provider_and_mcp_settings_preserved_from_legacy": true,
+    "main_upload_limits_rate_limits_and_cors_preserved": true,
+    "main_base_url_and_callback": "https://library.liveproxima.org",
+    "main_flask_secret_unchanged_from_pilot": true,
+    "staging_credentials_not_replaced": true,
+    "main_scm_operator_rules_independent_of_app_rules": true,
+    "main_and_staging_still_operator_only": true
+  },
+  "live_runtime_checks": {
+    "both_slots_workers": 1,
+    "both_slots_runtime_uid_gid": 65532,
+    "both_slots_active_work": 0,
+    "bounded_catalog_read_records_per_probe": 1,
+    "both_slots_filesystem_write_read_rename_and_cleanup": "passed",
+    "mounted_file_uid_gid": 65534,
+    "mounted_file_mode_octal": "0777",
+    "production_release_state_id": "a2db29bcffa7818502ec4ffac602924f84b86a7df60eae0267f17002395baf40",
+    "staging_release_state_id": "777b51ee5b04de68eeacfa70700ddcb0ffa52f03e098df7f851939506c95bf0b",
+    "independent_scm_sentinel_comparison": "passed",
+    "readonly_main_restart_seconds": 38.2,
+    "restart_fresh_boot_state_config_and_files_verified": true,
+    "stopped_target_scm_capture": "passed",
+    "target_start_after_stop": "passed with fresh boot and unchanged state/configuration",
+    "real_admin_route_anonymous_status": 401,
+    "root_anonymous_status": 302,
+    "own_rpc_request_response_cleanup": "verified by conditional deletion and 404"
+  },
+  "transfer_rehearsal": {
+    "target": "pp-image-library production mount",
+    "synthetic_entries": 4,
+    "synthetic_files": 1,
+    "synthetic_bytes": 34,
+    "isolated_restore_and_file_directory_rename_noreplace": "passed",
+    "cleanup": "verified; only own synthetic fixture removed",
+    "application_state_touched": false
+  },
+  "read_acceptance": {
+    "trusted_custom_domain_tls_to_new_ip_exact_build": true,
+    "authenticated_staging_homepage": "v2.0.0, six categories totaling 280 records, recent images visible",
+    "fresh_custom_domain_sso": "pending DNS cutover",
+    "mcp_original_secret_preserved": true,
+    "mcp_signed_thumbnail_old_and_new": "200 direct image/jpeg; identical decoded image",
+    "mcp_missing_tampered_expired": "all 401",
+    "catalog_writes": 0
+  },
+  "telemetry_snapshot": {
+    "production_requests": 14,
+    "production_dependencies": 11,
+    "staging_requests": 7,
+    "staging_dependencies": 5,
+    "dependency_failures": 0,
+    "exception_rows": 0,
+    "failed_requests_per_slot": 2,
+    "failed_request_explanation": "intentional anonymous admin checks, including one unmatched maintenance URL; all returned 401",
+    "unknown_slot_rows": "retained from pilot flags before explicit telemetry labels",
+    "later_intentional_mcp_denials": 3,
+    "query_correction": "used discovered schema and SourceTable alias; earlier invalid queries retained as failed checks, not zero-event results"
+  },
+  "legacy_quiet_check": {
+    "ingest_files": 0,
+    "ingest_folders": 2,
+    "pages": 3,
+    "saved_jobs_enabled": false,
+    "saved_approvals": 0,
+    "checkpoints": 0,
+    "staged_upload_files": 0,
+    "legacy_staging": "stopped",
+    "legacy_production": "still running v1.0.5",
+    "process_level_work_counter": "unavailable in legacy code; sole-user quiet confirmation and supervised stop required"
+  },
+  "private_backup_prefixes": {
+    "before_control_settings": "2be9aa87801346b6925a71d0a952f4e1",
+    "before_scm_boundary_split": "fd6eff21b31f41eba55879e8739a76dd",
+    "before_stopped_target_rehearsal": "de5ac46fca8942bb9c9b6f8562e4e2c9"
+  },
+  "completed_preparation_leases": "released; acquire a fresh production lease for cutover",
+  "dns": {
+    "cname": "pp-app-serv.azurewebsites.net",
+    "ttl": 300,
+    "old_cache_window_expires": "2026-10-23T20:55:10Z",
+    "ionos_editor": "authenticated, old value and 5-minute TTL verified; no destination edit submitted"
+  },
+  "remaining_supervised_gates": [
+    "fresh quiet check, final legacy writer stop and protected stopped-writer backup",
+    "non-secret state transfer to stopped target and exact verification",
+    "readonly target recovery and public app ingress with SCM still restricted",
+    "DNS destination cutover after prior TTL window",
+    "fresh custom-domain sign-in, real catalog and thumbnail checks",
+    "supervised writable acceptance with exactly one disposable test image and its cleanup"
+  ],
+  "unattended_production_promotion": "not enabled; trusted receipt loader, CI lease/network/role integration and full writable controller recovery remain open"
+}
