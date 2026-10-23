@@ -27,7 +27,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Full regression suite inside Linux image
+      - name: Full regression suite on shellless non-root runtime
         run: docker build --platform linux/amd64 --target test --tag image-library:tests .
 
       - name: Build final non-root runtime

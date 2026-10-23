@@ -45,4 +45,14 @@ Raw local scan evidence: `/tmp/image-library-container.cufej1/vulnerabilities.js
 
 Vendor advisory references and next decision are recorded in [CONTAINER_VALIDATION.md](CONTAINER_VALIDATION.md). The image gate is deliberately red; publishing a build-only pilot branch does not approve a production exception or deploy to Azure.
 
-Pilot checkpoint `83f2e18` pushed. First CI run `39894903794` passed tests/build/runtime smoke, but its SBOM step failed on scanner-cache permissions before vulnerability scanning. A runner UID/GID correction is being validated; no scan result is inferred from that failed job. Docker's shellless hardened Python base was also inspected/scanned separately; it still needs a scoped, reviewed VEX/applicability policy and startup changes before adoption. No such policy has been enabled.
+Pilot checkpoint `83f2e18` pushed. First CI run `39894903794` passed tests/build/runtime smoke, but its SBOM step failed on scanner-cache permissions before vulnerability scanning. Commit `f377a5b`, run `39895498587`, verified the UID/GID correction: tests/build/smoke/SBOM passed, then the real vulnerability gate failed on 44 HIGH findings / eight CVEs.
+
+## Approved minimal-base adjustment — 2026-10-22
+
+- User approved the DHI base-image adjustment; no vulnerability exception was approved.
+- Dockerfile now pins matching DHI Python 3.12.15 / Debian 13 builder/runtime digests. The shellless Python entrypoint execs one Gunicorn master; the legacy source startup remains unchanged. Runtime UID/GID is the vendor's 65532. Production Python dependencies are unchanged.
+- 166 tests passed locally and on the actual minimal OS/non-root identity with networking disabled. Exact final-image smoke passed, including auth, restart persistence, native WebP, CA trust, real PID 1 Gunicorn and bounded SIGTERM. Azure volume permissions remain a separate pilot gate.
+- Local Docker image size reduced from 327,465,556 to 237,144,654 bytes (about 28%). No application-speed or Azure deploy-time improvement is claimed yet.
+- Full application-image scan reduced findings from 44 to eight HIGH package findings (five distinct CVEs); zero CRITICAL and zero HIGH/CRITICAL Python findings. **The unchanged release gate still fails.** Raw evidence: `/tmp/image-library-dhi-validation.poBonM/`.
+- No VEX suppression, ignore list, severity relaxation or exception policy has been enabled. Review residual package/function applicability separately before seeking a narrow, expiring exception. No Azure mutation, DNS change, main merge or production deployment has occurred.
+- The updated pilot branch must be rebuilt in clean GitHub CI to verify registry pulls, tests, runtime smoke and the full scan independently. See [CONTAINER_VALIDATION.md](CONTAINER_VALIDATION.md).

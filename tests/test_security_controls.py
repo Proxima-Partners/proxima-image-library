@@ -135,6 +135,24 @@ def test_command_stays_tracked_after_sse_disconnect(security_app, monkeypatch):
     assert controls.snapshot()["active_work"] == 0
 
 
+def test_maintenance_command_runs_real_python_child_without_shell(security_app):
+    import sys
+    from src import app as module
+    from src import deployment_controls as controls
+
+    with security_app.test_request_context("/run/scan-live"):
+        response = module._stream_command([
+            sys.executable, "-u", "-c", "print('offline-child-fixture')",
+        ])
+        try:
+            stream = "".join(response.response)
+        finally:
+            response.close()
+    assert "data: offline-child-fixture\n\n" in stream
+    assert "data: [DONE]\n\n" in stream
+    assert controls.snapshot()["active_work"] == 0
+
+
 def test_security_headers_present(client):
     response = client.get("/health", headers={"X-Forwarded-Proto": "https"})
     assert response.status_code == 200

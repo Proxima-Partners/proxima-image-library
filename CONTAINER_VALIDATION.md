@@ -21,7 +21,7 @@ Trivy 0.76.1, freshly downloaded database, reported:
 | Official Python 3.12.15 / Debian 12 | 61 | 2 | 16 | 0 |
 | Official Python 3.12.15 / Debian 13 | 44 | 0 | 8 | 0 |
 
-The Dockerfile now pins the Debian 13 candidate. Findings repeat across binary packages originating from the same source package; 44 findings are not 44 independent bugs. A scanner severity is not proof of an externally exploitable application path. Conversely, a non-root process or absent direct source-code reference does not by itself prove safety.
+The first checkpoint pinned the Debian 13 candidate; the approved minimal-image adjustment below supersedes it. Findings repeat across binary packages originating from the same source package; 44 findings are not 44 independent bugs. A scanner severity is not proof of an externally exploitable application path. Conversely, a non-root process or absent direct source-code reference does not by itself prove safety.
 
 Remaining advisories, checked against the Debian security tracker:
 
@@ -60,8 +60,25 @@ An additional read-only/offline investigation pulled Docker's minimal runtime im
 - The matching builder digest is `sha256:a3d43f90a9e72d5fa53efa18c692f020604c95e89bc7de62aa9cafad7ee9c795` for `dhi.io/python:3.12-debian13-dev`.
 - Raw base-only scan: eight HIGH package findings across five distinct CVEs, zero CRITICAL. This is not an application-image scan and not a passing release gate.
 - Vendor OpenVEX metadata exists for those five CVEs in `docker-hardened-images/advisories` at commit `5af0d37bd8bb54871bd74a4627439b6db56f7f6d`. It marks them `not_affected`, citing Debian no-DSA decisions and inability for an adversary to control the vulnerable code. A no-DSA classification alone is not proof that vulnerable code is absent.
-- No VEX suppression or risk exception was applied. The application's Dockerfile still uses the strict-scan Debian 13 candidate, not DHI.
+- No VEX suppression or risk exception was applied. At this checkpoint the application's Dockerfile still used the strict-scan Debian 13 candidate, not DHI.
 
 Proposed next adjustment: adopt the vendor-maintained minimal runtime with a matching builder, replace the Bash entrypoint with exec-form Python/Gunicorn startup, rerun the full suite against the actual runtime, and add a reviewable vulnerability-applicability policy. Preserve the unfiltered scan; accept only exact-image/package vendor assessments corroborated for this workload, with a review deadline. New, unmatched, expired or exploitable findings remain blocking. This is a policy/base-image adjustment to present before adoption, not permission to bypass the current failing gate.
 
 [Docker's Python migration guidance](https://docs.docker.com/dhi/migration/examples/python/) and [scanner/VEX guidance](https://docs.docker.com/dhi/how-to/scan/) describe the runtime and scanning requirements. CI access to the DHI registry must also be verified; successful access on the developer's machine does not prove runner access.
+
+## Approved base-image adjustment — 2026-10-22
+
+The user approved the minimal-base adjustment, not any vulnerability exception. The raw HIGH/CRITICAL gate remains unchanged. The previous [CI run 39895498587](https://github.com/Proxima-Partners/proxima-image-library/actions/runs/39895498587) passed 155 tests, final-image smoke and SBOM generation; the corrected scanner then failed the gate with the same 44 HIGH findings / eight CVEs as the local Debian-slim scan.
+
+The Dockerfile now uses the pinned DHI runtime and matching builder above. `scripts.container_start` validates the port and execs Gunicorn without a shell, retaining one worker and the legacy timeouts/logging. Production requirements are unchanged. The application venv is built without pip; the vendor's system Python still contains pip, so this is not a claim that every package-management module has been removed. No OS packages are manually stripped or replaced.
+
+Local validation of `image-library:local-dhi`:
+
+- **166 tests pass** on local Python 3.12 and on the actual shellless runtime OS, UID/GID 65532, with test execution networking disabled. New coverage verifies invalid ports fail before exec, single-worker startup arguments, and a real Python maintenance subprocess over the existing SSE path.
+- The exact final-image smoke passes with no network, read-only root, dropped capabilities and no-new-privileges: v2.0.0/exact build identity, auth redirect, WebP, CA trust, PID 1 Gunicorn, immutable `/app`, absent shell/mount/nsenter/apt/dpkg, no setuid/setgid utilities in the standard executable directories, state persistence and SIGTERM exit 0. Tests and pip are not importable in the application venv. Azure enforcement of these Docker smoke flags is still unverified.
+- Local image size is **237,144,654 bytes**, versus **327,465,556 bytes** for the previous Debian-slim candidate, about 28% smaller. These are Docker-reported local image sizes, not network transfer sizes or an application performance benchmark.
+- Fresh Trivy scan of the **complete application image**: **eight HIGH package findings across five CVEs**, zero CRITICAL, zero HIGH/CRITICAL Python-package findings. The scanner reports 41 OS packages, versus 87 previously. It uses vendor embedded inventory for the minimal OS and warns that third-party SBOM data may be inaccurate; filesystem checks corroborate the key absent utilities but do not establish complete scanner coverage.
+- Remaining findings: `CVE-2025-69720` on `libncursesw6`, `libtinfo6`, `ncurses-base`, `ncurses-bin` version `6.5+20250216-2+dhi4`; `CVE-2026-76642`, `CVE-2026-78408`, `CVE-2026-78409`, `CVE-2026-78410` on `libuuid1` version `2.41.5-0+deb13u1+dhi3`. No fixes are listed by this scanner. No VEX filtering or exception has been enabled. **Gate still fails.**
+- An empty Docker credential-config manifest lookup succeeded for the runtime digest. This is not yet proof of clean-runner image-layer access; the committed CI build must verify both base pulls.
+
+Local raw scan/SBOM: `/tmp/image-library-dhi-validation.poBonM/`. The preview is marked `local-uncommitted-v2-dhi` and is not deployable. Next: rebuild the committed branch in CI, review residual findings at package/function level, and obtain separate approval for any exact-image, expiring applicability exception before enabling it. Production and DNS remain unchanged.

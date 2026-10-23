@@ -20,15 +20,25 @@ def docker(*args, **kwargs):
 
 
 PROBE = r'''
-import json, os
+import json, os, ssl, stat, sys
 from pathlib import Path
 from urllib.request import urlopen, build_opener, HTTPRedirectHandler
 from urllib.error import HTTPError
 from PIL import features
-assert os.getuid() == 10001
+assert os.getuid() == os.getgid() == 65532
+assert sys.prefix == "/opt/venv"
 assert features.check("webp")
+assert ssl.create_default_context().cert_store_stats()["x509_ca"] > 0
+for binary in ["sh", "bash", "mount", "nsenter", "apt", "apt-get", "dpkg"]:
+    import shutil
+    assert shutil.which(binary) is None, binary
+for parent in ["/usr/bin", "/usr/sbin", "/bin", "/sbin"]:
+    for path in Path(parent).glob("*"):
+        assert not path.stat().st_mode & (stat.S_ISUID | stat.S_ISGID), str(path)
+assert b"gunicorn" in Path("/proc/1/cmdline").read_bytes()
+assert not os.access("/app", os.W_OK)
 assert not any(Path(p).exists() for p in ["/app/.env", "/app/.git", "/app/tests", "/app/test_data"])
-for module in ["pytest", "pip_audit"]:
+for module in ["pytest", "pip_audit", "pip"]:
     import importlib.util
     assert importlib.util.find_spec(module) is None
 with urlopen("http://127.0.0.1:8080/readyz", timeout=3) as r:
@@ -86,7 +96,8 @@ def smoke(image, commit, build_id):
         docker("exec", name, "python", "-c",
                "from pathlib import Path; assert Path('/home/smoke-state').read_text() == 'persisted'")
         print(json.dumps({"image": image, "first": first, "restart": second,
-                          "network": "none", "uid": 10001, "persistent_state": True,
+                          "network": "none", "uid": 65532, "shellless": True,
+                          "persistent_state": True,
                           "shutdown_exit": int(exit_code)}))
     except Exception:
         # Only an offline fixture with generated credentials ever runs here.
