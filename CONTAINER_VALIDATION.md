@@ -94,3 +94,40 @@ Residual triage, **not an approved suppression**:
 - CI also warned that pinned `actions/upload-artifact@v4` uses Node 20 and was forced onto Node 24. Artifact upload succeeded. Update that Action in a separate reviewed maintenance change; it was not the gate failure and is not part of this base-image adjustment.
 
 The next release decision is a narrowly scoped, independently evidenced applicability policy, not another broad downgrade of the scanner threshold. No such policy has been enabled. Production `/readyz` was rechecked and remains healthy on `v1.0.5` / `0ddfd05`.
+# Approved applicability review — 2026-10-22 Pacific
+
+The user approved executing the recommendation and continuing unattended until
+the pilot passes. This does not waive unresolved findings or authorize cutover
+before pilot acceptance.
+
+The eight residual package findings were individually validated. Docker's
+signed image SBOM identifies the exact DHI revisions. Signed VEX artifact
+`sha256:72c2c21e7502738d796cd269fcc780a025da33e25d8f3c60a72089dbdb1c7acf`
+contains ncurses patch statement `cbbb37c0-641d-4131-9633-04a23515c025`.
+The reporter's exact terminfo input crashes the unpatched Debian image with a
+buffer-overflow abort; the real DHI `infocmp -i` completes successfully. The
+other four CVEs target mount/libmount/nsenter, which are absent from the runtime;
+the installed libuuid provides UUID symbols, not libmount symbols.
+
+Docker Scout verified signatures but its VEX export panicked. Retrieval with
+regctl preserved the raw payload, whose SHA-256 matches the layer in that signed
+manifest. This is not treating an unsuccessful export as an overall successful
+command. Neither the generic no-DSA statements nor all vendor VEX entries are
+automatically accepted.
+
+`security/container-review.json` now expresses the narrow review, expiring
+**2026-11-21 23:59:59 UTC**. The gate verifies all archive layer hashes, exact
+base layers, five binary hashes, absence of affected utilities and set-ID files,
+exact source/build/config identity, scanner version and scan freshness, then
+allows only the eight exact HIGH package/CVE/version tuples. New findings,
+changed evidence, available fixed versions, missing scans and expiry fail closed.
+The raw Trivy report and finding exit code remain intact, separately from the
+applicability result. Evidence retention is now 90 days, beyond review expiry.
+
+31 new tests cover acceptance, policy expiry, mismatched identities, altered
+binaries, added vulnerable components, new CVEs/packages/versions/severities,
+scanner errors represented by missing/invalid results, and archive integrity.
+Individual reports, receipts, signed SBOM/VEX and PoC results are retained in the
+target-bound Codex Security artifact collection. This review is not a claim
+that all application vulnerabilities have been eliminated. CI and Azure pilot
+acceptance remain separate gates.

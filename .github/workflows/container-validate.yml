@@ -57,14 +57,29 @@ jobs:
             --cache-dir /cache --input /input/runtime.tar \
             --format cyclonedx --output /reports/sbom.cdx.json
 
-      - name: Block high and critical image vulnerabilities
+      - name: Record unfiltered high and critical image vulnerabilities
         run: |
+          # Exit 42 means findings exist, not a scanner error. Preserve both the
+          # raw report and original exit status; the next gate decides applicability.
+          set +e
           docker run --rm --user "$(id -u):$(id -g)" --cap-drop ALL --security-opt no-new-privileges \
             --volume "$PWD/scan-input:/input:ro" --volume "$PWD/reports:/reports" \
             --volume "$PWD/scan-cache:/cache" "$TRIVY_IMAGE" image \
             --cache-dir /cache --input /input/runtime.tar --scanners vuln \
             --format json --output /reports/vulnerabilities.json \
-            --severity HIGH,CRITICAL --exit-code 1
+            --severity HIGH,CRITICAL --exit-code 42
+          scan_status=$?
+          set -e
+          printf '%s\n' "$scan_status" > reports/raw-scan-exit-code.txt
+          test "$scan_status" -eq 0 || test "$scan_status" -eq 42
+
+      - name: Enforce expiring image-bound applicability policy
+        run: |
+          python3 scripts/container_security_gate.py \
+            --policy security/container-review.json \
+            --scan reports/vulnerabilities.json --archive scan-input/runtime.tar \
+            --commit "$GITHUB_SHA" --build-id "$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" \
+            --output reports/security-gate.json
 
       - name: Retain evidence even when a gate fails
         if: always()
@@ -72,5 +87,5 @@ jobs:
         with:
           name: container-validation-${{ github.run_id }}-${{ github.run_attempt }}
           path: reports/
-          retention-days: 14
+          retention-days: 90
           if-no-files-found: warn

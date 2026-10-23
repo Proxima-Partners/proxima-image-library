@@ -2,6 +2,29 @@
 
 Updated: 2026-10-22 (America/Los_Angeles).
 
+## Current execution checkpoint
+
+User approved the exact-image applicability review and requested unattended
+execution until the pilot passes. All eight candidate package findings have
+individual validation receipts. The ncurses PoC aborts the unpatched control
+and passes on the DHI binary; signed vendor evidence confirms the backport.
+The four util-linux CVEs concern components absent from the final image.
+
+An exact-image, 30-day-expiring gate and 31 negative/positive regression tests
+have been implemented. Raw scans are preserved with 90-day retention. Clean CI
+is the next gate before provisioning. Production, DNS, main and the shared plan
+remain unchanged. See CONTAINER_VALIDATION.md for current evidence; earlier red
+scan results below are historical and remain retained.
+
+Local verification: 197 tests pass; actionlint and git diff --check pass.
+Commit creation failed because the user's 1Password SSH signing key was locked
+(`failed to fill whole buffer`; no commit object was written).
+Signing is not bypassed or disabled. The code is staged, but this checkpoint has
+not yet been committed/pushed and clean CI/pilot provisioning has not started.
+Resume after the user unlocks 1Password and authorizes the retried Git signing request;
+do not select broad approval for all applications. Verify the commit completed
+before pushing `perf/container-pilot`, then open the resulting live Actions log.
+
 ## Container migration
 
 - Source: `PP-App-Serv` and staging on shared `proxima-plan-s1`, West US 2.
