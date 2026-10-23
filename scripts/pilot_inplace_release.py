@@ -56,9 +56,14 @@ def protected_configuration(slot):
     if len(containers) != 1:
         raise RuntimeError('Expected exactly one pilot container')
     container = dict(containers[0].get('properties', containers[0]))
-    if not container.get('isMain') or container.get('authType') != 'SystemIdentity':
+    if (not container.get('isMain') or container.get('authType') != 'SystemIdentity' or
+            str(container.get('targetPort')) != '8080' or container.get('startUpCommand') or
+            container.get('environmentVariables') or container.get('volumeMounts')):
         raise RuntimeError('Unexpected container identity/configuration')
     container.pop('image', None)
+    # Azure updates this audit timestamp on every successful image update.
+    # It is not configuration; all other properties remain compared.
+    container.pop('lastModifiedTime', None)
     return {'settings': settings(APP, 'staging' if slot == 'staging' else None),
             'container': container}
 
@@ -66,9 +71,10 @@ def protected_configuration(slot):
 def update_digest(slot, image):
     if not re.fullmatch(IMAGE_PATTERN, image):
         raise ValueError('An immutable approved-repository image is required')
-    # update, not create: keep all other container properties intact.
+    # CLI update preserves the existing object but resets an omitted port in
+    # some versions. Reassert the already-verified port, changing only the image.
     az('webapp', 'sitecontainers', 'update', *slot_args(slot),
-       '--container-name', 'main', '--image', image)
+       '--container-name', 'main', '--image', image, '--target-port', '8080')
 
 
 def update_slot(slot, release, prior_release, report, path):

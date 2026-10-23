@@ -177,9 +177,11 @@ def main():
             }
         else:
             stable, expected = expected_from(before['production']), expected_from(before['staging'])
+            injection_applied = False
             try:
                 if args.action == 'failed-readiness':
                     az('webapp', 'config', 'appsettings', 'set', *slot_args('staging'), '--settings', 'PORT=0')
+                    injection_applied = True
                     deadline = time.monotonic() + 180
                     while time.monotonic() < deadline:
                         if read_ready(expected['host']) is None:
@@ -190,6 +192,7 @@ def main():
                 else:
                     bad_image = 'proximaimagelibrary.azurecr.io/image-library@sha256:' + '0' * 64
                     deploy_digest('staging', bad_image)
+                    injection_applied = True
                     deadline = time.monotonic() + 240
                     while time.monotonic() < deadline:
                         status = az('webapp', 'sitecontainers', 'status', *slot_args('staging'), '--container-name', 'main')
@@ -201,6 +204,8 @@ def main():
                     else: raise RuntimeError('Failed-pull reason was not confirmed; candidate is not accepted')
                 report['unchanged_main'] = verify_ready('production', stable, stable['pilot_state']['state_id'])
             finally:
+                if not injection_applied:
+                    raise RuntimeError('Injection result ambiguous; reconcile before restoring') from None
                 # Exactly one restoration, never alternate between candidates.
                 report['recovery_attempts'] = 1
                 if args.action == 'failed-readiness':

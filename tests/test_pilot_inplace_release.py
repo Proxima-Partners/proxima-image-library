@@ -120,7 +120,7 @@ def test_update_changes_only_image_and_exact_pilot_target(monkeypatch):
     image = 'proximaimagelibrary.azurecr.io/image-library@sha256:' + 'a' * 64
     rollout.update_digest('production', image)
     assert calls == [('webapp', 'sitecontainers', 'update', '-g', 'PP-Resources', '-n',
-                      'pp-image-library', '--container-name', 'main', '--image', image)]
+                      'pp-image-library', '--container-name', 'main', '--image', image, '--target-port', '8080')]
 
 
 def test_cleanup_is_verified_not_assumed(monkeypatch):
@@ -130,9 +130,21 @@ def test_cleanup_is_verified_not_assumed(monkeypatch):
 
 @pytest.mark.parametrize('shape', ['flat', 'properties'])
 def test_protected_configuration_excludes_only_image(monkeypatch, shape):
-    value = {'image': 'image', 'isMain': True, 'authType': 'SystemIdentity', 'targetPort': '8080'}
+    value = {'image': 'image', 'isMain': True, 'authType': 'SystemIdentity', 'targetPort': '8080',
+             'lastModifiedTime': 'changes-on-every-update'}
     monkeypatch.setattr(rollout, 'az', lambda *args: [value if shape == 'flat' else {'properties': value}])
     monkeypatch.setattr(rollout, 'settings', lambda *args: {'FLASK_SECRET_KEY': 'sensitive'})
     result = rollout.protected_configuration('production')
     assert result == {'settings': {'FLASK_SECRET_KEY': 'sensitive'}, 'container': {
         'isMain': True, 'authType': 'SystemIdentity', 'targetPort': '8080'}}
+
+
+@pytest.mark.parametrize('field,value', [('authType', 'UserCredentials'), ('targetPort', '8000'),
+    ('startUpCommand', 'override'), ('isMain', False),
+    ('environmentVariables', [{'name': 'DEV_AUTH_BYPASS', 'value': 'true'}]),
+    ('volumeMounts', [{'containerMountPath': '/home'}])])
+def test_unexpected_container_override_is_not_accepted(monkeypatch, field, value):
+    container = {'isMain': True, 'authType': 'SystemIdentity', 'targetPort': '8080', field: value}
+    monkeypatch.setattr(rollout, 'az', lambda *args: [container])
+    with pytest.raises(RuntimeError, match='Unexpected container'):
+        rollout.protected_configuration('staging')
