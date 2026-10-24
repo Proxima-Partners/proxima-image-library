@@ -177,3 +177,21 @@ are improved. Local checks passed 680 tests with seven Linux-only skips, 15 JS
 checks, actionlint and diff validation. A fresh reviewed CI rehearsal is still
 required. The production adapter's lifecycle policy/full fault matrix, production
 CI access, 24-hour telemetry, supervised release and activation remain open gates.
+
+PR #7 merged as `4c5ca05` after 688 target-Linux tests, 15 JS checks and both
+container/security and dependency gates passed. Fresh CI run `40067116549-1`
+verified the OIDC/network path but stopped before lease acquisition or app start:
+reinitializing the existing lock returned HTTP 409 `BlobAlreadyExists`, whereas
+the old helper expected 412. A bounded conditional-create diagnostic independently
+confirmed that exact error and unchanged lock bytes/ETag; the lease stayed unlocked.
+The only new private object is unused owner record prefix
+`3364bd8ce97b424a968766c5277c9a1f/`, retained for audit. The app remained Stopped.
+Temporary rule `rehearsal-ci-40067116549` / runner `52.183.219.35` was removed
+from main/SCM/storage, and rehearsal enablement returned to false.
+
+The corrected helper first HEAD-checks a BlockBlob and reuses it without a write;
+only an absent blob is conditionally created. A creation race accepts only the
+specific `BlobAlreadyExists` conflict with independent HEAD verification, never
+a generic 409, overwrite, mutation retry or lease break. Target preflight, lease
+initialization and acquisition now have separate sanitized report phases. Focused
+checks passed 101 tests; a live existing-lock check performed no PUT/acquisition.

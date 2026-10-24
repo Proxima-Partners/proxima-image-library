@@ -146,9 +146,25 @@ class BlobReleaseLease:
 
     def initialize(self):
         # Separate explicit setup action; never overwrite an existing lock blob.
-        status, _, _ = self.transport.request("PUT", self.url, accepted=(201, 412),
+        def exists():
+            status, headers, _ = self.transport.request("HEAD", self.url, accepted=(200, 404))
+            if status == 200 and {k.lower(): v for k, v in headers.items()}.get("x-ms-blob-type") != "BlockBlob":
+                raise AzureIOError("Existing release lock is not a block blob")
+            return status == 200
+
+        if exists():
+            return False  # Read-only reuse; acquire still enforces owner exclusion.
+        status, headers, _ = self.transport.request("PUT", self.url, accepted=(201, 409, 412),
             headers={"x-ms-blob-type": "BlockBlob", "If-None-Match": "*"}, data=b'{}')
-        return status == 201
+        if status == 201:
+            return True
+        if status == 409 and {k.lower(): v for k, v in headers.items()}.get("x-ms-error-code") != "BlobAlreadyExists":
+            raise AzureIOError("Unexpected release lock creation conflict; reconcile")
+        # Another initializer may win after our HEAD. Re-read only; never retry
+        # creation, overwrite contents, release a lease or treat every 409 as OK.
+        if not exists():
+            raise AzureIOError("Release lock creation result cannot be verified")
+        return False
 
     def acquire(self):
         fd = os.open(self.recovery_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
