@@ -1,7 +1,11 @@
 # Unattended operations: implementation handoff and activation gates
 
 Updated 2026-10-23. Implementation branch: `perf/unattended-operations`.
-**Prepared and locally tested, not enabled for production releases.** Production
+**Implemented and build-only CI validated, not enabled for production releases.**
+Signed commit `426f475` passed [CI 40063209524](https://github.com/Proxima-Partners/proxima-image-library/actions/runs/40063209524)
+with 633 target-runtime tests, 12 browser/workflow checks and all smoke/security
+gates. See `UNATTENDED_IMPLEMENTATION.md` for evidence and retained warnings.
+Production
 is still the accepted v2.0.0 build `40019125172-1` / `2ffc0ff`; no deployment,
 Azure access change, new catalog write test or schedule activation is included.
 

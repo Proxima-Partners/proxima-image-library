@@ -5,6 +5,32 @@ container checkpoint `e6ca9f7`. Implementation, tests, branch commits/pushes and
 build-only CI are approved. Main integration, deployment, access changes, live
 write tests and schedule activation are separate approval gates.
 
+## Current handoff: 2026-10-24 04:41 UTC / October 23 PDT
+
+**Implementation scope passed build-only CI and is pushed. Production activation
+is not authorized or enabled.** The signed implementation commit is
+`426f475d8e73a24959a90cefbb58ec4b13eae7e8` on `perf/unattended-operations`.
+[CI run 40063209524](https://github.com/Proxima-Partners/proxima-image-library/actions/runs/40063209524)
+completed successfully; the container job took 1m13s. Its logs confirm **633
+target-runtime tests**, **12 browser/workflow checks**, exact-image runtime and
+release-channel smoke, SBOM and security gate all passed. Zero unreviewed
+HIGH/CRITICAL findings; existing reviewed exceptions remain unchanged.
+
+Evidence artifact `12548377289` / `container-validation-40063209524-1` is retained,
+digest `sha256:f657e1445f402dca2e12d6cec41f8fb1a631b6171bd29b13f4caffc2ee720352`.
+The job is open in Microsoft Edge. A fresh 04:40 UTC four-request public probe
+passed against accepted production `2ffc0ff` / `40019125172-1`; pilot mode is
+still `hold`, the legacy workflow is `disabled_manually`, and remote `main` is
+still `0ddfd05`. No deployment, Azure mutation, write canary or schedule activation.
+The 24-hour telemetry and representative-performance gates remain open.
+
+CI reported a non-failing compatibility warning for the pinned
+`actions/upload-artifact` action declaring Node 20 while the runner uses Node 24.
+Artifact upload succeeded. Review/update the pinned action in the next dependency
+batch before production automation activation; do not suppress the warning.
+Next approval boundary: reviewed main integration, then separately scoped CI
+access and isolated recovery rehearsal as listed in `OPERATIONS_ACTIVATION.md`.
+
 ## Invariants
 
 - Preserve current production and rollback artifacts. No slot swaps.
@@ -77,7 +103,7 @@ write tests and schedule activation are separate approval gates.
   Actionlint and `git diff --check` passed. Existing UTC deprecation warnings
   remain visible. Fresh build-only CI is the remaining implementation check.
 
-## Signing checkpoint: 2026-10-23 22:12 UTC
+## Signing checkpoint: 2026-10-23 22:12 UTC (historical; resolved above)
 
 - First two batches are committed/pushed as `a77d642` and `f622521`; their CI runs
   `40029086741` and `40029611544` passed. HEAD remains `f622521`.

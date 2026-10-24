@@ -4,16 +4,16 @@ Updated: 2026-10-23 (America/Los_Angeles).
 
 ## Current execution checkpoint
 
-**Local unattended-implementation checks passed on `perf/unattended-operations`;
-the final commit/push is blocked on 1Password signing. It is not deployed.**
-633 target-runtime tests, 12 browser/workflow checks, runtime smoke and the local
-security gate passed. The first two batches already passed build-only CI; the
-final batch is staged and still needs a signed commit and fresh CI. Read efficiency,
-bounded diagnostics, authenticated artifact
-verification, conservative release safeguards and disabled operations workflows
-are prepared. See `UNATTENDED_IMPLEMENTATION.md` and `OPERATIONS_ACTIVATION.md` for
-tests and the separate main-integration/access/rehearsal/activation gates. A fresh
-four-request public probe at 22:05 UTC confirmed the accepted build below; it does
+**Unattended implementation is signed, pushed and CI-validated on
+`perf/unattended-operations`; it is not deployed.** Commit `426f475` passed
+[build-only CI 40063209524](https://github.com/Proxima-Partners/proxima-image-library/actions/runs/40063209524):
+633 target-runtime tests, 12 browser/workflow checks, exact-image runtime smoke,
+SBOM and security gate. The signing blocker is resolved. Read efficiency, bounded
+diagnostics, authenticated artifact verification, conservative release safeguards
+and disabled operations workflows are ready for integration review. See
+`UNATTENDED_IMPLEMENTATION.md` and `OPERATIONS_ACTIVATION.md` for evidence and the
+separate main-integration/access/rehearsal/activation gates. A fresh four-request
+public probe at October 24 04:40 UTC confirmed the accepted build below; it does
 not close the 24-hour telemetry or representative-performance acceptance gates.
 
 **Supervised production cutover PASSED.** `https://library.liveproxima.org` now
