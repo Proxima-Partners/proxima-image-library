@@ -22,6 +22,21 @@ _OPERATIONS = {"app.startup", "ai.messages", "image.derivatives", "image.process
 _METHODS = {"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"}
 
 
+def telemetry_resource(commit, build_id):
+    # Explicit slot setting, not a host, identity or arbitrary OTEL attributes.
+    # In-place releases keep this slot-local; slot swaps remain unsupported.
+    slot = os.getenv("TELEMETRY_SLOT", "").strip().lower()
+    slot = slot if slot in {"production", "staging"} else "unknown"
+    build = build_id if re.fullmatch(r"[a-zA-Z0-9._-]{1,100}", build_id) else "source"
+    return Resource({
+        "service.name": "image-library-container" if build_id else "image-library",
+        "service.version": commit if re.fullmatch(r"[0-9a-f]{40}", commit) else "unknown",
+        "service.instance.id": f"{slot}:{build}",
+        "deployment.environment.name": slot,
+        "image_library.slot": slot,
+    })
+
+
 def sanitize_span(span):
     """Copy an immutable SDK span into a strictly allowlisted export record."""
     original = span.attributes or {}
@@ -77,7 +92,7 @@ class SafeTraceExporter(SpanExporter):
         return self.delegate.force_flush(timeout_millis)
 
 
-def initialize_telemetry(app, *, commit="unknown") -> bool:
+def initialize_telemetry(app, *, commit="unknown", build_id="") -> bool:
     """Use the existing Insights resource; never enable exporters in local tests."""
     global _provider
     connection = os.getenv("APPLICATIONINSIGHTS_CONNECTION_STRING", "").strip()
@@ -92,12 +107,7 @@ def initialize_telemetry(app, *, commit="unknown") -> bool:
         from opentelemetry.instrumentation.threading import ThreadingInstrumentor
 
         if _provider is None:
-            resource = Resource({
-                # A warmed process survives a slot swap. Use a stable role;
-                # sanitized request host distinguishes production from staging.
-                "service.name": "image-library",
-                "service.version": commit if re.fullmatch(r"[0-9a-f]{40}", commit) else "unknown",
-            })
+            resource = telemetry_resource(commit, build_id)
             provider = TracerProvider(resource=resource)
             exporter = AzureMonitorTraceExporter(
                 connection_string=connection, disable_offline_storage=True,

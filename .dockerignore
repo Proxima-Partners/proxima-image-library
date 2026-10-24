@@ -1,0 +1,25 @@
+# Deny by default: the context must never contain local secrets/catalog/assets.
+**
+!Dockerfile
+!.dockerignore
+!requirements.txt
+!requirements-dev.txt
+!startup.sh
+!src/
+!src/**/*.py
+!scripts/
+!scripts/**/*.py
+!templates/
+!templates/**/*.html
+!static/
+!static/logo.png
+!static/review-badge.js
+!tests/
+!tests/test_*.py
+# Defense in depth after inclusions, including nested hidden files/directories.
+**/.*
+**/__pycache__/**
+**/*.pyc
+**/*.pem
+**/*.key
+**/*.env

@@ -3,10 +3,13 @@
 import concurrent.futures
 import os
 import time
+import threading
 from pathlib import Path, PurePosixPath
 from typing import List, Tuple
 
 import requests
+from src.deployment_controls import writable
+from src.graph_reads import GraphReads
 
 
 class SharePointClient:
@@ -21,10 +24,16 @@ class SharePointClient:
         self.drive_id = os.getenv("SHAREPOINT_DRIVE_ID", "")
         self._token: str = ""
         self._token_expiry: float = 0.0
+        self._token_lock = threading.Lock()
+        self._reads = GraphReads()
         _local = os.getenv("ONEDRIVE_LOCAL_PATH", "").strip()
         self._local_base: Path | None = Path(_local) if _local and Path(_local).is_dir() else None
 
     def _get_token(self) -> str:
+        with self._token_lock:
+            return self._get_token_locked()
+
+    def _get_token_locked(self) -> str:
         if self._token and time.time() < self._token_expiry - 60:
             return self._token
         url = f"https://login.microsoftonline.com/{self.tenant_id}/oauth2/v2.0/token"
@@ -55,7 +64,7 @@ class SharePointClient:
             url = f"{self.GRAPH_BASE}/drives/{self.drive_id}/root/children"
         items = []
         while url:
-            resp = requests.get(url, headers=self._headers(), timeout=15)
+            resp = self._reads.get(url, headers=self._headers(), timeout=15)
             resp.raise_for_status()
             data = resp.json()
             items.extend(data.get("value", []))
@@ -149,7 +158,7 @@ class SharePointClient:
             f"{self.GRAPH_BASE}/drives/{self.drive_id}/root:/{sharepoint_path}"
             "?$expand=thumbnails"
         )
-        resp = requests.get(url, headers=self._headers(), timeout=15)
+        resp = self._reads.get(url, headers=self._headers(), timeout=15)
         resp.raise_for_status()
         return resp.json()
 
@@ -176,6 +185,7 @@ class SharePointClient:
         # Fallback: direct download URL
         return meta.get("@microsoft.graph.downloadUrl", "")
 
+    @writable
     def upload_file(self, folder_path: str, filename: str, content_bytes: bytes) -> dict:
         """Upload a file to SharePoint, creating intermediate folders as needed.
 
@@ -194,6 +204,7 @@ class SharePointClient:
         resp.raise_for_status()
         return resp.json()
 
+    @writable
     def delete_file(self, sharepoint_path: str) -> bool:
         """Delete a file by its full path from the drive root.
 
@@ -213,6 +224,7 @@ class SharePointClient:
         resp.raise_for_status()
         return False
 
+    @writable
     def _upload_session(self, path: str, content_bytes: bytes) -> dict:
         """Upload large files using the Graph API resumable upload session."""
         url = f"{self.GRAPH_BASE}/drives/{self.drive_id}/root:/{path}:/createUploadSession"

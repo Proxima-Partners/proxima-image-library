@@ -1,0 +1,57 @@
+name: Validate Image Library container
+
+on:
+  push:
+    branches: [perf/container-pilot, perf/unattended-operations]
+    # Documentation checkpoints do not rebuild an unchanged runtime. PR checks
+    # remain unconditional so a required check is never left pending by a filter.
+    paths:
+      - .github/workflows/**
+      - Dockerfile
+      - .dockerignore
+      - requirements*.txt
+      - src/**
+      - scripts/**
+      - templates/**
+      - static/**
+      - tests/**
+      - security/**
+  pull_request:
+    branches: [main]
+  workflow_dispatch: {}
+
+# Build-only: no Azure secrets, OIDC, publish or production deployment permission.
+permissions:
+  contents: read
+
+concurrency:
+  group: image-library-container-validation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  container:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      IMAGE: image-library:validation
+      TRIVY_IMAGE: aquasec/trivy:0.76.1@sha256:790fd66d1697395d8693d1acaa1ea702406a20f109b6fc7bac8db623eca6c06c
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+
+      - name: Build, regression, exact-image smoke, SBOM and security gates
+        run: bash scripts/validate_container.sh
+
+      - name: Browser behavior and workflow boundaries (no credentials)
+        run: node --test tests/js/*.test.cjs
+
+      - name: Retain evidence even when a gate fails
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2, Node 24
+        with:
+          archive: true
+          name: container-validation-${{ github.run_id }}-${{ github.run_attempt }}
+          path: reports/
+          retention-days: 90
+          if-no-files-found: warn

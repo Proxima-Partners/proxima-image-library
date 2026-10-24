@@ -5,6 +5,7 @@ import threading
 import uuid
 from pathlib import Path
 from typing import Dict, List, Optional
+from src.read_cache import catalog_cache
 
 
 _DEFAULT_PATH = Path(__file__).parent.parent / "test_data" / "local_table.json"
@@ -33,6 +34,7 @@ class LocalClient:
         with tmp.open("w", encoding="utf-8") as f:
             json.dump(records, f, indent=2, ensure_ascii=False)
         tmp.replace(self.db_path)
+        catalog_cache.invalidate()
 
     def patch_fields(self, record_id: str, fields: Dict) -> bool:
         """Thread-safe update of arbitrary fields on a record."""

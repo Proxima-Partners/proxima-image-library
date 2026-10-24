@@ -3,6 +3,7 @@ from src.app import app
 
 
 def test_version_endpoint_and_home_page_display_release_version(monkeypatch):
+    assert __version__ == "v2.0.0"
     monkeypatch.setitem(app.config, "TESTING", True)
     with app.test_client() as client:
         version = client.get("/api/version")
@@ -14,3 +15,4 @@ def test_version_endpoint_and_home_page_display_release_version(monkeypatch):
         home = client.get("/")
         assert home.status_code == 200
         assert __version__.encode() in home.data
+        assert b'aria-label="Application version">v2.0.0</small>' in home.data

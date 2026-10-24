@@ -1,0 +1,23 @@
+name: Retired isolated source baseline deployment
+
+# Tombstone on the implementation branch. Historical artifacts/source remain in
+# Git; this does not revoke credentials or disable workflows on older branches.
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: image-library-deploy
+  cancel-in-progress: false
+
+jobs:
+  retired:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 1
+    steps:
+      - name: Refuse obsolete deployment path
+        run: |
+          echo "::error::Retired after production cutover. No deployment was attempted. See OPERATIONS_ACTIVATION.md."
+          exit 1

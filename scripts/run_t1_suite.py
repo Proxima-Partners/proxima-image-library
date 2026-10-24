@@ -482,10 +482,12 @@ def _check_concurrency_lock(base_url: str) -> CheckResult:
 def _check_ui_static() -> CheckResult:
     index_html = (REPO_ROOT / "templates" / "index.html").read_text(encoding="utf-8")
     review_html = (REPO_ROOT / "templates" / "review.html").read_text(encoding="utf-8")
+    badge_js = (REPO_ROOT / "static" / "review-badge.js").read_text(encoding="utf-8")
 
     checks = {
-        "badge_interval_present": "setInterval(refreshReviewBadge, 30000)" in index_html,
-        "badge_pageshow_present": "window.addEventListener('pageshow'" in index_html,
+        "badge_module_wired": "filename='review-badge.js'" in index_html and "reviewBadgePoller.start()" in index_html,
+        "badge_visibility_auth_guards": "visibilityState" in badge_js and "authExpired" in badge_js,
+        "badge_pageshow_present": "win.addEventListener('pageshow'" in badge_js,
         "approve_all_button_present": 'id="approve-all-btn"' in review_html,
         "approve_all_batch_present": "Promise.all(pending.map" in review_html,
         "nested_folder_helper_present": "function locationParent(location)" in index_html,

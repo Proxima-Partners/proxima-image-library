@@ -3,15 +3,20 @@
 import os
 from pathlib import Path
 from dotenv import load_dotenv
+from src.deployment_controls import state_path
+from src.stock_credentials import StockCredentials, environment_only
 
-# Load .env from the project root regardless of working directory
-load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+# Load only the project-root development file, never a discovered parent file.
+# Enforce the opt-out here as well for older developer dotenv installations.
+if (not environment_only(os.environ)
+        and os.getenv("PYTHON_DOTENV_DISABLED", "").strip().lower() not in {"1", "true", "t", "yes", "y"}):
+    load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
-# On Azure App Service, the deployed directory is read-only when running
-# from a package, so keys saved via the maintenance UI persist to /home
-# instead. Loaded second — load_dotenv never overrides an already-set var.
-if Path("/home").exists() and os.getenv("WEBSITE_INSTANCE_ID"):
-    load_dotenv("/home/proxima_stock_keys.env")
+# Local-only allowlisted loader works even with PYTHON_DOTENV_DISABLED=1.
+# Azure never reads credentials from either dotenv or the dedicated state file.
+stock_credentials = StockCredentials(state_path(
+    "proxima_stock_keys.env", Path(__file__).resolve().parent.parent / "proxima_stock_keys.env",
+))
 
 
 class Config:

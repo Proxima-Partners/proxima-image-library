@@ -20,7 +20,6 @@ from io import BytesIO, StringIO
 from pathlib import Path, PurePosixPath
 from urllib.parse import quote, unquote, urlparse
 
-from dotenv import load_dotenv
 from typing import Dict, List, Optional
 from werkzeug.utils import secure_filename
 
@@ -28,18 +27,21 @@ import functools
 
 import msal
 import requests
-from flask import Flask, Response, jsonify, redirect, render_template, request, send_file, session, stream_with_context, url_for
+from flask import Flask, Response, g, jsonify, redirect, render_template, request, send_file, session, stream_with_context, url_for
 from flask_cors import CORS
 from PIL import Image as PILImage
 from werkzeug.exceptions import RequestEntityTooLarge
 
 from src.local_client import LocalClient
 from src import __version__
-from src.config import Config
+from src.config import Config, stock_credentials
+from src.stock_credentials import PROVIDERS as _STOCK_API_PROVIDERS, ManagedCredentialError
 from src.release import release_info
+from src.read_cache import catalog_cache
 from src.telemetry import initialize_telemetry, tracer
 from src.mcp_delivery import verify_delivery
 from src import ingest_poller
+from src import deployment_controls as deployment
 from src.maintenance_helpers import (
     MAINTENANCE_PURGE_STATUSES as _MAINTENANCE_PURGE_STATUSES,
     MAINTENANCE_CANONICAL_CATEGORIES as _MAINTENANCE_CANONICAL_CATEGORIES,
@@ -72,12 +74,11 @@ from src.maintenance_helpers import (
     collect_duplicate_snapshot as _collect_duplicate_snapshot_helper,
 )
 
-load_dotenv()
 Config.validate_runtime()
 
 app = Flask(__name__, template_folder="../templates", static_folder="../static")
 _RELEASE = release_info()
-_TELEMETRY_ENABLED = initialize_telemetry(app, commit=_RELEASE["commit"])
+_TELEMETRY_ENABLED = initialize_telemetry(app, commit=_RELEASE["commit"], build_id=_RELEASE.get("build_id", ""))
 _READY = False
 app.secret_key = Config.FLASK_SECRET_KEY
 app.config.update(
@@ -407,6 +408,72 @@ def enforce_maintenance_admin_access():
     return render_template("login_error.html", error="Admin access required"), 403
 
 
+# Explicitly reviewed reads. Unknown/new routes cannot write in pilot mode,
+# including legacy GET/SSE mutations. This does not replace existing auth.
+_DEPLOYMENT_READ_ENDPOINTS = {
+    "static", "health", "readiness", "api_version", "login", "auth_callback", "logout",
+    "index", "debug_metrics", "api_folders", "api_tags", "api_images", "api_pending_count",
+    "thumbnail", "image", "image_download", "api_image_info", "api_image_variations",
+    "api_mcp_thumbnail", "api_mcp_asset", "api_mcp_rights", "api_tag_library_get",
+    "deployment_status", "maintenance", "review", "tags_page", "tag_manager", "upload",
+}
+
+
+@app.before_request
+def enforce_deployment_controls():
+    if request.endpoint is None or request.method == "OPTIONS":
+        return None
+    if request.endpoint == "deployment_drain":
+        return None  # Existing maintenance admin and CSRF guards still apply.
+    if request.method in {"GET", "HEAD"} and request.endpoint in _DEPLOYMENT_READ_ENDPOINTS:
+        return None
+    try:
+        g.deployment_work = deployment.Work()
+    except deployment.WritesDisabled:
+        response = jsonify({"error": "Application is read-only or draining"})
+        response.status_code = 503
+        response.headers["Retry-After"] = "60"
+        response.headers["Cache-Control"] = "no-store"
+        return response
+
+
+@app.after_request
+def finish_deployment_work(response):
+    work = g.pop("deployment_work", None)
+    if work:
+        if response.is_streamed:
+            response.call_on_close(work.close)
+        else:
+            work.close()
+    return response
+
+
+@app.teardown_request
+def release_failed_deployment_work(_exception):
+    work = g.pop("deployment_work", None)
+    if work:
+        work.close()
+
+
+@app.get("/api/maintenance/deployment-status")
+@login_required
+def deployment_status():
+    response = jsonify({**deployment.snapshot(), **(
+        {"release_state": _RELEASE_STATE, "release": _RELEASE} if _RELEASE_STATE else {}
+    )})
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
+@app.post("/api/maintenance/deployment-drain")
+@login_required
+def deployment_drain():
+    body = request.get_json(silent=True) or {}
+    if not isinstance(body, dict) or not isinstance(body.get("enabled"), bool):
+        return jsonify({"error": "enabled must be boolean"}), 400
+    return jsonify(deployment.set_drain(body["enabled"]))
+
+
 @app.route("/login")
 def login():
     if _auth_bypass_enabled():
@@ -494,9 +561,7 @@ def test_expire_session():
 
 _client = None
 _sp_client = None
-_records_cache: Optional[List] = None
-_cache_time: float = 0
-CACHE_TTL = 300  # 5-minute cache
+_client_lock = threading.Lock()
 
 
 def _sse_safe(s: str) -> str:
@@ -543,8 +608,7 @@ def _sse_poll_loop(t: threading.Thread, q: "queue.Queue", timeout_seconds: int,
             yield f"data: {_sse_safe(value)}\n\n"
         elif kind == "done":
             if invalidate_cache:
-                global _records_cache
-                _records_cache = None
+                catalog_cache.invalidate()
             yield f"data: [RESULT] {json.dumps(value, ensure_ascii=False)}\n\n"
             yield "data: [DONE]\n\n"
             break
@@ -557,29 +621,27 @@ def _sse_poll_loop(t: threading.Thread, q: "queue.Queue", timeout_seconds: int,
 
 def get_client():
     global _client
-    if _client is None:
-        if Config.TEST_MODE:
-            _client = LocalClient()
-        else:
-            from src.sharepoint_list_client import SharePointListClient
-            _client = SharePointListClient()
+    with _client_lock:
+        if _client is None:
+            if Config.TEST_MODE:
+                _client = LocalClient()
+            else:
+                from src.sharepoint_list_client import SharePointListClient
+                _client = SharePointListClient()
     return _client
 
 
 def get_sp_client():
     global _sp_client
-    if _sp_client is None:
-        from src.sharepoint_client import SharePointClient
-        _sp_client = SharePointClient()
+    with _client_lock:
+        if _sp_client is None:
+            from src.sharepoint_client import SharePointClient
+            _sp_client = SharePointClient()
     return _sp_client
 
 
 def get_all_records() -> list:
-    global _records_cache, _cache_time
-    if _records_cache is None or time.time() - _cache_time > CACHE_TTL:
-        _records_cache = get_client().get_all_records()
-        _cache_time = time.time()
-    return _records_cache
+    return catalog_cache.get(lambda: get_client().get_all_records())
 
 
 @app.route("/health")
@@ -600,6 +662,7 @@ def readiness():
         "status": "ready" if _READY else "starting",
         "telemetry": _TELEMETRY_ENABLED,
         **_RELEASE,
+        **({"pilot_state": _PILOT_STATE} if _PILOT_STATE else {}),
     })
     response.headers["Cache-Control"] = "no-store"
     return response, 200 if _READY else 503
@@ -626,8 +689,8 @@ def debug_metrics():
     return jsonify({
         "rss_mb": round(rss_mb, 1) if rss_mb is not None else "psutil not installed",
         "sp_url_cache_size": len(_sp_url_cache),
-        "records_cache_live": _records_cache is not None,
-        "records_cache_size": len(_records_cache) if _records_cache else 0,
+        "records_cache_live": catalog_cache.stats()["live"],
+        "records_cache_size": catalog_cache.stats()["size"],
         "active_threads": threading.active_count(),
     })
 
@@ -646,32 +709,60 @@ def index():
 # ------------------------------------------------------------------
 
 def _stream_command(cmd: list, env: dict = None):
-    """Run a command and stream its output as SSE events."""
+    """Keep commands counted and their pipes drained after an SSE disconnect."""
     run_env = os.environ.copy()
     if env:
         run_env.update(env)
 
-    def generate():
-        yield "data: [START]\n\n"
+    output = queue.Queue(maxsize=256)
+    disconnected = threading.Event()
+
+    def emit(message):
+        while not disconnected.is_set():
+            try:
+                output.put(message, timeout=0.25)
+                return
+            except queue.Full:
+                continue
+
+    def worker():
+        proc = None
         try:
             proc = subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                bufsize=1,
-                env=run_env,
+                cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                text=True, bufsize=1, env=run_env,
                 cwd=str(Path(__file__).parent.parent),
             )
             for line in proc.stdout:
                 line = line.rstrip("\n")
                 if line:
-                    yield f"data: {line}\n\n"
+                    emit(f"data: {line}\n\n")
             proc.wait()
             status = "DONE" if proc.returncode == 0 else f"ERROR (exit {proc.returncode})"
-            yield f"data: [{status}]\n\n"
-        except Exception as e:
-            yield f"data: [ERROR] {e}\n\n"
+            emit(f"data: [{status}]\n\n")
+        except Exception:
+            app.logger.exception("Maintenance command failed")
+            emit("data: [ERROR] Maintenance command failed; see server logs\n\n")
+        finally:
+            if proc is not None:
+                # Never report idle while a detached child is still writing.
+                # Normally EOF already means the child has exited.
+                if proc.stdout is not None:
+                    proc.stdout.close()
+                proc.wait()
+
+    def generate():
+        thread = deployment.WorkThread(target=worker, daemon=True)
+        thread.start()
+        try:
+            yield "data: [START]\n\n"
+            while thread.is_alive() or not output.empty():
+                try:
+                    yield output.get(timeout=1)
+                except queue.Empty:
+                    yield ": heartbeat\n\n"
+        finally:
+            disconnected.set()
 
     return Response(
         stream_with_context(generate()),
@@ -903,7 +994,7 @@ def api_catalog_stock():
                 if dl_location:
                     dl_domain = urlparse(dl_location).netloc.lower()
                     if "unsplash.com" in dl_domain:
-                        access_key = Config.UNSPLASH_ACCESS_KEY
+                        access_key = os.getenv("UNSPLASH_ACCESS_KEY", "")
                         if access_key:
                             try:
                                 requests.get(dl_location, headers={"Authorization": f"Client-ID {access_key}"}, timeout=5)
@@ -947,7 +1038,7 @@ def api_catalog_stock():
             except Exception:
                 q.put(("error", "Processing failed"))
 
-        t = threading.Thread(target=worker, daemon=True)
+        t = deployment.WorkThread(target=worker, daemon=True)
         t.start()
         yield from _sse_poll_loop(t, q, 180, "Processing timed out after 3 minutes")
 
@@ -1929,7 +2020,7 @@ def api_download_image():
     if download_location:
         dl_domain = urlparse(download_location).netloc.lower()
         if "unsplash.com" in dl_domain:
-            access_key = Config.UNSPLASH_ACCESS_KEY
+            access_key = os.getenv("UNSPLASH_ACCESS_KEY", "")
             if access_key:
                 try:
                     requests.get(
@@ -2096,8 +2187,7 @@ def api_image_status():
     ok = list_client.patch_fields(record_id, fields)
 
     if ok:
-        global _records_cache
-        _records_cache = None  # invalidate so pending-count reflects the change
+        catalog_cache.invalidate()
         return jsonify({"ok": True})
     return jsonify({"error": "Record not found or update failed"}), 404
 
@@ -2341,8 +2431,7 @@ def api_image_delete():
 
     deleted = _bulk_delete_records(get_client(), [record_id])
 
-    global _records_cache
-    _records_cache = None
+    catalog_cache.invalidate()
 
     if not deleted:
         return jsonify({"error": "Failed to delete record"}), 500
@@ -3338,8 +3427,7 @@ def api_maintenance_purge_status():
 
     deleted_records = _bulk_delete_records(get_client(), record_ids)
 
-    global _records_cache
-    _records_cache = None
+    catalog_cache.invalidate()
 
     result = {
         "status": status,
@@ -3412,8 +3500,7 @@ def api_maintenance_orphans_delete_records():
 
     deleted = _bulk_delete_records(get_client(), record_ids)
 
-    global _records_cache
-    _records_cache = None
+    catalog_cache.invalidate()
 
     result = {
         "requested": len(record_ids),
@@ -3482,8 +3569,7 @@ def api_maintenance_orphans_flag_missing():
     failed_ids = patch_result["failed_ids"]
 
     if updated > 0:
-        global _records_cache
-        _records_cache = None
+        catalog_cache.invalidate()
 
     return jsonify({
         "requested": len(record_ids),
@@ -3596,8 +3682,7 @@ def api_maintenance_orphans_register_files():
         except Exception as exc:
             failed.append({"path": rel_path, "error": str(exc)})
 
-    global _records_cache
-    _records_cache = None
+    catalog_cache.invalidate()
 
     _maintenance_append_audit(
         action="orphans-register-files",
@@ -3751,8 +3836,7 @@ def api_maintenance_duplicates_resolve():
 
     deleted = _bulk_delete_records(client, delete_ids)
 
-    global _records_cache
-    _records_cache = None
+    catalog_cache.invalidate()
 
     result = {
         "action": action,
@@ -3879,8 +3963,7 @@ def api_maintenance_duplicates_resolve_all():
         total_failed += max(0, len(delete_ids) - deleted)
         groups_processed += 1
 
-    global _records_cache
-    _records_cache = None
+    catalog_cache.invalidate()
 
     _maintenance_append_audit(
         action="duplicates-resolve-all",
@@ -4456,7 +4539,7 @@ def api_maintenance_retag_run():
             except Exception:
                 q.put(("error", "Bulk operation failed"))
 
-        t = threading.Thread(target=worker, daemon=True)
+        t = deployment.WorkThread(target=worker, daemon=True)
         t.start()
         yield from _sse_poll_loop(t, q, 1800, "Bulk re-tag timed out after 30 minutes",
                                   invalidate_cache=True)
@@ -4613,8 +4696,7 @@ def api_maintenance_status_reset():
     failed_ids.extend(patch_result["failed_ids"])
     failed = invalid_id_failures + len([fid for fid in failed_ids if fid])
 
-    global _records_cache
-    _records_cache = None
+    catalog_cache.invalidate()
 
     return jsonify({
         "matched_count": len(matches),
@@ -4738,8 +4820,7 @@ def api_maintenance_broken_thumbnails_delete_records():
 
     deleted = _bulk_delete_records(get_client(), record_ids)
 
-    global _records_cache
-    _records_cache = None
+    catalog_cache.invalidate()
 
     result = {
         "requested": len(record_ids),
@@ -4802,8 +4883,7 @@ def api_maintenance_broken_thumbnails_relink():
     if not client.patch_fields(record_id, patch):
         return jsonify({"error": "Failed to update record"}), 500
 
-    global _records_cache
-    _records_cache = None
+    catalog_cache.invalidate()
 
     return jsonify({
         "ok": True,
@@ -5030,7 +5110,7 @@ def api_maintenance_sync_highres():
             except Exception:
                 q.put(("error", "Maintenance sync failed"))
 
-        t = threading.Thread(target=worker, daemon=True)
+        t = deployment.WorkThread(target=worker, daemon=True)
         t.start()
         yield from _sse_poll_loop(t, q, 600, "Maintenance sync timed out after 10 minutes",
                                   invalidate_cache=True)
@@ -5057,13 +5137,12 @@ def api_maintenance_folder_ingest():
                 if "error" in result:
                     q.put(("error", result["error"]))
                 else:
-                    global _records_cache
-                    _records_cache = None
+                    catalog_cache.invalidate()
                     q.put(("done", result))
             except Exception as exc:
                 q.put(("error", f"Folder ingest failed: {exc}"))
 
-        t = threading.Thread(target=worker, daemon=True)
+        t = deployment.WorkThread(target=worker, daemon=True)
         t.start()
         yield from _sse_poll_loop(t, q, 600, "Folder ingest timed out after 10 minutes")
 
@@ -5271,8 +5350,7 @@ def api_maintenance_quality_drift_queue_mark():
 
     result = _bulk_patch_fields(get_client(), patches)
     if result.get("updated", 0) > 0:
-        global _records_cache
-        _records_cache = None
+        catalog_cache.invalidate()
 
     payload = {
         "requested": len(record_ids),
@@ -5362,8 +5440,7 @@ def api_maintenance_category_normalization_apply():
 
     result = _bulk_patch_fields(get_client(), patches)
     if result.get("updated", 0) > 0:
-        global _records_cache
-        _records_cache = None
+        catalog_cache.invalidate()
 
     payload = {
         "requested": len(selected_ids),
@@ -5455,8 +5532,7 @@ def api_maintenance_checkpoints_restore():
     local_client = LocalClient()
     _atomic_json_write(Path(local_client.db_path), checkpoint_records)
 
-    global _records_cache
-    _records_cache = None
+    catalog_cache.invalidate()
 
     restore_result = {
         "checkpoint_id": checkpoint_id,
@@ -5840,8 +5916,7 @@ def api_tag_library_discard_suggestion():
 
     if patches:
         client.bulk_patch_fields(patches)
-        global _records_cache
-        _records_cache = None
+        catalog_cache.invalidate()
 
     return jsonify({"ok": True, "records_updated": len(patches)})
 
@@ -5880,8 +5955,7 @@ def _clear_promoted_suggestions_from_records(promoted_tags: list[str]) -> int:
 
     if patches:
         client.bulk_patch_fields(patches)
-        global _records_cache
-        _records_cache = None
+        catalog_cache.invalidate()
 
     return len(patches)
 
@@ -5939,10 +6013,7 @@ _UPLOAD_ALLOWED = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
 
 def _staged_root() -> Path:
     """Return the directory used to stage uploaded files between requests."""
-    if Path("/home").exists() and os.getenv("WEBSITE_INSTANCE_ID"):
-        root = Path("/home/proxima_staged_uploads")
-    else:
-        root = Path(tempfile.gettempdir()) / "proxima_staged_uploads"
+    root = deployment.state_path("proxima_staged_uploads", Path(tempfile.gettempdir()) / "proxima_staged_uploads")
     root.mkdir(parents=True, exist_ok=True)
     return root
 
@@ -6119,7 +6190,7 @@ def api_upload_process():
                     f"Processing failed during: {last_step}. The error was recorded in server logs.",
                 ))
 
-        t = threading.Thread(target=worker, daemon=True)
+        t = deployment.WorkThread(target=worker, daemon=True)
         t.start()
         yield from _sse_poll_loop(
             t,
@@ -6143,11 +6214,7 @@ def api_upload_process():
 
 SS_QUOTA_LIMIT = 10
 # /home persists on Azure App Service; fall back to project root locally
-_SS_COUNTER_PATH = Path(
-    "/home/proxima_ss_counter.json"
-    if Path("/home").exists() and os.getenv("WEBSITE_INSTANCE_ID")
-    else "proxima_ss_counter.json"
-)
+_SS_COUNTER_PATH = deployment.state_path("proxima_ss_counter.json", "proxima_ss_counter.json")
 _ss_lock = threading.Lock()
 
 
@@ -6189,39 +6256,11 @@ def api_ss_track():
     return jsonify({"used": data["count"], "limit": SS_QUOTA_LIMIT})
 
 
-_STOCK_API_PROVIDERS = {
-    "pexels": {
-        "label": "Pexels",
-        "keys": ["PEXELS_API_KEY"],
-    },
-    "shutterstock": {
-        "label": "Shutterstock",
-        "keys": ["SHUTTERSTOCK_CLIENT_ID", "SHUTTERSTOCK_CLIENT_SECRET"],
-    },
-    "unsplash": {
-        "label": "Unsplash",
-        "keys": ["UNSPLASH_ACCESS_KEY"],
-    },
-    "pixabay": {
-        "label": "Pixabay",
-        "keys": ["PIXABAY_API_KEY"],
-    },
-}
-
-_DOT_ENV_PATH = Path(
-    "/home/proxima_stock_keys.env"
-    if Path("/home").exists() and os.getenv("WEBSITE_INSTANCE_ID")
-    else Path(__file__).resolve().parent.parent / ".env"
-)
-
-
 def _mask(value: str) -> str:
     """Return a masked version of a secret key for display."""
     if not value:
         return ""
-    if len(value) <= 8:
-        return "*" * len(value)
-    return value[:4] + "*" * (len(value) - 8) + value[-4:]
+    return "configured"
 
 
 def _test_stock_provider(provider: str) -> dict:
@@ -6301,26 +6340,6 @@ def _test_stock_provider(provider: str) -> dict:
         return {"ok": False, "status": "error", "message": "Request failed"}
 
 
-def _update_env_key(key: str, value: str) -> None:
-    """Update or append a key=value line in the .env file."""
-    if not _DOT_ENV_PATH.exists():
-        _DOT_ENV_PATH.write_text(f"{key}={value}\n", encoding="utf-8")
-        return
-    lines = _DOT_ENV_PATH.read_text(encoding="utf-8").splitlines(keepends=True)
-    pattern = re.compile(rf"^{re.escape(key)}\s*=")
-    replaced = False
-    new_lines = []
-    for line in lines:
-        if pattern.match(line):
-            new_lines.append(f"{key}={value}\n")
-            replaced = True
-        else:
-            new_lines.append(line)
-    if not replaced:
-        new_lines.append(f"{key}={value}\n")
-    _DOT_ENV_PATH.write_text("".join(new_lines), encoding="utf-8")
-
-
 @app.route("/api/maintenance/stock-api-status")
 @login_required
 def api_maintenance_stock_api_status():
@@ -6331,6 +6350,8 @@ def api_maintenance_stock_api_status():
         results[provider] = {
             "label": meta["label"],
             "keys": keys_display,
+            "editable": stock_credentials.editable(provider),
+            "sources": stock_credentials.sources(provider),
             **test,
         }
     return jsonify({"providers": results})
@@ -6339,30 +6360,39 @@ def api_maintenance_stock_api_status():
 @app.route("/api/maintenance/stock-api-update", methods=["POST"])
 @login_required
 def api_maintenance_stock_api_update():
-    data = request.get_json(force=True) or {}
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"error": "Expected a JSON object"}), 400
     provider = str(data.get("provider", "")).strip()
     updates = data.get("keys", {})
 
     if provider not in _STOCK_API_PROVIDERS:
         return jsonify({"error": "Unknown provider"}), 400
-    allowed_keys = set(_STOCK_API_PROVIDERS[provider]["keys"])
-
-    saved = []
-    for key, value in updates.items():
-        if key not in allowed_keys:
-            return jsonify({"error": f"Key {key!r} not valid for provider {provider!r}"}), 400
-        value = str(value).strip()
-        if not value:
-            return jsonify({"error": f"Value for {key!r} cannot be empty"}), 400
-        os.environ[key] = value
-        _update_env_key(key, value)
-        saved.append(key)
+    try:
+        saved = stock_credentials.update(provider, updates)
+    except ManagedCredentialError:
+        return jsonify({"error": "Provider is environment-managed; update it in Azure configuration"}), 409
+    except ValueError:
+        return jsonify({"error": "Invalid credential keys or values"}), 400
+    except (OSError, RuntimeError):
+        return jsonify({"error": "Credentials not confirmed saved; reconcile persistent state before retrying"}), 503
 
     test = _test_stock_provider(provider)
     return jsonify({"saved": saved, "test": test})
 
 
-# Warm local resources before accepting readiness/swap probes. No data writes.
+# Warm local resources before readiness. No catalog writes; an explicitly
+# enabled read-only pilot can retain its own non-secret persistence sentinel.
+_PILOT_STATE = deployment.verify_state_directory()
+_RELEASE_STATE = deployment.verify_release_state()
+_RELEASE_CHANNEL = None
+if _RELEASE_STATE:
+    from src.release_channel import ReleaseChannel
+    _RELEASE_CHANNEL = ReleaseChannel(
+        os.environ["APP_STATE_DIR"], _RELEASE_STATE, _RELEASE,
+        lambda: len(get_client().get_records(limit=1)),
+    )
+    _RELEASE_CHANNEL.start()
 app.jinja_env.get_template("index.html")
 PILImage.init()
 from PIL import features as _pillow_features
@@ -6373,7 +6403,7 @@ with tracer().start_as_current_span("app.startup", start_time=_STARTED_NS):
     pass
 
 # Start background ingest poller (SharePoint mode only)
-if Config.STORAGE_MODE == "sharepoint" and Config.SHAREPOINT_INGEST_FOLDER:
+if Config.STORAGE_MODE == "sharepoint" and Config.SHAREPOINT_INGEST_FOLDER and deployment.poller_enabled():
     ingest_poller.start(Config.INGEST_POLL_INTERVAL_SECONDS)
 
 if __name__ == "__main__":

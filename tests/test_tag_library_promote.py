@@ -87,7 +87,7 @@ def test_single_promote_cleans_prefixed_tags(monkeypatch, app_module):
         ("1", {"Tags": "new-tag, existing"}),
         ("2", {"Tags": "keep, new-tag"}),
     ]
-    assert app_module._records_cache is None
+    assert app_module.catalog_cache.stats()["live"] is False
 
 
 def test_bulk_promote_cleans_prefixed_tags(monkeypatch, app_module):
@@ -126,4 +126,4 @@ def test_bulk_promote_cleans_prefixed_tags(monkeypatch, app_module):
         ("2", {"Tags": "keep, new-tag"}),
         ("3", {"Tags": "different"}),
     ]
-    assert app_module._records_cache is None
+    assert app_module.catalog_cache.stats()["live"] is False

@@ -1,0 +1,68 @@
+{
+  "schema": 1,
+  "scope": "Approved Azure-aware non-secret state policy; not public cutover acceptance",
+  "authorization": "User approved credentials in Azure settings, no credential-file writes in Azure, and checks adapted to actual shared mount metadata",
+  "prior_candidate": {
+    "commit": "a15474c6ae4515679cad60c62810ee772e3df2c3",
+    "build_id": "40016044994-1",
+    "image": "proximaimagelibrary.azurecr.io/image-library@sha256:d139a1e1e74c63e15a9cfa0b30f7643cf68b9ff1ab54638db0ba2823c7b16960",
+    "target_linux_tests": 459,
+    "both_read_only_in_place_updates_passed": true,
+    "live_staging_release_probe_passed": true,
+    "actual_workers": 1,
+    "runtime_uid": 65532,
+    "runtime_gid": 65532,
+    "active_work": 0,
+    "catalog_read_limit": 1,
+    "request_response_cleanup_verified": true
+  },
+  "azure_shared_mount_rehearsal": {
+    "target": "pp-image-library/slots/staging",
+    "application_state_touched": false,
+    "synthetic_fixture_bytes": 30,
+    "observed_uid": 65534,
+    "observed_gid": 65534,
+    "observed_mode_octal": "0777",
+    "scm_process_uid": 1003,
+    "scm_process_gid": 1005,
+    "owner_only_permissions_claimed": false,
+    "initial_capture_after_write": "failed closed on transient metadata change",
+    "interrupted_copy": "reconciled by read-only exact comparison; no rewrite",
+    "linux_rename_noreplace_install": "passed on Azure share",
+    "fresh_complete_restore_install_rehearsal": "passed with bounded settled reads",
+    "settled_capture": "at most 12 read-only attempts, requiring two consecutive identical internally stable snapshots",
+    "synthetic_fixture_cleanup_verified": true,
+    "both_rehearsal_leases_released": true
+  },
+  "policy": {
+    "azure_credentials": "environment-only; includes unset providers; blocks dedicated credential file and development dotenv",
+    "shared_state": "non-secret allowlisted state only; no unresolved staged-upload children",
+    "local_recovery": "strict POSIX mode remains default",
+    "no_overwrite": true,
+    "no_mutation_retry": true,
+    "new_live_worker_filesystem_probe": "requires fresh candidate deployment"
+  },
+  "offline_release_channel_smoke": {
+    "network": "none",
+    "runtime_uid": 65532,
+    "runtime_gid": 65532,
+    "filesystem_probe_and_cleanup": "passed",
+    "persistent_drain_restart_and_fresh_boot": "passed"
+  },
+  "target_linux_regression_tests": 487,
+  "candidate_settings": {
+    "both_slots_read_only": true,
+    "both_slots_ingestion_disabled": true,
+    "both_slots_explicit_environment_only": true,
+    "staging_pilot_flags_restored_for_existing_release_contract": true,
+    "all_other_settings_preserved": true,
+    "original_pilot_sentinels_preserved": true,
+    "protected_prechange_backup_prefix": "c947effd3cf1432abc0bacc878c4e15d",
+    "lease": "held for fresh candidate CI; verify current state before resuming"
+  },
+  "public_cutover_complete": false,
+  "existing_assets_modified": false,
+  "production_writer_stopped": false,
+  "dns_destination_changed": false,
+  "write_canary_executed": false
+}

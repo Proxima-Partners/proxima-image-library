@@ -1,80 +1,23 @@
-name: Deploy Image Library
+name: Retired legacy source deployment
 
+# Tombstone on the implementation branch. Historical artifacts/source remain in
+# Git; this does not revoke credentials or disable workflows on older branches.
 on:
-  push:
-    branches: [main]
   workflow_dispatch: {}
 
 permissions:
   contents: read
 
-# Never cancel a running deployment/swap when a newer commit arrives.
 concurrency:
   group: image-library-deploy
   cancel-in-progress: false
 
 jobs:
-  validate:
-    uses: ./.github/workflows/t1-regression.yml
-
-  deploy-image-library:
-    needs: validate
-    if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
+  retired:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 1
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      - name: Package source-only release
-        run: python scripts/package_release.py release.zip
-
-      - name: Azure Login
-        uses: azure/login@v2
-        with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
-
-      - name: Check staging deployment configuration without restarting it
-        shell: bash
+      - name: Refuse obsolete deployment path
         run: |
-          set -euo pipefail
-          settings=$(az webapp config appsettings list -g PP-Resources -n PP-App-Serv --slot staging -o json)
-          # Python requires Oryx; run-from-package is not supported.
-          jq -e 'any(.[]; .name == "SCM_DO_BUILD_DURING_DEPLOYMENT" and (.value | ascii_downcase) == "true") and (all(.[]; .name != "WEBSITE_RUN_FROM_PACKAGE" or .value == "0" or .value == ""))' <<< "$settings" > /dev/null
-          unset settings
-          echo "Verified PP-App-Serv staging configuration; PP-MCP-Server is never a target."
-
-      - name: Deploy source to staging (Azure builds dependencies once)
-        uses: azure/webapps-deploy@v3
-        with:
-          app-name: PP-App-Serv
-          slot-name: staging
-          package: release.zip
-
-      - name: Verify exact staging release before swap
-        run: python scripts/verify_release.py https://pp-app-serv-staging.azurewebsites.net "$GITHUB_SHA" --require-telemetry
-
-      - name: Swap staging into production
-        run: |
-          az webapp deployment slot swap \
-            --resource-group PP-Resources \
-            --name PP-App-Serv \
-            --slot staging \
-            --target-slot production \
-            --output none
-
-      - name: Verify custom domain and direct production host
-        run: |
-          python scripts/verify_release.py https://library.liveproxima.org "$GITHUB_SHA" --require-telemetry
-          python scripts/verify_release.py https://pp-app-serv.azurewebsites.net "$GITHUB_SHA" --require-telemetry
-
-      - name: Record release evidence
-        if: always()
-        run: |
-          echo "Target: PP-App-Serv (staging -> production)" >> "$GITHUB_STEP_SUMMARY"
-          echo "Commit: $GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
-          echo "Outcome: ${{ job.status }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "No data migrations or backfills were run." >> "$GITHUB_STEP_SUMMARY"
+          echo "::error::Retired after production cutover. No deployment was attempted. See OPERATIONS_ACTIVATION.md."
+          exit 1

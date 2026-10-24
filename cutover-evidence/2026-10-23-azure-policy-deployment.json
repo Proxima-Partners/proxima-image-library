@@ -1,0 +1,487 @@
+{
+  "status": "passed",
+  "started_at": "2026-10-23T20:27:57.380606+00:00",
+  "release": {
+    "status": "pass",
+    "evaluated_at": "2026-10-23T20:27:22.614466+00:00",
+    "expires_at": "2026-11-21T23:59:59Z",
+    "image_config_id": "sha256:11e8fd0ff512f8010d1558850a4f380547e7a7b683fa9fa113fe2424fa8eddfe",
+    "archive_sha256": "e21de824483f0ffc8589d93212076623ab5f23be421fcdcafb584a37acbcb6ec",
+    "base_image": "dhi.io/python:3.12-debian13@sha256:a67245096d56c6ce891b9bec78a8090850907af9314185597c6b5d75438ca999",
+    "commit": "2ffc0ff18ad191d1ccc1c185b4ce848b9442de4b",
+    "build_id": "40019125172-1",
+    "reviewed_findings": [
+      {
+        "candidate_id": "triage-001",
+        "cve": "CVE-2025-69720",
+        "package": "libncursesw6",
+        "version": "6.5+20250216-2+dhi4",
+        "severity": "HIGH",
+        "class": "os-pkgs",
+        "type": "debian",
+        "reason": "vendor_backport"
+      },
+      {
+        "candidate_id": "triage-002",
+        "cve": "CVE-2025-69720",
+        "package": "libtinfo6",
+        "version": "6.5+20250216-2+dhi4",
+        "severity": "HIGH",
+        "class": "os-pkgs",
+        "type": "debian",
+        "reason": "vendor_backport"
+      },
+      {
+        "candidate_id": "triage-003",
+        "cve": "CVE-2026-76642",
+        "package": "libuuid1",
+        "version": "2.41.5-0+deb13u1+dhi3",
+        "severity": "HIGH",
+        "class": "os-pkgs",
+        "type": "debian",
+        "reason": "component_absent"
+      },
+      {
+        "candidate_id": "triage-004",
+        "cve": "CVE-2026-78408",
+        "package": "libuuid1",
+        "version": "2.41.5-0+deb13u1+dhi3",
+        "severity": "HIGH",
+        "class": "os-pkgs",
+        "type": "debian",
+        "reason": "component_absent"
+      },
+      {
+        "candidate_id": "triage-005",
+        "cve": "CVE-2026-78409",
+        "package": "libuuid1",
+        "version": "2.41.5-0+deb13u1+dhi3",
+        "severity": "HIGH",
+        "class": "os-pkgs",
+        "type": "debian",
+        "reason": "component_absent"
+      },
+      {
+        "candidate_id": "triage-006",
+        "cve": "CVE-2026-78410",
+        "package": "libuuid1",
+        "version": "2.41.5-0+deb13u1+dhi3",
+        "severity": "HIGH",
+        "class": "os-pkgs",
+        "type": "debian",
+        "reason": "component_absent"
+      },
+      {
+        "candidate_id": "triage-007",
+        "cve": "CVE-2025-69720",
+        "package": "ncurses-base",
+        "version": "6.5+20250216-2+dhi4",
+        "severity": "HIGH",
+        "class": "os-pkgs",
+        "type": "debian",
+        "reason": "vendor_backport"
+      },
+      {
+        "candidate_id": "triage-008",
+        "cve": "CVE-2025-69720",
+        "package": "ncurses-bin",
+        "version": "6.5+20250216-2+dhi4",
+        "severity": "HIGH",
+        "class": "os-pkgs",
+        "type": "debian",
+        "reason": "vendor_backport"
+      }
+    ],
+    "unreviewed_high_critical": 0,
+    "policy_sha256": "7e3893d19fe6f8f40cf64aab41f424b6ef4ba7382ffc444f2bc3720bb9c098c4",
+    "raw_scan_sha256": "749f681ecc7404a5bae2666a21488dd24f0cf03f0997d7ca371ca962ba4a1d37",
+    "registry_image": "proximaimagelibrary.azurecr.io/image-library@sha256:1a1d24ede2eb7bfd81cb1ea2b11ea5518f0df5c4441dd714f2ef49ab5e1afa9a",
+    "provenance_type": "workflow-release-receipt"
+  },
+  "strategy": "in-place-no-swap",
+  "temporary_access_removed": {
+    "staging": true,
+    "production": true
+  },
+  "before": {
+    "staging": {
+      "resource": "/subscriptions/9528fb58-4fa4-43f8-9940-e5c3e1f1903f/resourceGroups/PP-Resources/providers/Microsoft.Web/sites/pp-image-library/slots/staging",
+      "host": "pp-image-library-staging.azurewebsites.net",
+      "image": "proximaimagelibrary.azurecr.io/image-library@sha256:d139a1e1e74c63e15a9cfa0b30f7643cf68b9ff1ab54638db0ba2823c7b16960",
+      "readiness": {
+        "build_id": "40016044994-1",
+        "commit": "a15474c6ae4515679cad60c62810ee772e3df2c3",
+        "pilot_state": {
+          "boot_id": "42b7ae9737154ef29c205bfec8d36851",
+          "gid": 65532,
+          "state_id": "c4ed33732aa65098c8b4536a5c8ef7fc1dc804df435a147741df59b965a38115",
+          "uid": 65532
+        },
+        "short": "a15474c",
+        "status": "ready",
+        "telemetry": true,
+        "version": "v2.0.0"
+      },
+      "safe_settings": {
+        "APP_READ_ONLY": "true",
+        "INGEST_POLLER_ENABLED": "false",
+        "TEST_MODE": "false",
+        "DEV_AUTH_BYPASS": "false",
+        "PILOT_STATE_PROBE_ENABLED": "true",
+        "WEBSITES_ENABLE_APP_SERVICE_STORAGE": "true"
+      }
+    },
+    "production": {
+      "resource": "/subscriptions/9528fb58-4fa4-43f8-9940-e5c3e1f1903f/resourceGroups/PP-Resources/providers/Microsoft.Web/sites/pp-image-library",
+      "host": "pp-image-library.azurewebsites.net",
+      "image": "proximaimagelibrary.azurecr.io/image-library@sha256:d139a1e1e74c63e15a9cfa0b30f7643cf68b9ff1ab54638db0ba2823c7b16960",
+      "readiness": {
+        "build_id": "40016044994-1",
+        "commit": "a15474c6ae4515679cad60c62810ee772e3df2c3",
+        "pilot_state": {
+          "boot_id": "5f470b5272294b3583fb6ebd55d4164e",
+          "gid": 65532,
+          "state_id": "23417242c2c60e65d695520412f767a5a7ca6fd9d29b9357a62f7ef24e05c0c2",
+          "uid": 65532
+        },
+        "short": "a15474c",
+        "status": "ready",
+        "telemetry": true,
+        "version": "v2.0.0"
+      },
+      "safe_settings": {
+        "APP_READ_ONLY": "true",
+        "INGEST_POLLER_ENABLED": "false",
+        "TEST_MODE": "false",
+        "DEV_AUTH_BYPASS": "false",
+        "PILOT_STATE_PROBE_ENABLED": "true",
+        "WEBSITES_ENABLE_APP_SERVICE_STORAGE": "true"
+      }
+    }
+  },
+  "rollback_release_receipts": {
+    "staging": {
+      "status": "pass",
+      "evaluated_at": "2026-10-23T20:03:35.347868+00:00",
+      "expires_at": "2026-11-21T23:59:59Z",
+      "image_config_id": "sha256:f3a8173fbdb52f54a6e0bd2e55854200c2ec9e7fb119fd12ccaa02157bc79b08",
+      "archive_sha256": "b3d5d918db3528666dfdab428c5733aa02832a329bfe498db5c90fca41daf5cd",
+      "base_image": "dhi.io/python:3.12-debian13@sha256:a67245096d56c6ce891b9bec78a8090850907af9314185597c6b5d75438ca999",
+      "commit": "a15474c6ae4515679cad60c62810ee772e3df2c3",
+      "build_id": "40016044994-1",
+      "reviewed_findings": [
+        {
+          "candidate_id": "triage-001",
+          "cve": "CVE-2025-69720",
+          "package": "libncursesw6",
+          "version": "6.5+20250216-2+dhi4",
+          "severity": "HIGH",
+          "class": "os-pkgs",
+          "type": "debian",
+          "reason": "vendor_backport"
+        },
+        {
+          "candidate_id": "triage-002",
+          "cve": "CVE-2025-69720",
+          "package": "libtinfo6",
+          "version": "6.5+20250216-2+dhi4",
+          "severity": "HIGH",
+          "class": "os-pkgs",
+          "type": "debian",
+          "reason": "vendor_backport"
+        },
+        {
+          "candidate_id": "triage-003",
+          "cve": "CVE-2026-76642",
+          "package": "libuuid1",
+          "version": "2.41.5-0+deb13u1+dhi3",
+          "severity": "HIGH",
+          "class": "os-pkgs",
+          "type": "debian",
+          "reason": "component_absent"
+        },
+        {
+          "candidate_id": "triage-004",
+          "cve": "CVE-2026-78408",
+          "package": "libuuid1",
+          "version": "2.41.5-0+deb13u1+dhi3",
+          "severity": "HIGH",
+          "class": "os-pkgs",
+          "type": "debian",
+          "reason": "component_absent"
+        },
+        {
+          "candidate_id": "triage-005",
+          "cve": "CVE-2026-78409",
+          "package": "libuuid1",
+          "version": "2.41.5-0+deb13u1+dhi3",
+          "severity": "HIGH",
+          "class": "os-pkgs",
+          "type": "debian",
+          "reason": "component_absent"
+        },
+        {
+          "candidate_id": "triage-006",
+          "cve": "CVE-2026-78410",
+          "package": "libuuid1",
+          "version": "2.41.5-0+deb13u1+dhi3",
+          "severity": "HIGH",
+          "class": "os-pkgs",
+          "type": "debian",
+          "reason": "component_absent"
+        },
+        {
+          "candidate_id": "triage-007",
+          "cve": "CVE-2025-69720",
+          "package": "ncurses-base",
+          "version": "6.5+20250216-2+dhi4",
+          "severity": "HIGH",
+          "class": "os-pkgs",
+          "type": "debian",
+          "reason": "vendor_backport"
+        },
+        {
+          "candidate_id": "triage-008",
+          "cve": "CVE-2025-69720",
+          "package": "ncurses-bin",
+          "version": "6.5+20250216-2+dhi4",
+          "severity": "HIGH",
+          "class": "os-pkgs",
+          "type": "debian",
+          "reason": "vendor_backport"
+        }
+      ],
+      "unreviewed_high_critical": 0,
+      "policy_sha256": "7e3893d19fe6f8f40cf64aab41f424b6ef4ba7382ffc444f2bc3720bb9c098c4",
+      "raw_scan_sha256": "9e9603e470693d3703f561c238c7d3a383e00af6fd6c3c187f0ea3612f175b5b",
+      "registry_image": "proximaimagelibrary.azurecr.io/image-library@sha256:d139a1e1e74c63e15a9cfa0b30f7643cf68b9ff1ab54638db0ba2823c7b16960",
+      "provenance_type": "workflow-release-receipt"
+    },
+    "production": {
+      "status": "pass",
+      "evaluated_at": "2026-10-23T20:03:35.347868+00:00",
+      "expires_at": "2026-11-21T23:59:59Z",
+      "image_config_id": "sha256:f3a8173fbdb52f54a6e0bd2e55854200c2ec9e7fb119fd12ccaa02157bc79b08",
+      "archive_sha256": "b3d5d918db3528666dfdab428c5733aa02832a329bfe498db5c90fca41daf5cd",
+      "base_image": "dhi.io/python:3.12-debian13@sha256:a67245096d56c6ce891b9bec78a8090850907af9314185597c6b5d75438ca999",
+      "commit": "a15474c6ae4515679cad60c62810ee772e3df2c3",
+      "build_id": "40016044994-1",
+      "reviewed_findings": [
+        {
+          "candidate_id": "triage-001",
+          "cve": "CVE-2025-69720",
+          "package": "libncursesw6",
+          "version": "6.5+20250216-2+dhi4",
+          "severity": "HIGH",
+          "class": "os-pkgs",
+          "type": "debian",
+          "reason": "vendor_backport"
+        },
+        {
+          "candidate_id": "triage-002",
+          "cve": "CVE-2025-69720",
+          "package": "libtinfo6",
+          "version": "6.5+20250216-2+dhi4",
+          "severity": "HIGH",
+          "class": "os-pkgs",
+          "type": "debian",
+          "reason": "vendor_backport"
+        },
+        {
+          "candidate_id": "triage-003",
+          "cve": "CVE-2026-76642",
+          "package": "libuuid1",
+          "version": "2.41.5-0+deb13u1+dhi3",
+          "severity": "HIGH",
+          "class": "os-pkgs",
+          "type": "debian",
+          "reason": "component_absent"
+        },
+        {
+          "candidate_id": "triage-004",
+          "cve": "CVE-2026-78408",
+          "package": "libuuid1",
+          "version": "2.41.5-0+deb13u1+dhi3",
+          "severity": "HIGH",
+          "class": "os-pkgs",
+          "type": "debian",
+          "reason": "component_absent"
+        },
+        {
+          "candidate_id": "triage-005",
+          "cve": "CVE-2026-78409",
+          "package": "libuuid1",
+          "version": "2.41.5-0+deb13u1+dhi3",
+          "severity": "HIGH",
+          "class": "os-pkgs",
+          "type": "debian",
+          "reason": "component_absent"
+        },
+        {
+          "candidate_id": "triage-006",
+          "cve": "CVE-2026-78410",
+          "package": "libuuid1",
+          "version": "2.41.5-0+deb13u1+dhi3",
+          "severity": "HIGH",
+          "class": "os-pkgs",
+          "type": "debian",
+          "reason": "component_absent"
+        },
+        {
+          "candidate_id": "triage-007",
+          "cve": "CVE-2025-69720",
+          "package": "ncurses-base",
+          "version": "6.5+20250216-2+dhi4",
+          "severity": "HIGH",
+          "class": "os-pkgs",
+          "type": "debian",
+          "reason": "vendor_backport"
+        },
+        {
+          "candidate_id": "triage-008",
+          "cve": "CVE-2025-69720",
+          "package": "ncurses-bin",
+          "version": "6.5+20250216-2+dhi4",
+          "severity": "HIGH",
+          "class": "os-pkgs",
+          "type": "debian",
+          "reason": "vendor_backport"
+        }
+      ],
+      "unreviewed_high_critical": 0,
+      "policy_sha256": "7e3893d19fe6f8f40cf64aab41f424b6ef4ba7382ffc444f2bc3720bb9c098c4",
+      "raw_scan_sha256": "9e9603e470693d3703f561c238c7d3a383e00af6fd6c3c187f0ea3612f175b5b",
+      "registry_image": "proximaimagelibrary.azurecr.io/image-library@sha256:d139a1e1e74c63e15a9cfa0b30f7643cf68b9ff1ab54638db0ba2823c7b16960",
+      "provenance_type": "workflow-release-receipt"
+    }
+  },
+  "operations": [
+    {
+      "slot": "staging",
+      "before": {
+        "resource": "/subscriptions/9528fb58-4fa4-43f8-9940-e5c3e1f1903f/resourceGroups/PP-Resources/providers/Microsoft.Web/sites/pp-image-library/slots/staging",
+        "host": "pp-image-library-staging.azurewebsites.net",
+        "image": "proximaimagelibrary.azurecr.io/image-library@sha256:d139a1e1e74c63e15a9cfa0b30f7643cf68b9ff1ab54638db0ba2823c7b16960",
+        "readiness": {
+          "build_id": "40016044994-1",
+          "commit": "a15474c6ae4515679cad60c62810ee772e3df2c3",
+          "pilot_state": {
+            "boot_id": "42b7ae9737154ef29c205bfec8d36851",
+            "gid": 65532,
+            "state_id": "c4ed33732aa65098c8b4536a5c8ef7fc1dc804df435a147741df59b965a38115",
+            "uid": 65532
+          },
+          "short": "a15474c",
+          "status": "ready",
+          "telemetry": true,
+          "version": "v2.0.0"
+        },
+        "safe_settings": {
+          "APP_READ_ONLY": "true",
+          "INGEST_POLLER_ENABLED": "false",
+          "TEST_MODE": "false",
+          "DEV_AUTH_BYPASS": "false",
+          "PILOT_STATE_PROBE_ENABLED": "true",
+          "WEBSITES_ENABLE_APP_SERVICE_STORAGE": "true"
+        }
+      },
+      "candidate_image": "proximaimagelibrary.azurecr.io/image-library@sha256:1a1d24ede2eb7bfd81cb1ea2b11ea5518f0df5c4441dd714f2ef49ab5e1afa9a",
+      "status": "passed",
+      "rollback_attempts": 0,
+      "after": {
+        "resource": "/subscriptions/9528fb58-4fa4-43f8-9940-e5c3e1f1903f/resourceGroups/PP-Resources/providers/Microsoft.Web/sites/pp-image-library/slots/staging",
+        "host": "pp-image-library-staging.azurewebsites.net",
+        "image": "proximaimagelibrary.azurecr.io/image-library@sha256:1a1d24ede2eb7bfd81cb1ea2b11ea5518f0df5c4441dd714f2ef49ab5e1afa9a",
+        "readiness": {
+          "build_id": "40019125172-1",
+          "commit": "2ffc0ff18ad191d1ccc1c185b4ce848b9442de4b",
+          "pilot_state": {
+            "boot_id": "7c74a7cf2f3342658e2fb6539bf32851",
+            "gid": 65532,
+            "state_id": "c4ed33732aa65098c8b4536a5c8ef7fc1dc804df435a147741df59b965a38115",
+            "uid": 65532
+          },
+          "short": "2ffc0ff",
+          "status": "ready",
+          "telemetry": true,
+          "version": "v2.0.0"
+        },
+        "safe_settings": {
+          "APP_READ_ONLY": "true",
+          "INGEST_POLLER_ENABLED": "false",
+          "TEST_MODE": "false",
+          "DEV_AUTH_BYPASS": "false",
+          "PILOT_STATE_PROBE_ENABLED": "true",
+          "WEBSITES_ENABLE_APP_SERVICE_STORAGE": "true"
+        }
+      },
+      "settings_and_credentials_unchanged": true,
+      "rollout_seconds": 34.74
+    },
+    {
+      "slot": "production",
+      "before": {
+        "resource": "/subscriptions/9528fb58-4fa4-43f8-9940-e5c3e1f1903f/resourceGroups/PP-Resources/providers/Microsoft.Web/sites/pp-image-library",
+        "host": "pp-image-library.azurewebsites.net",
+        "image": "proximaimagelibrary.azurecr.io/image-library@sha256:d139a1e1e74c63e15a9cfa0b30f7643cf68b9ff1ab54638db0ba2823c7b16960",
+        "readiness": {
+          "build_id": "40016044994-1",
+          "commit": "a15474c6ae4515679cad60c62810ee772e3df2c3",
+          "pilot_state": {
+            "boot_id": "5f470b5272294b3583fb6ebd55d4164e",
+            "gid": 65532,
+            "state_id": "23417242c2c60e65d695520412f767a5a7ca6fd9d29b9357a62f7ef24e05c0c2",
+            "uid": 65532
+          },
+          "short": "a15474c",
+          "status": "ready",
+          "telemetry": true,
+          "version": "v2.0.0"
+        },
+        "safe_settings": {
+          "APP_READ_ONLY": "true",
+          "INGEST_POLLER_ENABLED": "false",
+          "TEST_MODE": "false",
+          "DEV_AUTH_BYPASS": "false",
+          "PILOT_STATE_PROBE_ENABLED": "true",
+          "WEBSITES_ENABLE_APP_SERVICE_STORAGE": "true"
+        }
+      },
+      "candidate_image": "proximaimagelibrary.azurecr.io/image-library@sha256:1a1d24ede2eb7bfd81cb1ea2b11ea5518f0df5c4441dd714f2ef49ab5e1afa9a",
+      "status": "passed",
+      "rollback_attempts": 0,
+      "after": {
+        "resource": "/subscriptions/9528fb58-4fa4-43f8-9940-e5c3e1f1903f/resourceGroups/PP-Resources/providers/Microsoft.Web/sites/pp-image-library",
+        "host": "pp-image-library.azurewebsites.net",
+        "image": "proximaimagelibrary.azurecr.io/image-library@sha256:1a1d24ede2eb7bfd81cb1ea2b11ea5518f0df5c4441dd714f2ef49ab5e1afa9a",
+        "readiness": {
+          "build_id": "40019125172-1",
+          "commit": "2ffc0ff18ad191d1ccc1c185b4ce848b9442de4b",
+          "pilot_state": {
+            "boot_id": "ca989173da35431ba9216e3ae972ad68",
+            "gid": 65532,
+            "state_id": "23417242c2c60e65d695520412f767a5a7ca6fd9d29b9357a62f7ef24e05c0c2",
+            "uid": 65532
+          },
+          "short": "2ffc0ff",
+          "status": "ready",
+          "telemetry": true,
+          "version": "v2.0.0"
+        },
+        "safe_settings": {
+          "APP_READ_ONLY": "true",
+          "INGEST_POLLER_ENABLED": "false",
+          "TEST_MODE": "false",
+          "DEV_AUTH_BYPASS": "false",
+          "PILOT_STATE_PROBE_ENABLED": "true",
+          "WEBSITES_ENABLE_APP_SERVICE_STORAGE": "true"
+        }
+      },
+      "settings_and_credentials_unchanged": true,
+      "rollout_seconds": 66.52
+    }
+  ],
+  "staging_gate_passed": true,
+  "verified_at": "2026-10-23T20:30:59.915292+00:00",
+  "elapsed_seconds": 190.38
+}

@@ -15,6 +15,7 @@ from datetime import date, datetime
 from difflib import SequenceMatcher
 from pathlib import Path, PurePosixPath
 from typing import Dict, List, Optional
+from src.deployment_controls import state_path
 
 
 # ---------------------------------------------------------------------------
@@ -48,16 +49,8 @@ MAINTENANCE_CATEGORY_ALIASES = {
 }
 
 MAINTENANCE_STATE_LOCK = threading.Lock()
-MAINTENANCE_STATE_PATH = Path(
-    "/home/proxima_maintenance_state.json"
-    if Path("/home").exists() and os.getenv("WEBSITE_INSTANCE_ID")
-    else "maintenance_state.json"
-)
-MAINTENANCE_CHECKPOINT_DIR = Path(
-    "/home/proxima_maintenance_checkpoints"
-    if Path("/home").exists() and os.getenv("WEBSITE_INSTANCE_ID")
-    else "test_data/maintenance_checkpoints"
-)
+MAINTENANCE_STATE_PATH = state_path("proxima_maintenance_state.json", "maintenance_state.json")
+MAINTENANCE_CHECKPOINT_DIR = state_path("proxima_maintenance_checkpoints", "test_data/maintenance_checkpoints")
 
 
 # ---------------------------------------------------------------------------

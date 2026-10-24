@@ -1487,7 +1487,7 @@
       </button>
       <div class="tool-body">
         <p class="sub" style="margin-bottom:14px;">
-          Check and rotate API credentials for the four stock photo providers. Tokens are updated live in the running process and written back to <code>.env</code>.
+          Check credentials for the four stock photo providers. In Azure, all providers are read-only here, including unconfigured ones; change credentials in Azure application settings. Local installations may save non-environment-managed keys atomically to <code>proxima_stock_keys.env</code>. Azure never reads or writes that credential file.
         </p>
 
         <div class="controls" style="margin-bottom:16px;">
@@ -4859,7 +4859,7 @@
             <td style="padding:8px 10px;font-weight:600;">${p.label}</td>
             <td style="padding:8px 10px;">${badgeHtml(p.status)}${p.message && p.status !== 'ok' ? `<div style="font-size:11px;color:var(--muted);margin-top:3px;">${p.message}</div>` : ''}</td>
             <td style="padding:8px 10px;line-height:1.8;">${maskedKeys}</td>
-            <td style="padding:8px 10px;"><button class="btn btn-secondary" data-provider="${id}" style="font-size:12px;padding:4px 10px;">Update</button></td>`;
+            <td style="padding:8px 10px;">${p.editable ? `<button class="btn btn-secondary" data-provider="${id}" style="font-size:12px;padding:4px 10px;">Update</button>` : 'Environment-managed (read-only)'}</td>`;
           tbody.appendChild(tr);
         }
         tbody.querySelectorAll('[data-provider]').forEach(btn => {
@@ -4892,7 +4892,7 @@
 
       function openEdit(providerId) {
         const p = lastProviders[providerId];
-        if (!p) return;
+        if (!p || !p.editable) return;
         currentProvider = providerId;
         editTitle.textContent = `Update ${p.label} credentials`;
         editFields.innerHTML = '';
@@ -4901,7 +4901,7 @@
           wrap.style.cssText = 'display:flex;flex-direction:column;gap:4px;';
           wrap.innerHTML = `
             <label style="font-size:12px;font-weight:600;">${keyName}</label>
-            <input type="text" id="stock-edit-${keyName}" placeholder="Paste new value…"
+            <input type="password" autocomplete="new-password" id="stock-edit-${keyName}" placeholder="Paste new value…"
               style="font-size:12px;padding:6px 8px;border:1px solid var(--border);border-radius:4px;font-family:monospace;width:100%;box-sizing:border-box;">`;
           editFields.appendChild(wrap);
         }
@@ -4939,6 +4939,7 @@
             saveMsg.textContent = data.error;
             saveMsg.style.color = 'var(--danger, #c0392b)';
           } else {
+            editFields.querySelectorAll('input').forEach(input => { input.value = ''; });
             const ok = data.test?.ok;
             saveMsg.textContent = ok ? '✓ Saved and verified OK' : `Saved — test: ${data.test?.message || 'failed'}`;
             saveMsg.style.color = ok ? '#1a7a3e' : 'var(--danger, #c0392b)';
@@ -4953,6 +4954,7 @@
       });
 
       cancelBtn.addEventListener('click', () => {
+        editFields.querySelectorAll('input').forEach(input => { input.value = ''; });
         editForm.style.display = 'none';
         currentProvider = null;
       });
