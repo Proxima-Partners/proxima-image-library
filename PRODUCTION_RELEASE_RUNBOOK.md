@@ -7,6 +7,10 @@ Implementation update: PR #4 integrated `perf/unattended-operations` into main
 as `21a66fd` after all three CI checks passed. It adds read efficiency,
 authenticated artifact verification, conservative ARM polling and disabled
 operations workflows. This new implementation is **not deployed or activated**.
+Subsequent readiness work completed a reviewed production candidate builder.
+The separate isolated Azure rehearsal stopped at a missing resume acknowledgement;
+its app is Stopped, temporary runner access removed, and synthetic recovery lease
+held. Do not replay that run or break its lease. See `PRODUCTION_READINESS.md`.
 Current implementation and remaining acceptance gates are in `UNATTENDED_IMPLEMENTATION.md` and
 `OPERATIONS_ACTIVATION.md`; older preparation sections below are historical.
 
@@ -61,9 +65,9 @@ See `cutover-evidence/2026-10-23-production-cutover.json` for the sanitized repo
 Keep `IMAGE_LIBRARY_PILOT_MODE=hold` and the legacy workflow disabled. The old
 read-only pilot workflow is not a writable-production release procedure. Do not
 dispatch it against the now-live app. Remote `main` now contains the reviewed
-implementation and retired deployment stubs; a new container-only production
-builder, its trusted policy and production activation remain separate reviewed
-work. See `MAIN_INTEGRATION.md`. No slot swaps, automatic undrain or automatic
+implementation and retired deployment stubs. The new container-only production
+builder and trusted policy are complete; production activation remains separate
+reviewed work. See `PRODUCTION_READINESS.md`. No slot swaps, automatic undrain or automatic
 state restore.
 
 The 24-hour observation gate remains open; no continuous monitor was created.

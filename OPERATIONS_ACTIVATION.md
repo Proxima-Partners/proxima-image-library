@@ -10,6 +10,15 @@ tests, 13 browser/workflow checks, all smoke/security gates and the independent
 is still the accepted v2.0.0 build `40019125172-1` / `2ffc0ff`; no deployment,
 Azure access change, new catalog write test or schedule activation is included.
 
+Subsequent approved readiness work added the reviewed production builder and a
+separate isolated rehearsal identity/app; see `PRODUCTION_READINESS.md`. The
+builder passed and published candidate `40064558508-1`. Rehearsal `40065382842-1`
+stopped on a missing resume acknowledgement and has not passed. Its app is
+Stopped, temporary CI access removed, and synthetic recovery lease retained.
+Production remains unchanged; activation is still prohibited pending the gates
+below. Earlier statements about the PR #4 scope describe that implementation,
+not the subsequently approved isolated resource provisioning.
+
 ## What the integrated implementation provides
 
 - Visibility/auth-aware badge polling, one request at a time. Catalog refreshes
@@ -71,12 +80,12 @@ Azure access change, new catalog write test or schedule activation is included.
    spans and browser timings under representative use. The earliest 24-hour
    checkpoint is approximately October 24 at 14:08 PDT; elapsed time alone is
    not evidence. No continuous monitor was created by this branch.
-3. Approve/review a new container-only production builder and its identity.
-   Build/test/scan once; retain all exact-image evidence and promote the same
-   immutable digest staging -> in-place production. The loader currently trusts
-   only the historical reviewed pilot builder hash/ID. A new builder must be
-   explicitly admitted by reviewed policy, never a wildcard or CLI bypass.
-4. Approve narrowly scoped runner identity/network access; prove ARM polling,
+3. **Builder completed:** reviewed manual-main-only publisher, exact source/ID
+   receipt policy and candidate `40064558508-1` passed. Its enablement flag is
+   back to false. Candidate publication does not authorize deployment; retain
+   exact-image evidence and later promote the same digest staging -> in-place
+   production under the separately approved release procedure.
+4. Scoped access/rehearsal work is approved but incomplete: prove ARM polling,
    staging/production SCM and private release storage access with that identity.
    Inventory old secrets, OIDC subjects, branch/environment rules and manual
    operators; contain every writer. The blob lease serializes cooperating

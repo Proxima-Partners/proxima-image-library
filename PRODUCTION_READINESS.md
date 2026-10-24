@@ -87,3 +87,50 @@ rehearsal files; protected owner/backup records remain private. Unknown outcomes
 retain the lease and stop. The actual production promotion controller, real
 catalog/SSO, stable unattended network and the broader fault matrix remain
 separate evidence requirements; do not claim this subset closes those gates.
+
+## Isolated CI rehearsal checkpoint — October 23, 22:19 PDT
+
+PR #6 merged as `a9c1f48` after 670 target-Linux tests, 15 browser/workflow
+checks, exact-image smoke/security and the independent dependency audit passed.
+The rehearsal workflow ID is `394841917`; its environment admits only `main`.
+The retired pilot deployment environment now admits only the non-existing
+`retired/image-library-no-deploy` branch. The legacy `AZURE_CREDENTIALS` secret
+has not been read or revoked; credential/writer inventory is not complete.
+
+**Rehearsal run [40065382842-1](https://github.com/Proxima-Partners/proxima-image-library/actions/runs/40065382842)
+stopped and did not pass.** The dedicated CI identity reached restricted SCM,
+ARM and synthetic blob storage. Execution reached the runtime resume request
+after actual lease contention, protected synthetic backup, a forward immutable
+image update, candidate readiness and configuration/state checks. No matching
+runtime acknowledgement arrived; `response.json` was absent at reconciliation.
+Do not claim stale-boot denial, exact resume, rollback or cleanup acceptance.
+Sanitized failure artifact `12549212350` was independently verified against its
+run/head identity, ZIP layout and digest
+`sha256:b0ad7789dceb8c2948ebde78b4ec40b69ae68e2ef4072537b01264706d01f43b`.
+
+Independent post-run checks confirmed the candidate image is still configured,
+the synthetic fixture is unchanged, configuration matches its private backup,
+and the persistent drain marker remains present. The rehearsal app was then
+stopped and read back as **Stopped**. It was not rolled back or restarted.
+The infinite lease on `ci-rehearsal/rehearsal.json` remains **locked**;
+protected owner/backup records are under private prefix
+`351d2dc4ae084e5c9df9737bb1eaf703/`. Never print the owner lease ID or private
+configuration. Synthetic fixture/request state is retained for reconciliation.
+Do not rerun the workflow, auto-break the lease, delete evidence or replay resume.
+
+Temporary rule `rehearsal-ci-40065382842` was removed from both app and SCM,
+and runner address `20.51.199.49` was removed from release storage. Independent
+readback verified default Deny, operator-only access and storage bypass None.
+Both production-builder and rehearsal enablement flags are `false`; pilot mode
+remains `hold`. No production/staging ingress, settings, state or image changed.
+
+At `2026-10-24T05:19:39Z`, the four public production checks passed for accepted
+build `40019125172-1`: health/readiness/version HTTP 200 and anonymous admin 401.
+This is not authenticated catalog, upload, performance or 24-hour telemetry proof.
+
+Remaining: diagnose the missing runtime acknowledgement and reconcile the held
+synthetic lease before a fresh attempt; complete rollback/cleanup and the broader
+production-controller fault matrix; prove production CI identity/network access
+and finish writer containment; review the real 24-hour telemetry window; then
+obtain separate supervised-release and unattended-activation approvals. The
+earliest observation checkpoint remains October 24 at approximately 14:08 PDT.

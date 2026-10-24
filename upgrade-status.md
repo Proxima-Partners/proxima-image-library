@@ -4,6 +4,20 @@ Updated: 2026-10-23 (America/Los_Angeles).
 
 ## Current execution checkpoint
 
+**Production builder complete; isolated recovery rehearsal stopped at a missing
+resume acknowledgement. Production is unchanged.** PRs #5/#6 added the pinned
+manual production publisher and isolated CI rehearsal. Candidate `ba61c52` /
+`40064558508-1` is published, not deployed to production. Latest source CI passed
+670 target-Linux tests and 15 browser/workflow checks. Rehearsal run
+`40065382842-1` reached the candidate image but did not prove resume or rollback.
+The rehearsal app is verified Stopped; its synthetic state and private recovery
+records are preserved, and its lease remains locked for reconciliation.
+Temporary runner access was removed and verified; both enablement flags are
+false. See `PRODUCTION_READINESS.md` for exact evidence and recovery boundaries.
+Fresh public checks at October 24 05:19:39 UTC verified the accepted production
+build below. The recovery, production-access, 24-hour telemetry, representative
+performance, supervised-release and unattended-activation gates remain open.
+
 **Unattended implementation and reviewed main integration are complete; the new
 implementation is not deployed.** [PR #4](https://github.com/Proxima-Partners/proxima-image-library/pull/4)
 merged reviewed head `57bd4f1` as `21a66fd` after all three checks passed: 633
