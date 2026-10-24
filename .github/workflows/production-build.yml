@@ -1,0 +1,80 @@
+name: Build Image Library production candidate
+
+on:
+  workflow_dispatch: {}
+
+# Publishing is separate from deployment. No production/SCM/storage credential.
+permissions:
+  contents: read
+
+concurrency:
+  group: image-library-production-build
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: github.ref == 'refs/heads/main' && vars.IMAGE_LIBRARY_PRODUCTION_BUILD_ENABLED == 'true'
+    runs-on: ubuntu-24.04
+    environment: image-library-build
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      IMAGE: proximaimagelibrary.azurecr.io/image-library:release-${{ github.run_id }}-${{ github.run_attempt }}
+      BUILD_CACHE_REF: proximaimagelibrary.azurecr.io/image-library-buildcache:production
+      TRIVY_IMAGE: aquasec/trivy:0.76.1@sha256:790fd66d1697395d8693d1acaa1ea702406a20f109b6fc7bac8db623eca6c06c
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5, Node 24
+        with:
+          persist-credentials: false
+      - name: Require a fresh manual main build
+        env:
+          ENABLED: ${{ vars.IMAGE_LIBRARY_PRODUCTION_BUILD_ENABLED }}
+        run: |
+          test "$ENABLED" = 'true'
+          test "$GITHUB_REF" = 'refs/heads/main'
+          test "$GITHUB_EVENT_NAME" = 'workflow_dispatch'
+          test "$GITHUB_RUN_ATTEMPT" = '1'
+      - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0, Node 24
+        with:
+          client-id: ${{ vars.AZURE_IMAGE_BUILD_CLIENT_ID }}
+          tenant-id: a87255bb-ca4b-4ada-9354-5e0579f6e68f
+          subscription-id: 9528fb58-4fa4-43f8-9940-e5c3e1f1903f
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - name: Authenticate only to approved private registry
+        run: az acr login --name proximaimagelibrary --only-show-errors
+      - name: Build once, test, smoke, inventory and gate exact image
+        run: bash scripts/validate_container.sh
+      - name: Browser behavior and workflow boundaries
+        run: node --test tests/js/*.test.cjs
+      - name: Audit resolved production dependencies
+        run: |
+          docker run --rm --cap-drop ALL --security-opt no-new-privileges \
+            --entrypoint python --volume "$PWD/requirements.txt:/input/requirements.txt:ro" \
+            image-library:tests -m pip_audit -r /input/requirements.txt --no-deps \
+            --disable-pip --strict --format json > dependency-audit.json
+      - name: Publish validated image and bind registry digest to scan
+        run: |
+          docker push "$IMAGE"
+          image_ref=$(docker image inspect "$IMAGE" --format '{{index .RepoDigests 0}}')
+          docker buildx imagetools inspect --raw "$image_ref" > reports/registry-manifest.json
+          python3 -m scripts.pilot_release_manifest "$image_ref"
+      - name: Retain dependency audit
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2, Node 24
+        with:
+          archive: true
+          name: production-dependency-audit-${{ github.run_id }}-${{ github.run_attempt }}
+          path: dependency-audit.json
+          retention-days: 90
+          if-no-files-found: warn
+      - name: Retain all evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2, Node 24
+        with:
+          archive: true
+          name: production-build-${{ github.run_id }}-${{ github.run_attempt }}
+          path: reports/
+          retention-days: 90
+          if-no-files-found: error

@@ -2,8 +2,8 @@
 
 No Azure calls, archive extraction, image execution or deployment. The expected
 commit/digest must come from the reviewed release decision, not an untrusted PR.
-Only the historical reviewed pilot builder is trusted initially; admitting a new
-production builder requires a reviewed policy change, not a CLI override.
+Historical and production builders are separately pinned by path, ID, branch,
+event and source hash. No CLI override can admit another builder.
 """
 import argparse
 import base64
@@ -31,6 +31,10 @@ API = "https://api.github.com/repos/" + REPO
 WORKFLOW = ".github/workflows/container-pilot.yml"
 WORKFLOW_ID = 393659192
 WORKFLOW_SHA256 = "0073793e15d0d09bf09cc4ecfb9e1a8b580f02a0bacaa9d1edacbf7067ed2e8a"
+PRODUCTION_WORKFLOW = ".github/workflows/production-build.yml"
+# Fail closed until GitHub registers the reviewed workflow and its ID is pinned.
+PRODUCTION_WORKFLOW_ID = 0
+PRODUCTION_WORKFLOW_SHA256 = "5b41c586ba6c601562bdee1b1cb2f89eb81211928fa01d0d5fc55ff5738194d4"
 MAX_ARCHIVE = 16 * 1024 * 1024
 FILES = {"release.json", "security-gate.json", "registry-manifest.json", "vulnerabilities.json",
          "sbom.cdx.json", "image.json", "smoke.json", "release-channel-smoke.json", "raw-scan-exit-code.txt"}
@@ -120,7 +124,7 @@ def unpack(raw, artifact):
     return result
 
 
-def verify_bundle(files, run, expected_image, *, policy_bytes):
+def verify_bundle(files, run, expected_image, *, policy_bytes, artifact_prefix="pilot-build-"):
     release = parse_json(files["release.json"])
     gate = parse_json(files["security-gate.json"])
     manifest = files["registry-manifest.json"].rstrip(b"\n")
@@ -158,7 +162,10 @@ def verify_bundle(files, run, expected_image, *, policy_bytes):
     require(smoke["shellless"] is True and smoke["persistent_state"] is True and channel["status"] == "passed")
     require(channel["build_id"] == build and channel["workers"] == 1
             and all(channel[k] is True for k in ("drain_survived_restart", "mount_preserved", "fresh_boot")))
-    return verify_receipt_provenance(release, run, artifact_name="pilot-build-" + build)
+    if artifact_prefix == "production-build-":
+        require(channel.get("opt_in_resume_verified") is True
+                and channel.get("stale_boot_resume_rejected") is True)
+    return verify_receipt_provenance(release, run, artifact_name=artifact_prefix + build)
 
 
 def load_receipt(api, run_id, attempt, expected_commit, expected_image, *, policy_bytes):
@@ -167,40 +174,54 @@ def load_receipt(api, run_id, attempt, expected_commit, expected_image, *, polic
         require(type(run_id) is int and run_id > 0 and type(attempt) is int and attempt > 0)
         require(bool(re.fullmatch(r"[a-f0-9]{40}", expected_commit)) and bool(re.fullmatch(IMAGE_PATTERN, expected_image)))
         run = api.json(f"/actions/runs/{run_id}")
+        if run.get("path") == WORKFLOW:
+            workflow, workflow_id, source_hash = WORKFLOW, WORKFLOW_ID, WORKFLOW_SHA256
+            branch, events, prefix = "perf/container-pilot", {"push", "workflow_dispatch"}, "pilot-build-"
+        elif run.get("path") == PRODUCTION_WORKFLOW:
+            require(PRODUCTION_WORKFLOW_ID > 0 and attempt == 1)
+            workflow, workflow_id, source_hash = PRODUCTION_WORKFLOW, PRODUCTION_WORKFLOW_ID, PRODUCTION_WORKFLOW_SHA256
+            branch, events, prefix = "main", {"workflow_dispatch"}, "production-build-"
+        else:
+            require(False)
         require(run["id"] == run_id and run["run_attempt"] == attempt and run["head_sha"] == expected_commit
                 and run["repository"]["id"] == run["head_repository"]["id"] == REPO_ID
-                and run["repository"]["full_name"] == REPO and run["head_branch"] == "perf/container-pilot"
-                and run["path"] == WORKFLOW and run["workflow_id"] == WORKFLOW_ID
-                and run["event"] in {"push", "workflow_dispatch"}
+                and run["repository"]["full_name"] == REPO and run["head_branch"] == branch
+                and run["workflow_id"] == workflow_id and run["event"] in events
                 and run["status"] == "completed" and run["conclusion"] == "success")
-        source = api.json(f"/contents/{WORKFLOW}?ref={expected_commit}")
-        require(source["encoding"] == "base64" and source["path"] == WORKFLOW)
-        require(sha(base64.b64decode(source["content"])) == WORKFLOW_SHA256)
+        source = api.json(f"/contents/{workflow}?ref={expected_commit}")
+        require(source["encoding"] == "base64" and source["path"] == workflow)
+        require(sha(base64.b64decode(source["content"])) == source_hash)
         jobs = api.json(f"/actions/runs/{run_id}/attempts/{attempt}/jobs?per_page=100")
         require(jobs["total_count"] == len(jobs["jobs"]) <= 100)
         build_jobs = [j for j in jobs["jobs"] if j["name"] == "build"]
         require(len(build_jobs) == 1 and build_jobs[0]["conclusion"] == "success")
-        for name in ("Build once, test, smoke, inventory and gate exact image", "Publish validated image and bind registry digest to scan", "Retain all evidence"):
+        required_steps = ["Build once, test, smoke, inventory and gate exact image",
+                          "Publish validated image and bind registry digest to scan", "Retain all evidence"]
+        if prefix == "production-build-":
+            required_steps += ["Require a fresh manual main build", "Browser behavior and workflow boundaries",
+                               "Audit resolved production dependencies", "Retain dependency audit"]
+        for name in required_steps:
             steps = [s for s in build_jobs[0]["steps"] if s["name"] == name]
             require(len(steps) == 1 and steps[0]["conclusion"] == "success")
         listing = api.json(f"/actions/runs/{run_id}/artifacts?per_page=100")
         require(listing["total_count"] == len(listing["artifacts"]) <= 100)
-        found = [a for a in listing["artifacts"] if a["name"] == f"pilot-build-{run_id}-{attempt}"]
+        found = [a for a in listing["artifacts"] if a["name"] == f"{prefix}{run_id}-{attempt}"]
         require(len(found) == 1)
         artifact = found[0]
         require(artifact["expired"] is False and artifact["workflow_run"] == {
             "id": run_id, "repository_id": REPO_ID, "head_repository_id": REPO_ID,
-            "head_branch": "perf/container-pilot", "head_sha": expected_commit})
+            "head_branch": branch, "head_sha": expected_commit})
         expiry = datetime.fromisoformat(artifact["expires_at"].replace("Z", "+00:00"))
         require(expiry.tzinfo is not None and expiry > datetime.now(timezone.utc))
         files = unpack(api.archive(artifact["id"]), artifact)
-        receipt = verify_bundle(files, run, expected_image, policy_bytes=policy_bytes)
+        receipt = verify_bundle(files, run, expected_image, policy_bytes=policy_bytes, artifact_prefix=prefix)
         # Reject a rerun/deletion/replacement that occurred while downloading.
         current = api.json(f"/actions/runs/{run_id}")
         require(all(current[k] == run[k] for k in ("id", "run_attempt", "head_sha", "status", "conclusion")))
         require(api.json(f"/actions/artifacts/{artifact['id']}") == artifact)
         receipt["authenticated_artifact"] = {"id": artifact["id"], "digest": artifact["digest"],
-            "run_id": run_id, "attempt": attempt, "workflow_sha256": WORKFLOW_SHA256}
+            "run_id": run_id, "attempt": attempt, "workflow_sha256": source_hash,
+            "workflow_id": workflow_id, "workflow_path": workflow}
         return receipt
     except Exception:
         raise StopRelease("Exact GitHub build evidence could not be verified; no deployment permitted") from None
