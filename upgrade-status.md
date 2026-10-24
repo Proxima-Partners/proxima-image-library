@@ -4,17 +4,18 @@ Updated: 2026-10-23 (America/Los_Angeles).
 
 ## Current execution checkpoint
 
-**Unattended implementation is signed, pushed and CI-validated on
-`perf/unattended-operations`; it is not deployed.** Commit `426f475` passed
-[build-only CI 40063209524](https://github.com/Proxima-Partners/proxima-image-library/actions/runs/40063209524):
-633 target-runtime tests, 12 browser/workflow checks, exact-image runtime smoke,
-SBOM and security gate. The signing blocker is resolved. Read efficiency, bounded
-diagnostics, authenticated artifact verification, conservative release safeguards
-and disabled operations workflows are ready for integration review. See
-`UNATTENDED_IMPLEMENTATION.md` and `OPERATIONS_ACTIVATION.md` for evidence and the
-separate main-integration/access/rehearsal/activation gates. A fresh four-request
-public probe at October 24 04:40 UTC confirmed the accepted build below; it does
-not close the 24-hour telemetry or representative-performance acceptance gates.
+**Unattended implementation and reviewed main integration are complete; the new
+implementation is not deployed.** [PR #4](https://github.com/Proxima-Partners/proxima-image-library/pull/4)
+merged reviewed head `57bd4f1` as `21a66fd` after all three checks passed: 633
+target-runtime tests, 13 browser/workflow checks, exact-image smoke, SBOM/security
+and the independent 633-test T1/dependency audit. The signing blocker and CI Node
+20 warning are resolved. Read efficiency, bounded diagnostics, authenticated
+artifact verification, conservative release safeguards and disabled operations
+workflows are integrated. See `MAIN_INTEGRATION.md`, `UNATTENDED_IMPLEMENTATION.md`
+and `OPERATIONS_ACTIVATION.md` for evidence and separate access/rehearsal/release/
+activation gates. A fresh four-request public probe at October 24 04:49:52 UTC
+confirmed the accepted build below; it does not close the 24-hour telemetry or
+representative-performance acceptance gates.
 
 **Supervised production cutover PASSED.** `https://library.liveproxima.org` now
 serves writable **v2.0.0**, commit `2ffc0ff` / build `40019125172-1`, on the
@@ -30,8 +31,8 @@ is verified available/unlocked.
 Legacy production and staging are stopped and retained; the shared plan and Pete
 were not changed. New staging remains read-only. **Automatic ingestion remains
 off, pilot mode remains `hold`, and unattended production promotion is not enabled.**
-Remote `main` remains unchanged. Observe for 24 hours; retain old apps/configuration
-at least through October 30, with cleanup requiring separate approval. This is a
+Source `main` is integrated without redeploying. Observe for 24 hours; retain old
+apps/configuration at least through October 30, with cleanup requiring separate approval. This is a
 completed supervised cutover, not a claim of completed unattended automation or
 representative production performance benchmarking. See
 `cutover-evidence/2026-10-23-production-cutover.json` and the runbook.

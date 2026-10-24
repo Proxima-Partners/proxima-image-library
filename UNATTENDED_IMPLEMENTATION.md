@@ -3,9 +3,30 @@
 Approved 2026-10-23. Branch: `perf/unattended-operations`, based on accepted
 container checkpoint `e6ca9f7`. Implementation, tests, branch commits/pushes and
 build-only CI are approved. Main integration, deployment, access changes, live
-write tests and schedule activation are separate approval gates.
+write tests and schedule activation are separate approval gates. Main integration
+was subsequently approved and completed as recorded below.
 
-## Current handoff: 2026-10-24 04:41 UTC / October 23 PDT
+## Current handoff: 2026-10-24 04:49 UTC / October 23 PDT
+
+**Approved implementation and main integration are complete. Production remains
+on the previously accepted build; production automation is not activated.**
+[PR #4](https://github.com/Proxima-Partners/proxima-image-library/pull/4) merged
+reviewed head `57bd4f1` as `21a66fd` after all three checks passed: push and PR
+container validation, plus the independent T1/dependency audit. Container and
+T1 suites each passed 633 tests; browser/workflow checks passed 13 tests.
+Runtime/release-channel smoke, SBOM, security and dependency gates passed.
+CI actions are pinned to Node-24-capable revisions, with ZIP evidence preserved;
+the earlier Node 20 compatibility warning is resolved. All job pages were opened
+in Microsoft Edge while running. Exact evidence is in `MAIN_INTEGRATION.md`.
+
+The 04:49:52 UTC public probe confirmed accepted production `2ffc0ff` /
+`40019125172-1`; pilot mode remains `hold` and the legacy workflow disabled.
+No merge-triggered workflow, Azure mutation, deployment, new write canary or
+schedule activation occurred. Actual 24-hour telemetry, representative performance,
+new-builder review, CI access, isolated recovery and first supervised normal
+release remain gated in `OPERATIONS_ACTIVATION.md`.
+
+## Build-only handoff: 2026-10-24 04:41 UTC / October 23 PDT (historical)
 
 **Implementation scope passed build-only CI and is pushed. Production activation
 is not authorized or enabled.** The signed implementation commit is

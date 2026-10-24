@@ -1,15 +1,16 @@
 # Unattended operations: implementation handoff and activation gates
 
-Updated 2026-10-23. Implementation branch: `perf/unattended-operations`.
-**Implemented and build-only CI validated, not enabled for production releases.**
-Signed commit `426f475` passed [CI 40063209524](https://github.com/Proxima-Partners/proxima-image-library/actions/runs/40063209524)
-with 633 target-runtime tests, 12 browser/workflow checks and all smoke/security
-gates. See `UNATTENDED_IMPLEMENTATION.md` for evidence and retained warnings.
-Production
+Updated 2026-10-23 (PDT). **Implementation and reviewed main integration complete;
+not deployed or enabled for production releases.**
+[PR #4](https://github.com/Proxima-Partners/proxima-image-library/pull/4) merged
+reviewed head `57bd4f1` as `21a66fd`. Fresh PR checks passed 633 target-runtime
+tests, 13 browser/workflow checks, all smoke/security gates and the independent
+633-test T1/dependency audit. The CI Node 20 warning is resolved. See
+`MAIN_INTEGRATION.md` and `UNATTENDED_IMPLEMENTATION.md` for evidence. Production
 is still the accepted v2.0.0 build `40019125172-1` / `2ffc0ff`; no deployment,
 Azure access change, new catalog write test or schedule activation is included.
 
-## What this branch implements
+## What the integrated implementation provides
 
 - Visibility/auth-aware badge polling, one request at a time. Catalog refreshes
   are coalesced, copies are isolated, and in-flight data invalidated by a write
@@ -37,10 +38,10 @@ Azure access change, new catalog write test or schedule activation is included.
   Confirmed rollback remains drained. No deployment CLI is exposed.
 - Manual-only, default-branch-only, opt-in read workflows:
   `operations-health.yml` and `release-evidence-review.yml`. No Azure/OIDC/write
-  credentials, cron, publish step or deployment command. Both are inert until
-  main integration and their explicit repository enablement variable.
+  credentials, cron, publish step or deployment command. Both remain inert:
+  their explicit repository enablement variables are absent.
 - The three obsolete deployment workflows are credential-free refusal stubs
-  **on this branch**. Historical source/evidence remain in Git and GitHub. This
+  **on main**. Historical source/evidence remain in Git and GitHub. This
   does not revoke old credentials, disable older branch refs, or fence manual
   Azure callers. Keep pilot mode `hold` and the legacy workflow disabled.
 
@@ -61,10 +62,10 @@ Azure access change, new catalog write test or schedule activation is included.
 
 ## Activation sequence: separate approvals required
 
-1. Review this branch against accepted container checkpoint `e6ca9f7`, then review
-   the full container-era delta against legacy `main`. Approval for main merge is
-   distinct from approval to deploy. Preserve the accepted immutable rollback
-   artifact and private backups. Do not dispatch or rerun the retired pilot.
+1. **Completed:** implementation review and full container-era integration into
+   legacy main through PR #4, with all three checks passing. Main-merge approval
+   did not authorize deployment. Preserve the accepted immutable rollback artifact
+   and private backups. Do not dispatch or rerun the retired pilot.
 2. Complete the post-cutover observation using real production-slot telemetry,
    including dependencies, 5xx, deliberate 401/404 exclusions, upload-processing
    spans and browser timings under representative use. The earliest 24-hour

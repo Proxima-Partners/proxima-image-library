@@ -1,12 +1,13 @@
 # Production release runbook and remaining automation gates
 
-Updated 2026-10-23. Scope: approved supervised production cutover on
-`perf/container-pilot`; no `main` push or unattended production promotion.
+Updated 2026-10-23 (PDT). Scope: accepted supervised production cutover, followed
+by approved implementation and main integration; no unattended production promotion.
 
-Implementation update: `perf/unattended-operations` adds read efficiency,
+Implementation update: PR #4 integrated `perf/unattended-operations` into main
+as `21a66fd` after all three CI checks passed. It adds read efficiency,
 authenticated artifact verification, conservative ARM polling and disabled
-operations workflows. It is **not deployed or activated**. Current implementation
-and remaining acceptance gates are in `UNATTENDED_IMPLEMENTATION.md` and
+operations workflows. This new implementation is **not deployed or activated**.
+Current implementation and remaining acceptance gates are in `UNATTENDED_IMPLEMENTATION.md` and
 `OPERATIONS_ACTIVATION.md`; older preparation sections below are historical.
 
 ## Accepted production checkpoint
@@ -59,9 +60,11 @@ See `cutover-evidence/2026-10-23-production-cutover.json` for the sanitized repo
 
 Keep `IMAGE_LIBRARY_PILOT_MODE=hold` and the legacy workflow disabled. The old
 read-only pilot workflow is not a writable-production release procedure. Do not
-dispatch it against the now-live app. Remote `main` still contains the legacy
-source; main integration and a container-only production workflow are separate
-reviewed work. No slot swaps, automatic undrain or automatic state restore.
+dispatch it against the now-live app. Remote `main` now contains the reviewed
+implementation and retired deployment stubs; a new container-only production
+builder, its trusted policy and production activation remain separate reviewed
+work. See `MAIN_INTEGRATION.md`. No slot swaps, automatic undrain or automatic
+state restore.
 
 The 24-hour observation gate remains open; no continuous monitor was created.
 Retain old apps, settings, TLS binding and backups at least through **2026-10-30**;
