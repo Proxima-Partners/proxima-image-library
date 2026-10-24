@@ -5,6 +5,12 @@ covers a new reviewed production builder, narrowly scoped CI access and isolated
 recovery rehearsal. It does not activate production promotion, write resumption,
 ingestion, schedules, a new catalog canary or legacy deletion.
 
+**Latest checkpoint, October 23 22:55 PDT:** fresh isolated CI recovery
+`40067583967-1` passed and was independently verified. Rehearsal is Stopped on
+the prior image, owned files absent, lease unlocked and temporary network access
+removed. Production remains unchanged. Earlier failed-run sections below are
+historical; see the final acceptance section for the current state and limits.
+
 ## Execution plan
 
 1. Add a manual-main-only builder using the existing publisher identity, fixed
@@ -195,3 +201,75 @@ specific `BlobAlreadyExists` conflict with independent HEAD verification, never
 a generic 409, overwrite, mutation retry or lease break. Target preflight, lease
 initialization and acquisition now have separate sanitized report phases. Focused
 checks passed 101 tests; a live existing-lock check performed no PUT/acquisition.
+
+PR #8 merged as `f9a72e9` after 693 target-Linux tests, 15 JS checks, exact-image
+smoke/security/SBOM and the independent dependency audit passed. The container
+and T1 runs are `40067445599` and `40067445656`. Local verification passed 686
+tests with seven Linux-only skips and ten existing UTC deprecation warnings.
+Fresh isolated run `40067583967-1` uses that reviewed main commit; its network
+artifact `12550226053` was independently authenticated and digest-verified before
+temporary access was added. The failed earlier runs remain failed historical
+evidence; neither was rerun or relabeled successful.
+
+## Fresh isolated CI acceptance — October 23, 22:55 PDT
+
+[Run 40067583967-1](https://github.com/Proxima-Partners/proxima-image-library/actions/runs/40067583967/job/120793962597)
+passed from reviewed main `f9a72e92e9b23f5b72d456e3aa5abffddd1081bf`.
+Authenticated artifact `12550296111`, 586 bytes, passed run/head/workflow/attempt,
+ZIP layout and SHA-256 verification:
+`870699eb34f49de0a3d46617be7a90e09e7eb9a1b5599ba70873f56d26b70cf1`.
+
+- Real CI OIDC, restricted SCM/storage access and competing-lease rejection passed.
+- Protected synthetic backup/readback, stopped-image forward deployment, fresh
+  boot and persistent mount/drain/configuration checks passed.
+- Stale-boot resume was denied; exact resume and subsequent re-drain passed.
+- One stopped-image rollback restored the prior build with fresh boot and
+  unchanged synthetic state/configuration. Both image updates returned HTTP 200
+  without an asynchronous receipt: this run does **not** prove live async polling.
+- Named runtime termination was verified before image changes and final cleanup.
+  Only the owned synthetic counter/request/response were deleted, conditionally
+  by ETag, with HTTP 404 readback. No existing application data was deleted.
+- Independent operator reads verified Stopped, prior digest `1a1d24e…`, zero
+  active containers, unchanged configuration, three absent owned files and an
+  unlocked lease. Private owner/backup records under
+  `ci-rehearsal/64927760a57743ec90b912c5927614fb/` remain retained.
+- Temporary rule `rehearsal-ci-40067583967` and runner `135.119.39.215` were
+  removed from app/SCM/storage. Readback verified operator-only/default Deny,
+  storage bypass None, shared keys disabled and the existing Defender scanner
+  exception preserved. Both builder/rehearsal flags are false; pilot stays hold.
+
+The job took 7m32s, including 3m44s awaiting scoped operator network access;
+the actual recovery step took 3m30s. This is synthetic release/recovery timing,
+not a production deployment SLA or evidence of faster catalog/upload behavior.
+Public production checks at `2026-10-24T05:55:36Z` passed on accepted build
+`40019125172-1`. No production/staging release, provider credentials, catalog
+canary, ingestion, schedule, DNS, tier or Pete/shared-plan changes occurred.
+
+## Remaining gates and next decision
+
+1. Carry the verified cold-lifecycle policy into the production adapter and
+   complete the full production-controller fault matrix in isolation. Include
+   lease loss, unknown writes, interrupted/async polling and ambiguous resume;
+   never substitute the happy-path subset above for those proofs.
+2. Establish a stable unattended CI network, then separately prove the actual
+   production identity/SCM/storage path and finish credential/manual-writer
+   containment. The present per-run operator rule procedure is supervised.
+3. Review real production telemetry for the complete observation window, earliest
+   October 24 approximately 14:08 PDT. Elapsed time/public probes are insufficient.
+4. Obtain the separate supervised-release approval, promote the exact reviewed
+   digest through staging and in-place production, and measure representative
+   performance/auth behavior. Any new disposable write canary needs new scope.
+5. Only after acceptance, approve unattended promotion/write resumption and
+   maintenance activation, with tested alerts, an owner and a disable switch.
+
+Recommended next infrastructure decision: a repository-restricted, GitHub-managed
+Ubuntu larger runner using a dedicated Azure private network in West US 2.
+The organization currently has GitHub Team, and GitHub documents support for
+Team/private networking, that region, and larger runners (not standard runners).
+Keep build-only jobs separate from the one-at-a-time release runner. This needs
+new Azure network resources and paid runner configuration, so it is a proposal,
+not provisioned or authorized by the isolated-app approval. Scope/cost review
+must precede provisioning; deny inbound traffic, constrain outbound access and
+prove rehearsal-only connectivity first. Do not grant production access as part
+of that initial network proof. See [GitHub private networking](https://docs.github.com/en/organizations/managing-organization-settings/about-azure-private-networking-for-github-hosted-runners-in-your-organization)
+and [current configuration requirements](https://docs.github.com/en/organizations/managing-organization-settings/configuring-private-networking-for-github-hosted-runners-in-your-organization).

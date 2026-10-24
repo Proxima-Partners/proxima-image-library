@@ -4,6 +4,25 @@ Updated: 2026-10-23 (America/Los_Angeles).
 
 ## Current execution checkpoint
 
+**Fresh isolated CI recovery PASSED; production is unchanged.** Reviewed fixes
+in PRs #7/#8 are merged; latest source CI passed 693 target-Linux tests, 15 JS
+checks and both container/security and dependency gates. Run `40067583967-1`
+passed real lease contention, protected backup, stopped forward deployment,
+stale/exact resume, stopped rollback and cleanup. Independent reads verified
+prior image, Stopped rehearsal app, zero runtimes, absent owned test files and
+unlocked lease. Private evidence remains retained. Temporary runner access is
+removed; builder/rehearsal enablement is false and pilot remains hold. Public
+production checks at `2026-10-24T05:55:36Z` passed on `40019125172-1`.
+
+Remaining: production-adapter lifecycle/full fault matrix; stable unattended
+CI network and production identity/writer containment; real 24-hour telemetry
+(earliest October 24 14:08 PDT); separately approved supervised release and
+representative performance acceptance; then unattended operations activation.
+New private-network/paid-runner infrastructure is recommended, not provisioned
+or approved. See `PRODUCTION_READINESS.md` for exact evidence and boundaries.
+
+### Earlier recovery checkpoints (historical)
+
 **The failed isolated rehearsal is now safely reconciled by an operator-run
 recovery, not yet a fresh CI pass.** Fresh stale/exact resume checks, re-drain,
 stopped rollback, synthetic-file cleanup and owner-held lease release passed.

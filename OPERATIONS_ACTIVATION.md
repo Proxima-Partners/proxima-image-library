@@ -13,8 +13,14 @@ Azure access change, new catalog write test or schedule activation is included.
 Subsequent approved readiness work added the reviewed production builder and a
 separate isolated rehearsal identity/app; see `PRODUCTION_READINESS.md`. The
 builder passed and published candidate `40064558508-1`. Rehearsal `40065382842-1`
-stopped on a missing resume acknowledgement and has not passed. Its app is
-Stopped, temporary CI access removed, and synthetic recovery lease retained.
+failed on a missing resume acknowledgement; it was separately reconciled, not
+reclassified as a pass. PRs #7/#8 fixed lifecycle overlap and existing-lock
+initialization. Fresh isolated CI `40067583967-1` then passed forward/resume/
+rollback/cleanup; independent reads verified prior image, Stopped app, zero
+runtimes, absent owned files and unlocked lease. Temporary CI access is removed;
+private recovery records remain retained. Latest source CI passed 693 target-
+Linux tests and 15 JS checks. This proves the isolated subset, not the full
+production controller, fault matrix or stable unattended network.
 Production remains unchanged; activation is still prohibited pending the gates
 below. Earlier statements about the PR #4 scope describe that implementation,
 not the subsequently approved isolated resource provisioning.
@@ -95,6 +101,11 @@ not the subsequently approved isolated resource provisioning.
    concurrent config/files, expired receipts, restart/drain, exactly one rollback,
    denied resume, and ambiguous resume. Verify cleanup and protected journals.
    Do not substitute unit tests or the earlier cutover for this CI-path rehearsal.
+   The fresh real CI happy path, contention, stale/exact resume, stopped rollback
+   and cleanup subset passed in `40067583967-1`; loss/unknown-outcome/full-controller
+   and live asynchronous-receipt evidence are still open. Current network access
+   requires an operator for each run; a stable private-runner proposal needs
+   separate infrastructure/security/billing approval.
 6. Approve the first supervised normal container release. Verify exact staging
    artifact, auth/bounded reads, lease/drain/zero work, protected backup, unchanged
    configuration/files, in-place digest, fresh boot and custom-domain behavior.

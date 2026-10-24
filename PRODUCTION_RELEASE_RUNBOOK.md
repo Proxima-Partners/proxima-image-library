@@ -8,9 +8,13 @@ as `21a66fd` after all three CI checks passed. It adds read efficiency,
 authenticated artifact verification, conservative ARM polling and disabled
 operations workflows. This new implementation is **not deployed or activated**.
 Subsequent readiness work completed a reviewed production candidate builder.
-The separate isolated Azure rehearsal stopped at a missing resume acknowledgement;
-its app is Stopped, temporary runner access removed, and synthetic recovery lease
-held. Do not replay that run or break its lease. See `PRODUCTION_READINESS.md`.
+The first isolated Azure rehearsal failed and was safely reconciled without
+relabeling it a pass. Fresh CI `40067583967-1` passed after reviewed lifecycle/lock
+fixes: forward deployment, stale/exact resume, rollback, owned-file cleanup and
+lease release. Independent verification confirms prior image, Stopped app, zero
+runtimes, absent test files and unlocked lease. Temporary runner access is removed;
+private evidence is retained. The full production-controller fault matrix and
+stable unattended network remain open. See `PRODUCTION_READINESS.md`.
 Current implementation and remaining acceptance gates are in `UNATTENDED_IMPLEMENTATION.md` and
 `OPERATIONS_ACTIVATION.md`; older preparation sections below are historical.
 
