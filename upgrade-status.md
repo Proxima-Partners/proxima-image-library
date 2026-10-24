@@ -4,6 +4,20 @@ Updated: 2026-10-23 (America/Los_Angeles).
 
 ## Current execution checkpoint
 
+**October 24 UTC — new candidate built and validated in rehearsal/staging.**
+Build `40070894451-1` passed with 1098 tests, 15 JS checks and authenticated
+immutable security/smoke/SBOM evidence. Isolated rehearsal `40071226303-1` passed
+stopped cleanup/restart, exact one-shot resume, rollback and cleanup. Staging
+passed cold rollback/forward and authenticated read-only checks after explicit
+reconciliation of an initial startup-readiness pause; no blind mutation replay.
+Production remains on `40019125172-1`. Both leases are unlocked, temporary runner
+access is removed, enablement flags are false and pilot remains hold.
+**Performance acceptance remains open:** payloads match, but timings are mixed
+and warmed medians are slower. Do not promote as a performance win.
+See `CANDIDATE_VALIDATION.md` for exact identities, measurements and limits.
+
+### Prior local implementation checkpoint (superseded by candidate validation)
+
 **Stopped-cleanup orchestration and the defined local failure matrix are now
 implemented.** Cleanup is explicit before successful held-release/rollback
 journaling, stops and verifies each touched slot, deletes only nonce-owned

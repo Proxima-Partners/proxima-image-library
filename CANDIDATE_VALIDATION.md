@@ -20,7 +20,7 @@ unchanged. Private unattended networking remains deferred.
   target remains only the synthetic rehearsal app. It does not claim full
   production-controller end-to-end or production-provider writable acceptance.
 
-## Pending gates
+## Validation sequence
 
 Read-only preflight caught historical staging image-pull failures that Azure
 logs as unnamed zero-millisecond terminations. The lifecycle parser now accepts
@@ -59,7 +59,10 @@ duration, not Azure deployment time. Builder enablement was returned to false.
   artifact integrity and digest-bound scan/smoke/SBOM evidence.
 
 The rehearsal/staging harness pins this exact artifact; changing that pointer
-does not rebuild or relabel the candidate. Rehearsal and staging are still pending.
+does not rebuild or relabel the candidate. Rehearsal and staging outcomes follow.
+The image scan retained eight individually reviewed vendor/backport/component-
+absent findings, with zero unreviewed high/critical findings; this is not a
+claim of zero reported CVEs.
 GitHub emitted a non-failing Node 20 metadata deprecation for the pinned Buildx
 action (runner forced Node 24); track its vendor update separately from this
 immutable candidate, without weakening or silently replacing builder provenance.
@@ -80,9 +83,81 @@ synthetic records remain under `ci-rehearsal/2f57089d3dec4c4fbc66a37e906f0b5d/`.
 The first staging forward operation paused at strict cold readiness, retaining
 the lease without replay or rollback. Subsequent direct reads found the exact
 candidate ready, anonymous home redirected to login, maintenance returned 401,
-and control files were absent. Staging-only polling is being adapted for the
+and control files were absent. PR #11 adapted staging-only polling for the
 Azure startup window: bounded 403/502/503 GETs are not acceptance; exact ready
 identity and subsequent authenticated runtime/auth checks remain required.
-Production adapter policy is unchanged. Recovery must first reconcile the
-existing owner, original private backup, known mount and actual named lifecycle;
-never rerun the failed command or acquire/break a replacement lease.
+Production adapter policy is unchanged. Reviewed head `0f0f766` passed both CI
+checks before merge `183a460`; this is operator-tooling source, not a rebuilt
+runtime image.
+
+### Supervised staging reconciliation: passed
+
+The original paused operation was reconciled explicitly, not retried. The
+same private owner and lease, original backup, known mount, unchanged staging
+state/configuration and actual named lifecycle were verified before proceeding.
+No initial start was replayed and no replacement lease was acquired or broken.
+Fresh exact identity, anonymous authentication boundaries and authenticated
+protocol-2 runtime checks passed. A non-overwriting protected reconciliation
+record was captured before the controlled prior-image rollback and final
+candidate deployment. Both subsequent cold transitions passed with fresh named
+runtimes, exact identity, unchanged protected state/configuration/mount,
+read-only mode and an empty RPC channel. The lease was released and independently
+verified unlocked. Private backup/reconciliation records remain under
+`rollback-backups/712bd5476b834480883c04106a863e3b/`.
+
+This is a successful **supervised reconciliation**, not a claim that the first
+staging execution completed unattended. No state restore or production mutation
+occurred. Live image updates returned HTTP 200; asynchronous ARM receipts remain
+covered locally, not exercised by these live transitions.
+
+## Browser and performance comparison
+
+Authenticated Edge reads returned exactly the same 280 catalog records before
+and after the staging image change. All 20 recent thumbnails loaded; three
+sample thumbnail routes reached decoded 176x117 images at the final Microsoft
+media host. Image-info and variations responses matched the baseline exactly.
+Existing-session authentication continuity passed; a new interactive SSO flow,
+upload, writable canary and representative usable-grid timing were not tested.
+
+Browser navigation/response-read elapsed milliseconds, including browser and
+automation overhead (not server-only timings). p95 uses nearest rank. These
+small serial samples do not establish statistical significance or causality.
+
+| Same staging slot, before/after | Prior median / p95 | Candidate median / p95 | Samples per build |
+| --- | ---: | ---: | ---: |
+| Warm catalog | 165 / 187 | 184 / 247 | 20 |
+| Image info | 292.5 / 505 | 323 / 474 | 10 |
+| Variations, including first read | 491.5 / 1855 | 618 / 1697 | 10 |
+
+An additional interleaved check alternated production (unchanged prior image)
+and staging (candidate), ten reads each per route, with exactly equal payloads:
+
+| Paired current hosts | Production median / p95 | Staging median / p95 |
+| --- | ---: | ---: |
+| Catalog | 140 / 418 | 168 / 189 |
+| Variations | 510 / 2136 | 562 / 1809 |
+
+First-read/provider-cache effects may explain some tail variability but do not
+establish the cause of slower medians. Hosts have different process/cache state.
+The original before/after variations p95 after excluding each first sample was
+542 ms prior versus 812 ms candidate. No overall performance win is demonstrated.
+Raw sanitized timing samples are in
+`cutover-evidence/2026-10-24-candidate-validation.json`.
+
+## Final disposition
+
+**Recovery and read-only functional validation passed; performance acceptance
+remains open and production promotion is on hold.** Final independent reads
+confirmed production Running on `40019125172-1`, staging Running read-only on
+`40070894451-1`, one named runtime and absent control files in each, both release
+leases unlocked, rehearsal Stopped on the prior image, both builder/rehearsal
+flags false and pilot mode hold. Production/staging runtime resume enablement
+remains absent/default off; ingestion remains disabled. Temporary runner access
+was removed and verified. Protected evidence is retained.
+
+Next work is to profile variations/provider round trips and measure representative
+grid and upload latency, then evaluate an optimized candidate against the same
+baseline. Full production-controller end-to-end acceptance, separate supervised
+writable acceptance, the complete telemetry observation period and stable
+unattended networking are not established by this rehearsal. The latter remains
+deferred. No production deployment or write-resumption authorization is implied.

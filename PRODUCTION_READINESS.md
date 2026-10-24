@@ -5,6 +5,14 @@ covers a new reviewed production builder, narrowly scoped CI access and isolated
 recovery rehearsal. It does not activate production promotion, write resumption,
 ingestion, schedules, a new catalog canary or legacy deletion.
 
+**Current checkpoint, October 24 UTC:** new immutable build `40070894451-1`
+passed isolated rehearsal and supervised read-only staging rollback/forward
+validation. Production remains unchanged. The initial staging readiness pause
+was reconciled without mutation replay, and the retained lease was released
+after verified completion. Functional reads match; performance improvement is
+not demonstrated, so promotion remains on hold. See `CANDIDATE_VALIDATION.md`.
+Earlier checkpoints below are historical, not the current candidate status.
+
 **Latest checkpoint, October 23 22:55 PDT:** fresh isolated CI recovery
 `40067583967-1` passed and was independently verified. Rehearsal is Stopped on
 the prior image, owned files absent, lease unlocked and temporary network access

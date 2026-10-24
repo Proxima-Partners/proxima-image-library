@@ -1,5 +1,9 @@
 # Release cleanup, write resumption and failure matrix
 
+Subsequent exact-candidate CI, isolated rehearsal and supervised staging evidence
+is recorded in `CANDIDATE_VALIDATION.md`. The local checkpoint below is historical;
+it is not a claim of production-controller end-to-end or performance acceptance.
+
 Local implementation checkpoint, October 24, 2026 UTC. No Azure mutations,
 deployment, commit, push, new CI run or infrastructure activation in this work.
 

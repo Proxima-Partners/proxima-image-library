@@ -1,0 +1,44 @@
+{
+  "scope": "read-only staging and isolated synthetic rehearsal; no production mutation",
+  "candidate_build": "40070894451-1",
+  "candidate_commit": "6c79415deb4b95f9aed60b52370e072fe54124ed",
+  "candidate_digest": "sha256:d8b9d87eef6e2b4e1a82573762877371b6d63dc3db1edb6a3ae7e676c89f6ac1",
+  "candidate_artifact": 12551506526,
+  "candidate_artifact_sha256": "35e184314b249eae880ad9d1a370a45b528a81f7b61473901573af37759ce043",
+  "rehearsal_run": "40071226303-1",
+  "rehearsal_artifact": 12551592242,
+  "rehearsal_artifact_sha256": "b7e5ef5f519667638828e12e3b4455215e34ecf248812aaa3bec36c451874fe4",
+  "staging_result": "passed after supervised reconciliation of startup readiness pause; no initial start replay",
+  "production_build_unchanged": "40019125172-1",
+  "performance_acceptance": "not demonstrated; promotion hold",
+  "catalog_records_equal": 280,
+  "recent_thumbnails_loaded": 20,
+  "decoded_thumbnail_samples": 3,
+  "measurement": "Edge navigation and JSON read elapsed ms; small serial samples, not server-only or causal proof",
+  "same_staging_slot_ms": {
+    "prior_catalog": [143,161,169,122,171,117,188,182,119,185,159,167,170,125,129,125,175,181,163,187],
+    "candidate_catalog": [179,179,189,181,167,195,180,247,218,172,190,182,248,188,171,180,186,195,167,199],
+    "prior_info": [505,291,287,309,293,305,316,289,292,269],
+    "candidate_info": [338,333,325,352,275,474,297,321,302,317],
+    "prior_variations": [1855,542,485,468,489,515,522,494,400,489],
+    "candidate_variations": [1697,706,569,565,791,610,812,597,460,626]
+  },
+  "interleaved_ms": {
+    "production_catalog": [418,152,180,143,112,128,176,119,137,115],
+    "staging_catalog": [176,174,156,171,158,189,149,165,145,176],
+    "production_variations": [2136,512,440,540,567,412,582,431,400,508],
+    "staging_variations": [1809,548,576,576,444,894,443,485,457,577]
+  },
+  "final": {
+    "production_running_prior": true,
+    "staging_running_candidate_read_only": true,
+    "rehearsal_stopped_prior": true,
+    "production_and_staging_rpc_absent": true,
+    "both_leases_unlocked": true,
+    "temporary_runner_rules_removed": true,
+    "builder_and_rehearsal_flags": false,
+    "pilot_mode": "hold",
+    "production_and_staging_resume_enabled": false
+  },
+  "not_proven": ["performance improvement", "usable-grid timing", "new interactive SSO", "upload or writable acceptance", "live async ARM receipt", "complete production-controller end-to-end", "complete telemetry observation", "stable unattended networking"]
+}
