@@ -18,7 +18,15 @@ from opentelemetry.sdk.trace.export import BatchSpanProcessor, SpanExporter
 from opentelemetry.trace import SpanKind, Status
 
 _provider = None
-_OPERATIONS = {"app.startup", "ai.messages", "image.derivatives", "image.process"}
+_OPERATIONS = {
+    "app.startup",
+    "ai.messages",
+    "image.derivatives",
+    "image.derivatives.png",
+    "image.derivatives.resize",
+    "image.derivatives.webp",
+    "image.process",
+}
 _METHODS = {"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"}
 
 

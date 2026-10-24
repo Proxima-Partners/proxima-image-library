@@ -1,6 +1,6 @@
 from io import BytesIO
 
-from PIL import Image
+from PIL import Image, ImageChops, ImageOps
 
 from src import image_processor
 from src.image_processor import (
@@ -143,6 +143,21 @@ def test_each_derivative_target_is_resized_only_once(monkeypatch):
     assert calls == [STANDARD_WIDTH, HERO_WIDTH]
     assert _opened_size(result["standard_png"]["bytes"]) == (STANDARD_WIDTH, 900)
     assert _opened_size(result["hero_png"]["bytes"]) == (HERO_WIDTH, 1440)
+
+
+def test_png_companion_remains_pixel_lossless():
+    source = Image.effect_noise((1800, 1000), 60).convert("RGB")
+    raw = BytesIO()
+    source.save(raw, format="JPEG", quality=92)
+
+    result = generate_web_derivatives(raw.getvalue())
+    with Image.open(BytesIO(raw.getvalue())) as decoded_source:
+        expected = ImageOps.exif_transpose(decoded_source).convert("RGB").resize(
+            (STANDARD_WIDTH, round(1000 * STANDARD_WIDTH / 1800)),
+            Image.Resampling.LANCZOS,
+        )
+    with Image.open(BytesIO(result["standard_png"]["bytes"])) as png:
+        assert ImageChops.difference(expected, png.convert("RGB")).getbbox() is None
 
 
 def test_process_image_raises_when_record_creation_fails(tmp_path):

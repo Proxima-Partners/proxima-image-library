@@ -102,6 +102,7 @@ def inspect_original(image_bytes: bytes) -> dict:
         }
 
 
+@traced("image.derivatives.resize")
 def _resize_to_width(img: PILImage.Image, target_width: int) -> PILImage.Image:
     width, height = img.size
     output_width = min(target_width, width)  # explicit no-upscale guarantee
@@ -111,6 +112,7 @@ def _resize_to_width(img: PILImage.Image, target_width: int) -> PILImage.Image:
     return img
 
 
+@traced("image.derivatives.png")
 def _encode_png_pixels(img: PILImage.Image) -> dict:
     """Encode already-sized pixels as a lossless PNG."""
     if img.mode not in ("RGB", "RGBA"):
@@ -148,6 +150,7 @@ def convert_to_png(image_bytes: bytes) -> bytes:
     return buf.getvalue()
 
 
+@traced("image.derivatives.webp")
 def _encode_webp_pixels(img: PILImage.Image) -> dict:
     """Encode already-sized pixels as the approved WebP derivative."""
     output_width, output_height = img.size

@@ -101,6 +101,25 @@ def test_custom_operation_preserves_parent_and_exception_without_recording_conte
     provider.shutdown()
 
 
+@pytest.mark.parametrize("name", [
+    "image.derivatives.resize", "image.derivatives.webp", "image.derivatives.png",
+])
+def test_derivative_substep_operations_export_only_static_names(monkeypatch, name):
+    provider, exporter = provider_and_exporter()
+    monkeypatch.setattr(telemetry, "_provider", provider)
+
+    @telemetry.traced(name)
+    def operation(_private_value):
+        return "ok"
+
+    assert operation("private-photo-name.jpg") == "ok"
+    span = exporter.get_finished_spans()[0]
+    assert span.name == name
+    assert span.attributes == {}
+    assert "private-photo-name" not in str(span)
+    provider.shutdown()
+
+
 def test_telemetry_is_opt_in_and_disabled_in_test_mode(monkeypatch):
     monkeypatch.delenv("APPLICATIONINSIGHTS_CONNECTION_STRING", raising=False)
     assert not telemetry.initialize_telemetry(Flask(__name__))
