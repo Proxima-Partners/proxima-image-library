@@ -22,8 +22,8 @@ from scripts.production_azure_adapter import AzureProductionAdapter
 from scripts.release_artifacts import GitHubReads, load_receipt
 from scripts.release_azure_io import ARM, STORAGE, AzureIOError, AzureTransport, BlobReleaseLease
 
-CANDIDATE = {"run": 40064558508, "attempt": 1, "commit": "ba61c526f522349ad6bfdbbd39d76448078bb91d",
-             "image": "proximaimagelibrary.azurecr.io/image-library@sha256:f5ad233782189bf29457b52ee1394a04f0209640cf8672fc68c42690524f9c12"}
+CANDIDATE = {"run": 40070894451, "attempt": 1, "commit": "6c79415deb4b95f9aed60b52370e072fe54124ed",
+             "image": "proximaimagelibrary.azurecr.io/image-library@sha256:d8b9d87eef6e2b4e1a82573762877371b6d63dc3db1edb6a3ae7e676c89f6ac1"}
 PRIOR = {"run": 40019125172, "attempt": 1, "commit": "2ffc0ff18ad191d1ccc1c185b4ce848b9442de4b", "image": target.PRIOR_IMAGE}
 CONTROL = target.SCM + "/api/vfs/.image-library-release-control/"
 FIXTURE = target.SCM + "/api/vfs/proxima_ss_counter.json"
