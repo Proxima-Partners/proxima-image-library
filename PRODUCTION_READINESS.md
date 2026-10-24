@@ -262,6 +262,13 @@ canary, ingestion, schedule, DNS, tier or Pete/shared-plan changes occurred.
 5. Only after acceptance, approve unattended promotion/write resumption and
    maintenance activation, with tested alerts, an owner and a disable switch.
 
+Signing follow-up: both implementation head `6921e32` and checkpoint `0a64d5b`
+contain SSH signatures, but GitHub reports `verified=false`, `reason=unknown_key`.
+Local signature verification also lacks an allowed-signers file. The authenticated
+run/artifact checks above are separate evidence, not a claim of GitHub-verified
+commit signatures. Registering account signing keys or changing local trust
+configuration requires a separately reviewed scope; neither was changed here.
+
 Recommended next infrastructure decision: a repository-restricted, GitHub-managed
 Ubuntu larger runner using a dedicated Azure private network in West US 2.
 The organization currently has GitHub Team, and GitHub documents support for
