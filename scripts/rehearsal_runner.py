@@ -196,6 +196,7 @@ def execute(report=None):
         finally:
             api.session.close()
     prior, candidate = receipts
+    report["phase"] = "target_preflight"
     io = IsolatedTransport()
     app = arm(io)
     require(app["id"].lower() == target.APP_ID.lower()
@@ -209,7 +210,9 @@ def execute(report=None):
                             "instruction": "Reconcile exact rehearsal target; never auto-break"}).encode()
         io.request("PUT", prefix + "/owner.json", accepted=(201,), headers={"x-ms-blob-type": "BlockBlob", "If-None-Match": "*"}, data=owner)
         require(io.request("GET", prefix + "/owner.json")[2] == owner)
+        report["phase"] = "lease_initialization"
         lease.initialize()
+        report["phase"] = "lease_acquisition"
         with lease.exclusive(target.APP_ID):
             nonces = set()
             report["phase"] = "prior_cold_start"

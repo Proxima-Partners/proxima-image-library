@@ -104,7 +104,10 @@ class LeaseTransport:
     def __init__(self):
         self.calls, self.owner, self.exists, self.fail_phase = [], None, False, None
     def request(self, method, url, *, accepted=(200,), headers=None, data=None, **kwargs):
+        headers = headers or {}
         self.calls.append((method, url, headers))
+        if method == "HEAD":
+            return (200, {"x-ms-blob-type": "BlockBlob"}, b"") if self.exists else (404, {}, b"")
         action = headers.get("x-ms-lease-action")
         if action == self.fail_phase and self.fail_phase is not None:
             raise io.AzureIOError("Ambiguous")
@@ -140,6 +143,42 @@ def test_lease_initialize_never_overwrites_and_excludes_contender(tmp_path):
     assert fake.owner is None and not lease.acquired
     assert stat.S_IMODE((tmp_path / "recovery.json").stat().st_mode) == 0o600
     assert all(call[2].get("x-ms-lease-action") != "break" for call in fake.calls)
+
+
+def test_initialize_existing_lock_is_read_only_even_while_owned(tmp_path):
+    fake = LeaseTransport()
+    fake.exists, fake.owner = True, "existing-owner"
+    lease = io.BlobReleaseLease(fake, tmp_path / "owner.json")
+    assert lease.initialize() is False and fake.owner == "existing-owner"
+    assert [call[0] for call in fake.calls] == ["HEAD"]
+
+
+@pytest.mark.parametrize("error_code,allowed", [("BlobAlreadyExists", True), ("LeaseAlreadyPresent", False), (None, False)])
+def test_initialize_race_admits_only_verified_blob_already_exists(tmp_path, error_code, allowed):
+    class Race(LeaseTransport):
+        def request(self, method, url, **kwargs):
+            if method == "PUT":
+                self.calls.append((method, url, kwargs["headers"]))
+                assert kwargs["headers"]["If-None-Match"] == "*"
+                self.exists = True
+                return 409, {"x-ms-error-code": error_code}, b"PRIVATE-error-body"
+            return super().request(method, url, **kwargs)
+    fake = Race()
+    lease = io.BlobReleaseLease(fake, tmp_path / "owner.json")
+    if allowed:
+        assert lease.initialize() is False
+        assert [call[0] for call in fake.calls] == ["HEAD", "PUT", "HEAD"]
+    else:
+        with pytest.raises(io.AzureIOError, match="Unexpected release lock") as error:
+            lease.initialize()
+        assert "PRIVATE" not in str(error.value)
+        assert [call[0] for call in fake.calls] == ["HEAD", "PUT"]
+
+
+def test_initialize_refuses_wrong_blob_type(tmp_path):
+    fake = SimpleNamespace(request=lambda *args, **kwargs: (200, {"x-ms-blob-type": "PageBlob"}, b""))
+    with pytest.raises(io.AzureIOError, match="not a block blob"):
+        io.BlobReleaseLease(fake, tmp_path / "owner.json").initialize()
 
 
 @pytest.mark.parametrize("failure", [RuntimeError, KeyboardInterrupt])
