@@ -20,6 +20,22 @@ def test_named_termination_not_delete_submission():
     assert lifecycle.lifecycle_state(logs(START, DELETE, END)) == (set(), {"abc_pp-image-library_main"})
 
 
+PULL_FAILED = "Container pull image failed with reason: ImagePullFailure. Revert by terminate."
+PULL_END = "Container is terminated. Total time elapsed: 0 ms."
+
+
+def test_failed_pull_does_not_retire_any_named_runtime():
+    assert lifecycle.lifecycle_state(logs(START, PULL_FAILED, PULL_END)) == ({"abc_pp-image-library_main"}, set())
+    assert lifecycle.lifecycle_state(logs(START, PULL_FAILED, PULL_END, DELETE, END)) == (set(), {"abc_pp-image-library_main"})
+
+
+@pytest.mark.parametrize("lines", [(START, PULL_END), (START, PULL_FAILED, END),
+    (START, DELETE, PULL_FAILED, PULL_END), (START, PULL_FAILED, DELETE, PULL_END),
+    (START, PULL_FAILED, PULL_FAILED, PULL_END)])
+def test_unmatched_or_overlapping_failed_pull_is_not_termination_proof(lines):
+    with pytest.raises(AzureIOError): lifecycle.lifecycle_state(logs(*lines))
+
+
 @pytest.mark.parametrize("raw", [b"", logs(END), logs(DELETE), logs(START, START),
     logs(START, DELETE, DELETE), logs("Starting container: abc_pp-image-library-rehearsal_main.")])
 def test_missing_or_ambiguous_history_fails_closed(raw):

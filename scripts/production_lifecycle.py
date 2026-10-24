@@ -12,7 +12,14 @@ CONTAINER = r"[a-z0-9]+_pp-image-library(?:_main)?"
 
 def lifecycle_state(raw, *, container=CONTAINER):
     active, started, terminated, deleting = set(), set(), set(), None
+    pull_failed = False
     for line in sorted(raw.decode("utf-8").splitlines()):
+        if "Container pull image failed with reason: ImagePullFailure. Revert by terminate." in line:
+            if deleting is not None or pull_failed:
+                raise AzureIOError("Ambiguous failed-pull termination history")
+            pull_failed = True
+        if pull_failed and ("Starting container:" in line or "Deleting container:" in line):
+            raise AzureIOError("Failed-pull termination overlaps named lifecycle")
         match = re.search(r"Starting container: (" + container + r")\.", line)
         if match:
             name = match[1]
@@ -26,6 +33,13 @@ def lifecycle_state(raw, *, container=CONTAINER):
                 raise AzureIOError("Ambiguous production termination history")
             deleting = match[1]
         if "Container is terminated." in line:
+            if pull_failed and deleting is None and "Container is terminated. Total time elapsed: 0 ms." in line:
+                # Azure logs this when a pull fails BEFORE creating a named
+                # container. It proves no named runtime stopped: preserve both
+                # active and terminated sets exactly. All other unmatched
+                # termination events still fail closed.
+                pull_failed = False
+                continue
             if deleting is None:
                 raise AzureIOError("Unmatched production termination history")
             active.remove(deleting)

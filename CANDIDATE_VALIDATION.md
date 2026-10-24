@@ -22,6 +22,12 @@ unchanged. Private unattended networking remains deferred.
 
 ## Pending gates
 
+Read-only preflight caught historical staging image-pull failures that Azure
+logs as unnamed zero-millisecond terminations. The lifecycle parser now accepts
+only that explicit failed-pull sequence without retiring any named runtime;
+unmatched or overlapping termination remains a failure. Regression tests cover
+that distinction. No log truncation/deletion or safety bypass was used.
+
 1. Signed source review/CI and main integration; no automatic deployment.
 2. One fresh manual builder; authenticate receipt/digest and disable builder.
 3. Pin the new candidate in the rehearsal harness, review/test it, run isolated
