@@ -83,6 +83,72 @@ def test_exact_authenticated_bundle_binds_all_evidence(monkeypatch):
     assert state.calls.count("/actions/runs/100") == 2
 
 
+def production_fixture(monkeypatch):
+    state = fixture(monkeypatch)
+    monkeypatch.setattr(artifacts, "PRODUCTION_WORKFLOW_ID", 777)
+    monkeypatch.setattr(artifacts, "PRODUCTION_WORKFLOW_SHA256", artifacts.sha(state.source))
+    state.run.update(path=artifacts.PRODUCTION_WORKFLOW, workflow_id=777,
+                     head_branch="main", event="workflow_dispatch")
+    state.artifact.update(name="production-build-100-1")
+    state.artifact["workflow_run"]["head_branch"] = "main"
+    for name in ("Require a fresh manual main build", "Browser behavior and workflow boundaries",
+                 "Audit resolved production dependencies", "Retain dependency audit"):
+        state.jobs["jobs"][0]["steps"].append({"name": name, "conclusion": "success"})
+    channel = json.loads(state.files["release-channel-smoke.json"])
+    channel.update(opt_in_resume_verified=True, stale_boot_resume_rejected=True)
+    state.files["release-channel-smoke.json"] = encode(channel)
+    state.repack()
+    original = state.api.json
+    def read(path):
+        if path.startswith("/contents/"):
+            return {"path": artifacts.PRODUCTION_WORKFLOW, "encoding": "base64",
+                    "content": base64.b64encode(state.source).decode()}
+        return original(path)
+    state.api.json = read
+    return state
+
+
+def test_separately_pinned_production_builder_accepted(monkeypatch):
+    state = production_fixture(monkeypatch)
+    result = load(state)
+    assert result["authenticated_artifact"]["workflow_id"] == 777
+    assert result["authenticated_artifact"]["workflow_path"] == artifacts.PRODUCTION_WORKFLOW
+
+
+@pytest.mark.parametrize("key,value", [("workflow_id", 1), ("head_branch", "perf/container-pilot"),
+    ("event", "push"), ("event", "pull_request"), ("run_attempt", 2)])
+def test_production_identity_and_fresh_manual_run_required(monkeypatch, key, value):
+    state = production_fixture(monkeypatch); state.run[key] = value
+    with pytest.raises(artifacts.StopRelease): load(state)
+
+
+@pytest.mark.parametrize("gate", ["Require a fresh manual main build", "Browser behavior and workflow boundaries",
+                                 "Audit resolved production dependencies", "Retain dependency audit"])
+def test_production_extra_gates_must_succeed(monkeypatch, gate):
+    state = production_fixture(monkeypatch)
+    next(s for s in state.jobs["jobs"][0]["steps"] if s["name"] == gate)["conclusion"] = "skipped"
+    with pytest.raises(artifacts.StopRelease): load(state)
+
+
+def test_unregistered_production_workflow_rejected(monkeypatch):
+    state = production_fixture(monkeypatch)
+    monkeypatch.setattr(artifacts, "PRODUCTION_WORKFLOW_ID", 0)
+    with pytest.raises(artifacts.StopRelease): load(state)
+
+
+def test_changed_production_workflow_rejected(monkeypatch):
+    state = production_fixture(monkeypatch); state.source += b" unreviewed"
+    with pytest.raises(artifacts.StopRelease): load(state)
+
+
+@pytest.mark.parametrize("key", ["opt_in_resume_verified", "stale_boot_resume_rejected"])
+def test_production_runtime_resume_proof_required(monkeypatch, key):
+    state = production_fixture(monkeypatch)
+    channel = json.loads(state.files["release-channel-smoke.json"]); channel[key] = False
+    state.files["release-channel-smoke.json"] = encode(channel); state.repack()
+    with pytest.raises(artifacts.StopRelease): load(state)
+
+
 @pytest.mark.parametrize("key,value", [("run_attempt", 2), ("head_sha", "f" * 40), ("conclusion", "failure"),
     ("event", "pull_request"), ("head_branch", "untrusted"), ("workflow_id", 1), ("status", "in_progress"),
     ("head_repository", {"id": 9})])

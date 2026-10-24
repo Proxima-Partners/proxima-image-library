@@ -36,12 +36,15 @@ class VerifiedReceipt(dict):
 def verify_receipt_provenance(receipt, run, *, artifact_name):
     validate_receipt(receipt)
     expected = f"{run.get('id')}-{run.get('run_attempt')}"
+    identity = (run.get("head_branch"), run.get("path"), artifact_name)
+    approved = {
+        ("perf/container-pilot", ".github/workflows/container-pilot.yml", "pilot-build-" + expected),
+        ("main", ".github/workflows/production-build.yml", "production-build-" + expected),
+    }
     if (run.get("repository", {}).get("full_name") != "Proxima-Partners/proxima-image-library"
             or run.get("status") != "completed" or run.get("conclusion") != "success"
             or run.get("head_sha") != receipt["commit"] or receipt["build_id"] != expected
-            or run.get("head_branch") != "perf/container-pilot"
-            or run.get("path") != ".github/workflows/container-pilot.yml"
-            or artifact_name != "pilot-build-" + expected
+            or identity not in approved
             or receipt.get("provenance_type") != "workflow-release-receipt"
             or type(receipt.get("unreviewed_high_critical")) is not int
             or receipt.get("unreviewed_high_critical") != 0
