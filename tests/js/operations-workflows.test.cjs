@@ -4,6 +4,17 @@ const fs = require('node:fs');
 const path = require('node:path');
 const workflows = path.resolve(__dirname, '../../.github/workflows');
 
+test('all workflow actions are immutable and artifact ZIP behavior is explicit', () => {
+  for (const name of fs.readdirSync(workflows).filter(name => name.endsWith('.yml'))) {
+    const source = fs.readFileSync(path.join(workflows, name), 'utf8');
+    for (const use of source.matchAll(/uses: (.+)/g)) assert.match(use[1], /@[a-f0-9]{40}(?: |$)/);
+    if (source.includes('actions/upload-artifact@')) {
+      assert.match(source, /actions\/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9/);
+      assert.match(source, /archive: true/);
+    }
+  }
+});
+
 // Supplemental boundary checks; actionlint validates actual workflow syntax.
 for (const name of ['azure-deploy.yml', 'container-pilot.yml', 'pilot-source-baseline.yml']) {
   test(`${name} is a credential-free retired entry point`, () => {

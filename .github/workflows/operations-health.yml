@@ -53,8 +53,9 @@ jobs:
             --commit "$EXPECTED_COMMIT" --build-id "$EXPECTED_BUILD" > reports/public-health.json
       - name: Retain sanitized point-in-time evidence
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2, Node 24
         with:
+          archive: true
           name: public-health-${{ github.run_id }}-${{ github.run_attempt }}
           path: reports/public-health.json
           retention-days: 90
