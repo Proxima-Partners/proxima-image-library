@@ -31,6 +31,17 @@ test('production builder is manual main-only, publisher-only and refuses reruns'
   assert.doesNotMatch(source, /DEPLOY_CLIENT_ID|secrets\.|production_release|az webapp|az storage/);
 });
 
+test('recovery rehearsal has its own identity, exact script and sanitized-only artifacts', () => {
+  const source = fs.readFileSync(path.join(workflows, 'recovery-rehearsal.yml'), 'utf8');
+  assert.match(source, /environment: image-library-recovery-rehearsal/);
+  assert.match(source, /AZURE_IMAGE_REHEARSAL_CLIENT_ID/);
+  assert.match(source, /test "\$GITHUB_RUN_ATTEMPT" = '1'/);
+  assert.match(source, /python -m scripts.rehearsal_runner/);
+  assert.match(source, /path: reports\/recovery-rehearsal.json/);
+  assert.match(source, /cancel-in-progress: false/);
+  assert.doesNotMatch(source, /DEPLOY_CLIENT_ID|secrets\.|az webapp|az storage|path:.*owner/);
+});
+
 for (const name of ['azure-deploy.yml', 'container-pilot.yml', 'pilot-source-baseline.yml']) {
   test(`${name} is a credential-free retired entry point`, () => {
     const source = fs.readFileSync(path.join(workflows, name), 'utf8');

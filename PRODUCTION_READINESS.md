@@ -61,3 +61,29 @@ not the retired pilot branch. No Azure role expansion or production mutation.
 The user also explicitly approved a temporary network-restricted rehearsal app
 on the existing dedicated P2v3 plan, with synthetic data and no production
 provider credentials. Stop that app after testing. Do not alter staging state.
+
+Fresh production candidate build `40064558508-1` / `ba61c52` passed 647 target
+tests, 14 browser/workflow checks, strict dependency audit and exact-image
+smoke/security/SBOM. Authenticated artifact `12549051390` passed digest/layout/
+run identity verification. Candidate digest:
+`sha256:f5ad233782189bf29457b52ee1394a04f0209640cf8672fc68c42690524f9c12`.
+Builder enablement returned to `false`; no staging or production deployment.
+
+Created `pp-image-library-rehearsal` on the existing dedicated P2v3 with a fresh
+session secret, no production provider credentials, auth bypass/test mode/ingest
+off, restricted main/SCM access and its own mount. Its system identity has only
+repository-reader access to `image-library`. Created managed identity
+`id-image-library-rehearsal` (client `d0ecb6f2-6f39-4ff3-84b5-289751a45edd`), with
+Website Contributor on only that rehearsal app, Reader on the existing plan and
+Blob Data Contributor on only new private `ci-rehearsal` container. The operator
+also has blob access to that synthetic container. No production role expansion.
+
+The rehearsal workflow is manual/main-only/opt-in and uses that separate
+identity. It requires an operator-added single-runner network allowance, then
+verifies actual lease contention, protected synthetic-state readback, actual
+forward/reverse digest updates, persistent drain/mount/fresh boot, exact resume
+and stale-boot denial. Cleanup is ETag-conditional and only removes its own three
+rehearsal files; protected owner/backup records remain private. Unknown outcomes
+retain the lease and stop. The actual production promotion controller, real
+catalog/SSO, stable unattended network and the broader fault matrix remain
+separate evidence requirements; do not claim this subset closes those gates.
