@@ -32,8 +32,8 @@ WORKFLOW = ".github/workflows/container-pilot.yml"
 WORKFLOW_ID = 393659192
 WORKFLOW_SHA256 = "0073793e15d0d09bf09cc4ecfb9e1a8b580f02a0bacaa9d1edacbf7067ed2e8a"
 PRODUCTION_WORKFLOW = ".github/workflows/production-build.yml"
-# Fail closed until GitHub registers the reviewed workflow and its ID is pinned.
-PRODUCTION_WORKFLOW_ID = 0
+# Registered from the reviewed main workflow after PR #5; no dynamic admission.
+PRODUCTION_WORKFLOW_ID = 394835659
 PRODUCTION_WORKFLOW_SHA256 = "5b41c586ba6c601562bdee1b1cb2f89eb81211928fa01d0d5fc55ff5738194d4"
 MAX_ARCHIVE = 16 * 1024 * 1024
 FILES = {"release.json", "security-gate.json", "registry-manifest.json", "vulnerabilities.json",

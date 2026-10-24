@@ -52,5 +52,12 @@ Use existing runbook gates and targeted resource/storage/RBAC verification.
 
 ## Status
 
-Implementation in progress; no new identity, access rule, image publish or
-production mutation has occurred at this initial checkpoint.
+PR #5 merged as `8605ecd` after container and T1/dependency checks passed.
+Production builder ID `394835659`, source SHA-256
+`5b41c586ba6c601562bdee1b1cb2f89eb81211928fa01d0d5fc55ff5738194d4` are pinned.
+The existing publisher environment policy `64050289` now admits only `main`,
+not the retired pilot branch. No Azure role expansion or production mutation.
+
+The user also explicitly approved a temporary network-restricted rehearsal app
+on the existing dedicated P2v3 plan, with synthetic data and no production
+provider credentials. Stop that app after testing. Do not alter staging state.
