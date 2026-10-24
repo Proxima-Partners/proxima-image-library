@@ -11,7 +11,22 @@ the prior image, owned files absent, lease unlocked and temporary network access
 removed. Production remains unchanged. Earlier failed-run sections below are
 historical; see the final acceptance section for the current state and limits.
 
+**Performance validation, October 23 23:15 PDT:** fresh tests/audit and release
+provenance checks passed; authenticated current-production baseline reads were
+measured. The candidate remains undeployed, and the production-controller cold
+lifecycle/full fault matrix and remaining acceptance gates are still open.
+See `PERFORMANCE_RELEASE_VALIDATION.md`; this does not authorize deployment or
+close the production-readiness gate.
+
 ## Execution plan
+
+Local follow-up: the stopped-cleanup orchestration and defined controller
+failure-injection matrix are implemented; see `RELEASE_FAILURE_MATRIX.md` for
+the precise scope. This closes the local implementation gap, not the exact-code
+CI/live-rehearsal or staging-performance gates. Post-cleanup write resumption is
+now locally implemented and tested using fresh-boot verification and durable
+one-shot RPC; it still requires the existing explicit option/runtime enablement.
+A new runtime candidate is required. No live settings were changed.
 
 1. Add a manual-main-only builder using the existing publisher identity, fixed
    target runtime, fresh tests, exact-image smoke/security/SBOM, strict dependency
@@ -247,20 +262,30 @@ canary, ingestion, schedule, DNS, tier or Pete/shared-plan changes occurred.
 
 ## Remaining gates and next decision
 
+**User decision, 2026-10-23:** defer the dedicated private CI network and managed
+paid runner until the performance release is validated. This infrastructure is
+not a prerequisite for the supervised performance release. Implementation and
+testing may continue unattended within their existing scope; production releases
+remain supervised, with restrictive access and the existing safety gates intact.
+Validation is a trigger to reconsider the proposal, not authorization to provision.
+
 1. Carry the verified cold-lifecycle policy into the production adapter and
    complete the full production-controller fault matrix in isolation. Include
    lease loss, unknown writes, interrupted/async polling and ambiguous resume;
    never substitute the happy-path subset above for those proofs.
-2. Establish a stable unattended CI network, then separately prove the actual
-   production identity/SCM/storage path and finish credential/manual-writer
-   containment. The present per-run operator rule procedure is supervised.
+2. Prove the actual production identity/SCM/storage path using controlled,
+   operator-scoped access and finish credential/manual-writer containment.
+   Retain supervised per-run network setup and verified cleanup; do not widen
+   access or provision private-runner infrastructure to remove that intervention.
 3. Review real production telemetry for the complete observation window, earliest
    October 24 approximately 14:08 PDT. Elapsed time/public probes are insufficient.
 4. Obtain the separate supervised-release approval, promote the exact reviewed
    digest through staging and in-place production, and measure representative
    performance/auth behavior. Any new disposable write canary needs new scope.
-5. Only after acceptance, approve unattended promotion/write resumption and
-   maintenance activation, with tested alerts, an owner and a disable switch.
+5. Only after performance acceptance, reconsider and separately approve a stable
+   unattended release network. Prove it before approving unattended promotion/
+   write resumption. Maintenance activation also needs separate approval, tested
+   alerts, an owner and a disable switch.
 
 Signing follow-up: both implementation head `6921e32` and checkpoint `0a64d5b`
 contain SSH signatures, but GitHub reports `verified=false`, `reason=unknown_key`.
@@ -269,7 +294,8 @@ run/artifact checks above are separate evidence, not a claim of GitHub-verified
 commit signatures. Registering account signing keys or changing local trust
 configuration requires a separately reviewed scope; neither was changed here.
 
-Recommended next infrastructure decision: a repository-restricted, GitHub-managed
+Deferred infrastructure option, to revisit after performance validation: a
+repository-restricted, GitHub-managed
 Ubuntu larger runner using a dedicated Azure private network in West US 2.
 The organization currently has GitHub Team, and GitHub documents support for
 Team/private networking, that region, and larger runners (not standard runners).

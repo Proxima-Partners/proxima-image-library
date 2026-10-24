@@ -81,16 +81,20 @@ def configuration(io):
     return {"settings": settings, "container": container, "web": web}
 
 
-def control(io, lease, action, nonces, *, expected=None, ok=True):
+def control(io, lease, action, nonces, *, expected=None, ok=True, protocol=1):
     require(action in {"status", "state_probe", "drain", "resume"})
+    require(type(protocol) is int and protocol in {1, 2})
     lease.assert_held()
     code, headers, raw = io.request("GET", CONTROL + "request.json", accepted=(200, 404), max_bytes=4096)
     etag = {k.lower(): v for k, v in headers.items()}.get("etag")
     if code == 200:
+        require(protocol == 1)
         require(json.loads(raw).get("nonce") in nonces and bool(etag))
+    if protocol == 2:
+        io.request("GET", CONTROL + "response.json", accepted=(404,), max_bytes=8192)
     nonce = uuid.uuid4().hex
     nonces.add(nonce)
-    payload = {"protocol": 1, "nonce": nonce, "expires": int(time.time()) + 60, "action": action}
+    payload = {"protocol": protocol, "nonce": nonce, "expires": int(time.time()) + 60, "action": action}
     if expected is not None:
         payload["expected"] = expected
     lease.checkpoint("rehearsal_runtime_" + action + "_requested")
@@ -99,14 +103,24 @@ def control(io, lease, action, nonces, *, expected=None, ok=True):
     deadline = time.monotonic() + 45
     while time.monotonic() < deadline:
         lease.assert_held()
-        code, _, raw = io.request("GET", CONTROL + "response.json", accepted=(200, 404), max_bytes=8192)
+        code, response_headers, raw = io.request("GET", CONTROL + "response.json", accepted=(200, 404), max_bytes=8192)
         if code == 200:
             value = json.loads(raw)
             if value.get("nonce") == nonce:
-                require(value.get("ok") is ok and value.get("action") == action and value.get("protocol") == 1
+                require(value.get("ok") is ok and value.get("action") == action and value.get("protocol") == protocol
                         and value.get("slot") == "production" and value.get("workers") == 1
                         and value.get("active_work") == 0 and value.get("read_only") is False
                         and 0 <= time.time() - value["at"] <= 45)
+                if protocol == 2:
+                    response_etag = {k.lower(): v for k, v in response_headers.items()}.get("etag")
+                    require(value.get("request_retired") is True and bool(response_etag))
+                    io.request("GET", CONTROL + "request.json", accepted=(404,), max_bytes=4096)
+                    lease.assert_held()
+                    lease.checkpoint("rehearsal_one_shot_response_delete_requested")
+                    io.request("DELETE", CONTROL + "response.json", accepted=(200, 204),
+                               headers={"If-Match": response_etag})
+                    for name in ("request.json", "response.json"):
+                        io.request("GET", CONTROL + name, accepted=(404,), max_bytes=8192)
                 return value
         time.sleep(1)
     raise AzureIOError("Runtime reply unknown; no replay")
@@ -179,6 +193,41 @@ def cold_update(io, lease, receipt, expected_current, allowed_images):
     return dict(result, stopped_update=True, prior_termination_verified=True)
 
 
+def cleanup_restart(io, lease, receipt, nonces, expected_configuration):
+    """Rehearse stopped owned-file cleanup; never delete a running RPC request."""
+    def unchanged():
+        lease.assert_held()
+        require(configuration(io) == expected_configuration)
+        require(arm(io, "/sitecontainers/main")["properties"]["image"] == receipt["registry_image"])
+        require(io.request("GET", FIXTURE)[2] == FIXTURE_BYTES)
+
+    unchanged()
+    old = lifecycle.inventory(io)
+    lifecycle.stop(io, lease)
+    unchanged()
+    for name in ("request.json", "response.json"):
+        url = CONTROL + name
+        code, headers, raw = io.request("GET", url, accepted=(200, 404), max_bytes=8192)
+        if code == 404:
+            continue
+        etag = {k.lower(): v for k, v in headers.items()}.get("etag")
+        require(json.loads(raw).get("nonce") in nonces and bool(etag))
+        lease.assert_held()
+        lease.checkpoint("rehearsal_stopped_control_delete_requested")
+        io.request("DELETE", url, accepted=(200, 204), headers={"If-Match": etag})
+        io.request("GET", url, accepted=(404,), max_bytes=8192)
+    unchanged()
+    lifecycle.confirm_stopped(io, lease)
+    lease.checkpoint("rehearsal_cleanup_restart_requested")
+    arm(io, "/start", method="POST", accepted=(200, 204))
+    ready(receipt, cold_start=True)
+    active = lifecycle.inventory(io)
+    require(len(active) == 1 and not active & old)
+    unchanged()
+    for name in ("request.json", "response.json"):
+        io.request("GET", CONTROL + name, accepted=(404,), max_bytes=8192)
+
+
 def execute(report=None):
     require(os.getenv("IMAGE_LIBRARY_RECOVERY_REHEARSAL_ENABLED") == "true"
             and os.getenv("GITHUB_REF") == "refs/heads/main"
@@ -248,13 +297,23 @@ def execute(report=None):
             require(after["release_state"]["state_id"] == before["release_state"]["state_id"]
                     and after["release_state"]["boot_id"] != before["release_state"]["boot_id"])
             require(io.request("GET", FIXTURE)[2] == FIXTURE_BYTES)
+            report["phase"] = "candidate_stopped_cleanup_restart"
+            cleanup_restart(io, lease, candidate, nonces, original_configuration)
+            fresh = control(io, lease, "status", nonces, protocol=2)
+            require(fresh["draining"] is True and fresh["release"] == after["release"]
+                    and fresh["release_state"]["state_id"] == after["release_state"]["state_id"]
+                    and fresh["release_state"]["boot_id"] != after["release_state"]["boot_id"])
+            report["stopped_cleanup_restart_verified"] = True
             exact = {"commit": candidate["commit"], "build_id": candidate["build_id"],
-                     "boot_id": after["release_state"]["boot_id"], "state_id": after["release_state"]["state_id"]}
-            stale = dict(exact, boot_id=before["release_state"]["boot_id"])
+                     "boot_id": fresh["release_state"]["boot_id"], "state_id": fresh["release_state"]["state_id"]}
+            stale = dict(exact, boot_id=after["release_state"]["boot_id"])
             report["phase"] = "stale_boot_resume_denial"
-            require(control(io, lease, "resume", nonces, expected=stale, ok=False)["draining"] is True)
+            require(control(io, lease, "resume", nonces, expected=stale, ok=False, protocol=2)["draining"] is True)
             report["phase"] = "exact_resume"
-            require(control(io, lease, "resume", nonces, expected=exact)["draining"] is False)
+            require(control(io, lease, "resume", nonces, expected=exact, protocol=2)["draining"] is False)
+            verified = control(io, lease, "status", nonces, protocol=2)
+            require(verified["draining"] is False and verified["release_state"] == fresh["release_state"])
+            report["one_shot_post_cleanup_resume_verified"] = True
             report["exact_resume_and_stale_rejection"] = True
             require(control(io, lease, "drain", nonces)["draining"] is True)
             require(io.request("GET", FIXTURE)[2] == FIXTURE_BYTES)

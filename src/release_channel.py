@@ -114,7 +114,7 @@ class ReleaseChannel:
         nonce = request["nonce"]
         now = self.clock()
         self.seen = {key: expiry for key, expiry in self.seen.items() if expiry > now}
-        if (type(request["protocol"]) is not int or request["protocol"] != 1 or not isinstance(nonce, str)
+        if (type(request["protocol"]) is not int or request["protocol"] not in {1, 2} or not isinstance(nonce, str)
                 or not re.fullmatch(r"[a-f0-9]{32}", nonce) or nonce in self.seen
                 or type(request["expires"]) is not int
                 or not now < request["expires"] <= now + 60
@@ -122,10 +122,31 @@ class ReleaseChannel:
                 or request["action"] not in {"status", "probe", "state_probe", "drain", "resume"}):
             return False
         self.seen[nonce] = request["expires"]
-        response = {"protocol": 1, "nonce": nonce, "action": request["action"],
+        response = {"protocol": request["protocol"], "nonce": nonce, "action": request["action"],
                     "release_state": self.state, "release": self.release,
                     "slot": os.getenv("TELEMETRY_SLOT"), "workers": worker_count(), "ok": True}
         try:
+            if request["protocol"] == 2:
+                # One-shot protocol: retire the exact request durably BEFORE
+                # acting. A crash cannot replay a resume against a later boot.
+                path = self.directory / "request.json"
+                descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+                try:
+                    info = os.fstat(descriptor)
+                    if not stat.S_ISREG(info.st_mode) or os.read(descriptor, MAX_BYTES + 1) != raw:
+                        raise RuntimeError("One-shot request changed")
+                    current = os.stat(path, follow_symlinks=False)
+                    if (current.st_dev, current.st_ino) != (info.st_dev, info.st_ino):
+                        raise RuntimeError("One-shot request replaced")
+                    os.unlink(path)
+                    directory = os.open(self.directory, os.O_RDONLY | os.O_DIRECTORY)
+                    try:
+                        os.fsync(directory)
+                    finally:
+                        os.close(directory)
+                finally:
+                    os.close(descriptor)
+                response["request_retired"] = True
             if request["action"] == "resume":
                 expected = {"commit": self.release.get("commit"), "build_id": self.release.get("build_id"),
                             "state_id": self.state.get("state_id"), "boot_id": self.state.get("boot_id")}

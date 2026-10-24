@@ -58,6 +58,9 @@ class Adapter(Protocol):
     def update(self, image): ...
     def verify(self, receipt, baseline, configuration, frozen, *, seconds): ...
     def resume_verified(self, receipt, observed, configuration, frozen): ...
+    def validate_resume_policy(self, resume_writes): ...
+    def finalize_held(self, receipt, configuration, frozen): ...
+    def prepare_resume(self, receipt, previous, configuration, frozen): ...
 
 
 def validate_receipt(receipt, now=None):
@@ -161,6 +164,7 @@ def promote(adapter, candidate, prior, journal_path, *, drain_seconds=300,
         validate_receipt(receipt)
     if type(resume_writes) is not bool:
         raise StopRelease("Explicit boolean resume policy required")
+    adapter.validate_resume_policy(resume_writes)
     if candidate["registry_image"] == prior["registry_image"]:
         raise StopRelease("Candidate must differ from the known prior release")
     if not 0 < drain_seconds <= 300 or not 0 < verify_seconds <= 600:
@@ -224,12 +228,19 @@ def promote(adapter, candidate, prior, journal_path, *, drain_seconds=300,
                 check_observation(restored, "production", prior, drained=True)
                 if restored["state_id"] != baseline["state_id"] or restored["boot_id"] == baseline["boot_id"]:
                     raise StopRelease("Rollback state/boot verification failed")
+                journal.phase("rollback_cleanup_requested")
+                adapter.finalize_held(prior, configuration, frozen)
                 journal.phase("rollback_verified_held")
                 return "rollback_verified_held"
+            journal.phase("candidate_cleanup_requested")
+            adapter.finalize_held(candidate, configuration, frozen)
             if resume_writes:
                 adapter.assert_lease()
                 validate_receipt(candidate)
                 adapter.assert_recovery_safe(candidate["registry_image"], configuration, frozen)
+                journal.phase("post_cleanup_resume_verification")
+                result = adapter.prepare_resume(candidate, result, configuration, frozen)
+                check_observation(result, "production", candidate, drained=True)
                 journal.phase("verified_resume_requested_once")
                 resumed = adapter.resume_verified(candidate, result, configuration, frozen)
                 check_observation(resumed, "production", candidate, drained=False)

@@ -76,7 +76,7 @@ def test_state_probe_failure_retains_fixture_and_redacts(runtime, monkeypatch):
 
 
 @pytest.mark.parametrize("updates", [
-    {"protocol": True}, {"protocol": 2}, {"expires": True}, {"expires": 1000},
+    {"protocol": True}, {"protocol": 3}, {"expires": True}, {"expires": 1000},
     {"expires": 1061}, {"expires": "1060"}, {"nonce": "wrong"}, {"nonce": []},
     {"action": "undrain"}, {"action": "exec"}, {"action": []}, {"extra": 1},
 ])
@@ -202,3 +202,58 @@ def test_resume_rejects_active_work_and_changed_boot(runtime, monkeypatch):
     request(runtime, action="resume", expected=expected, nonce="e" * 32)
     assert runtime.process_once() and response(runtime)["ok"] is False
     assert channel.controls.draining()
+
+
+def test_one_shot_retires_request_before_resume_and_cannot_replay_after_restart(runtime, monkeypatch):
+    monkeypatch.setenv("PRODUCTION_RELEASE_RESUME_ENABLED", "true")
+    monkeypatch.setenv("INGEST_POLLER_ENABLED", "false")
+    channel.controls.set_drain(True)
+    expected = resume_request(runtime)
+    real_resume = channel.controls.resume_if_idle
+    def resume():
+        assert not (runtime.directory / "request.json").exists()
+        real_resume()
+    monkeypatch.setattr(channel.controls, "resume_if_idle", resume)
+    request(runtime, protocol=2, action="resume", expected=expected)
+    assert runtime.process_once()
+    assert response(runtime)["request_retired"] and response(runtime)["ok"]
+    assert response(runtime)["draining"] is False
+    restarted = channel.ReleaseChannel(runtime.directory.parent, runtime.state, runtime.release, lambda: 1)
+    assert not restarted.process_once()
+
+
+@pytest.mark.parametrize("failure", ["unlink", "fsync"])
+def test_one_shot_retirement_failure_never_resumes(runtime, monkeypatch, failure):
+    monkeypatch.setenv("PRODUCTION_RELEASE_RESUME_ENABLED", "true")
+    monkeypatch.setenv("INGEST_POLLER_ENABLED", "false")
+    channel.controls.set_drain(True)
+    expected = resume_request(runtime)
+    request(runtime, protocol=2, action="resume", expected=expected)
+    def fail(*a, **k): raise OSError("retirement uncertain")
+    monkeypatch.setattr(channel.os, failure, fail)
+    with pytest.raises(OSError): runtime.process_once()
+    assert channel.controls.draining()
+
+
+def test_one_shot_response_loss_after_resume_does_not_reexecute(runtime, monkeypatch):
+    monkeypatch.setenv("PRODUCTION_RELEASE_RESUME_ENABLED", "true")
+    monkeypatch.setenv("INGEST_POLLER_ENABLED", "false")
+    channel.controls.set_drain(True)
+    expected = resume_request(runtime)
+    request(runtime, protocol=2, action="resume", expected=expected)
+    def fail(*a, **k): raise OSError("response uncertain")
+    monkeypatch.setattr(channel.os, "replace", fail)
+    with pytest.raises(OSError): runtime.process_once()
+    assert not channel.controls.draining()
+    assert not runtime.process_once()
+
+
+def test_one_shot_stale_boot_is_retired_without_resuming(runtime, monkeypatch):
+    monkeypatch.setenv("PRODUCTION_RELEASE_RESUME_ENABLED", "true")
+    monkeypatch.setenv("INGEST_POLLER_ENABLED", "false")
+    channel.controls.set_drain(True)
+    expected = resume_request(runtime)
+    expected["boot_id"] = "d" * 32
+    request(runtime, protocol=2, action="resume", expected=expected)
+    assert runtime.process_once() and not response(runtime)["ok"]
+    assert channel.controls.draining() and not (runtime.directory / "request.json").exists()

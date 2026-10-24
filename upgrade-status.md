@@ -4,6 +4,61 @@ Updated: 2026-10-23 (America/Los_Angeles).
 
 ## Current execution checkpoint
 
+**Stopped-cleanup orchestration and the defined local failure matrix are now
+implemented.** Cleanup is explicit before successful held-release/rollback
+journaling, stops and verifies each touched slot, deletes only nonce-owned
+ETag-matched files, restarts the same image and verifies readiness, fresh runtime,
+authentication, unchanged protected state/configuration and absent control files.
+The matrix injects errors and interruptions at all 76 cleanup boundaries and
+19 forward/26 rollback controller boundaries. Lease retention and no-replay
+behavior are tested. The post-cleanup write-resumption implementation is now
+complete locally: fresh process verification, exact new-boot binding, durable
+one-shot requests, conditional response cleanup and post-write verification.
+The blanket implementation block is removed; the existing explicit resume option
+and runtime enablement are still required. Those live settings were not changed.
+Failures at all 18 resume/verification SCM boundaries are tested both before and
+after operations, with errors and interruptions. No retry/rollback after possible
+writes. Because runtime protocol 2 is new, build a new candidate rather than use
+the previously published image for this resume path.
+See `RELEASE_FAILURE_MATRIX.md`. Changes remain local; live rehearsal of the
+updated adapter and candidate staging comparison are still pending. No Azure
+mutation, commit or push occurred in this implementation step.
+Fresh final verification: **1062 target-Linux tests and 15 JS tests passed**;
+workflow actionlint and diff checks passed. Ten existing UTC deprecation warnings
+remain. This is local test evidence, not a published release/security receipt.
+
+### Prior local implementation checkpoint (superseded)
+
+**Cold-lifecycle safeguards are locally implemented, not release-accepted.**
+The production adapter now requires named termination before an image PUT,
+rechecks container configuration after stopping, starts only after acknowledged
+ARM completion/state checks, and polls exact-build readiness with bounded GETs.
+Uncertain stop/PUT/start/readiness outcomes block another image update. Cleanup
+now refuses a running reader instead of racing its response-file write.
+Fresh target-Linux suite: 710 passed (before nine additional cold-readiness test
+cases); latest focused suite: 114 passed; JS: 15 passed. Read-only live lifecycle
+parsing found exactly one active production runtime, including the historical
+pre-sitecontainers naming format. No Azure mutations, commit or push occurred.
+**Remaining:** complete the stopped-cleanup/restart orchestration and prove the
+whole controller failure matrix, then execute the approved read-only candidate
+staging comparison. The current automatic context-exit cleanup deliberately
+fails closed while a runtime is running; this draft must not execute a release.
+Neither the full safeguard request nor staging acceptance is complete.
+
+**Performance preflight checked; candidate performance acceptance remains open.**
+Fresh local target-Linux tests passed 693/693, JS checks 15/15, workflow lint and
+strict dependency audit passed, and candidate/prior authenticated release
+artifacts were reverified. Current production's authenticated warm catalog
+baseline was 149.5 ms median / 189 ms p95 across 20 browser reads; nearby server
+telemetry was 4 ms p95 across 22 reads with no failures. All 280 records and 20
+recent thumbnails were visible. These results describe the current production
+build, not a deployed performance candidate. Production/staging remain on
+`40019125172-1`; no live configuration or state was changed. Production release
+remains NO-GO pending the production-controller cold lifecycle/fault matrix,
+access/containment, complete observation and candidate acceptance. Operator
+registry login failed, so no fresh independent exact-image scan was performed.
+See `PERFORMANCE_RELEASE_VALIDATION.md` for scope, evidence and limitations.
+
 **Fresh isolated CI recovery PASSED; production is unchanged.** Reviewed fixes
 in PRs #7/#8 are merged; latest source CI passed 693 target-Linux tests, 15 JS
 checks and both container/security and dependency gates. Run `40067583967-1`
@@ -14,12 +69,18 @@ unlocked lease. Private evidence remains retained. Temporary runner access is
 removed; builder/rehearsal enablement is false and pilot remains hold. Public
 production checks at `2026-10-24T05:55:36Z` passed on `40019125172-1`.
 
-Remaining: production-adapter lifecycle/full fault matrix; stable unattended
-CI network and production identity/writer containment; real 24-hour telemetry
+Remaining before the supervised performance release: production-adapter lifecycle/
+full fault matrix; operator-scoped production access and writer containment; real 24-hour telemetry
 (earliest October 24 14:08 PDT); separately approved supervised release and
-representative performance acceptance; then unattended operations activation.
-New private-network/paid-runner infrastructure is recommended, not provisioned
-or approved. See `PRODUCTION_READINESS.md` for exact evidence and boundaries.
+representative performance acceptance.
+
+**User decision: defer private CI networking and the paid managed runner until
+the performance release is validated.** Continue scoped implementation/testing
+unattended and keep production releases supervised. Preserve restrictive access
+and verified temporary-rule cleanup. Revisit stable unattended networking only
+after performance acceptance; provisioning and unattended production activation
+still require separate approval. See `PRODUCTION_READINESS.md` for evidence and
+boundaries. No new infrastructure or live changes result from this decision.
 
 ### Earlier recovery checkpoints (historical)
 

@@ -21,8 +21,9 @@ import uuid
 import requests
 
 from scripts.configure_container_pilot import APP_ID, PLAN_ID
-from scripts.production_release import validate_receipt, ConfirmedVerificationFailure, StopRelease
+from scripts.production_release import validate_receipt, check_observation, ConfirmedVerificationFailure, StopRelease
 from scripts.release_azure_io import ARM, SCM, STORAGE, AzureIOError, scm_python_command
+from scripts.production_lifecycle import ProductionLifecycle
 from src.release_channel import DIRECTORY
 
 API = "2024-11-01"
@@ -63,6 +64,17 @@ class AzureProductionAdapter:
         self.nonces = {"production": set(), "staging": set()}
         self.pending_operation = None
         self.pending_kind, self.poll_not_before = "status", 0
+        self.lifecycle = ProductionLifecycle(transport, lease)
+        self.lifecycles = {"production": self.lifecycle,
+                           "staging": ProductionLifecycle(transport, lease, slot="staging")}
+        self.update_uncertain = False
+        self.start_required = False
+        self.cleanup_attempted = False
+        self.cleanup_complete = False
+        self.resume_attempted = False
+        self.resume_complete = False
+        self.prepared_resume = None
+        self.one_shot_uncertain = False
 
     def _arm(self, slot, suffix="", *, method="GET", body=None):
         if slot not in SCM:
@@ -74,13 +86,26 @@ class AzureProductionAdapter:
     def exclusive(self, resource):
         with self.lease.exclusive(resource):
             yield
-            self.cleanup_channel()
+            if (not self.cleanup_complete or self.one_shot_uncertain
+                    or (self.resume_attempted and not self.resume_complete)):
+                raise AzureIOError("Stopped cleanup acceptance missing; retain lease")
+
+    def validate_resume_policy(self, resume_writes):
+        if resume_writes and self._config("production")[1].get("PRODUCTION_RELEASE_RESUME_ENABLED") != "true":
+            raise AzureIOError("Automatic resume has not been approved/configured")
 
     def assert_lease(self):
         self.lease.assert_held()
 
-    def _rpc(self, slot, action, *, expected=None):
+    def _rpc(self, slot, action, *, expected=None, protocol=1):
         self.assert_lease()
+        if type(protocol) is not int or protocol not in {1, 2}:
+            raise AzureIOError("Unapproved control protocol")
+        if protocol == 2 and self.one_shot_uncertain:
+            raise AzureIOError("One-shot outcome uncertain; no replay")
+        if self.cleanup_attempted and not (self.cleanup_complete and protocol == 2
+                and slot == "production" and action in {"probe", "resume"}):
+            raise AzureIOError("Control channel is sealed after cleanup begins")
         if (slot not in SCM or action not in {"status", "probe", "state_probe", "drain", "resume"}
                 or (action in {"drain", "resume"} and slot != "production")):
             raise AzureIOError("Unapproved runtime control action")
@@ -101,6 +126,8 @@ class AzureProductionAdapter:
         if status == 200 and not etag:
             raise AzureIOError("Missing request-file ETag")
         if status == 200:
+            if protocol == 2:
+                raise AzureIOError("One-shot channel is not empty; reconcile")
             try:
                 prior = json.loads(prior)
             except ValueError:
@@ -108,17 +135,21 @@ class AzureProductionAdapter:
             if not isinstance(prior, dict) or prior.get("nonce") not in self.nonces[slot]:
                 raise AzureIOError("Unrecognized prior control request; reconcile first")
         condition = {"If-Match": etag} if status == 200 else {"If-None-Match": "*"}
-        body = {"protocol": 1, "nonce": nonce, "expires": int(self.clock()) + 60, "action": action}
+        if protocol == 2:
+            self._assert_channel_absent(slot)
+        body = {"protocol": protocol, "nonce": nonce, "expires": int(self.clock()) + 60, "action": action}
         if action == "resume":
             body["expected"] = expected
         self.lease.checkpoint("runtime_" + action + "_requested")
+        if protocol == 2:
+            self.one_shot_uncertain = True
         self.transport.request("PUT", url, accepted=(200, 201, 204), headers=condition,
                                data=json.dumps(body).encode())
         deadline = self.clock() + 45
         response_url = SCM[slot] + "/api/vfs/" + DIRECTORY + "/response.json"
         while self.clock() < deadline:
             self.assert_lease()
-            status, _, raw = self.transport.request("GET", response_url, accepted=(200, 404), max_bytes=8192)
+            status, response_headers, raw = self.transport.request("GET", response_url, accepted=(200, 404), max_bytes=8192)
             if status == 200:
                 try:
                     result = json.loads(raw)
@@ -127,10 +158,21 @@ class AzureProductionAdapter:
                 if not isinstance(result, dict):
                     raise AzureIOError("Invalid runtime control response")
                 if result.get("nonce") == nonce:
-                    if (type(result.get("protocol")) is not int or result.get("protocol") != 1 or result.get("action") != action
+                    if (type(result.get("protocol")) is not int or result.get("protocol") != protocol or result.get("action") != action
                             or result.get("slot") != slot or result.get("ok") is not True
                             or type(result.get("at")) is not int or not 0 <= self.clock() - result["at"] <= 45):
                         raise AzureIOError("Runtime control failed or response is stale")
+                    if protocol == 2:
+                        response_etag = {k.lower(): v for k, v in response_headers.items()}.get("etag")
+                        if result.get("request_retired") is not True or not response_etag:
+                            raise AzureIOError("One-shot retirement acknowledgement missing")
+                        self.transport.request("GET", url, accepted=(404,), max_bytes=4096)
+                        self.assert_lease()
+                        self.lease.checkpoint("one_shot_response_delete_requested")
+                        self.transport.request("DELETE", response_url, accepted=(200, 204),
+                                               headers={"If-Match": response_etag})
+                        self._assert_channel_absent(slot)
+                        self.one_shot_uncertain = False
                     return result
             self.pause(1)
         raise AzureIOError("Runtime control deadline exceeded; do not repeat the mutation")
@@ -173,9 +215,9 @@ class AzureProductionAdapter:
                 "auth": self._arm("production", "/config/authsettingsV2")["properties"],
                 "hostnames": self._arm("production", "/hostNameBindings")["value"]}
 
-    def observe(self, slot):
+    def observe(self, slot, *, protocol=1):
         site, settings, web, main = self._config(slot)
-        runtime = self._rpc(slot, "probe")
+        runtime = self._rpc(slot, "probe", protocol=protocol)
         host = site["properties"]["defaultHostName"]
         expected_host = "pp-image-library" + ("-staging" if slot == "staging" else "") + ".azurewebsites.net"
         if host != expected_host:
@@ -264,7 +306,7 @@ class AzureProductionAdapter:
 
     def update(self, image):
         self.assert_lease()
-        if self.pending_operation:
+        if self.pending_operation or self.update_uncertain or self.start_required or self.cleanup_attempted:
             raise AzureIOError("Previous ARM operation unresolved; reconcile before another update")
         if image not in self.receipts:
             raise AzureIOError("Image lacks verified CI provenance")
@@ -275,6 +317,13 @@ class AzureProductionAdapter:
         properties = deepcopy(item["properties"])
         properties["image"] = image
         properties.pop("lastModifiedTime", None)
+        # Set before the first mutation: an unknown stop/PUT must not be replayed,
+        # including by a caller that catches the exception and reuses this object.
+        self.update_uncertain = True
+        self.lifecycle.stop()
+        self.assert_lease()
+        if self._config("production")[3] != item:
+            raise AzureIOError("Container changed while stopping; reconcile")
         self.lease.checkpoint("image_update_requested")
         status, headers, raw = self.transport.request("PUT", ARM + APP_ID + "/sitecontainers/main?api-version=" + API,
                                accepted=(200, 201, 202), headers={"Content-Type": "application/json"},
@@ -300,6 +349,8 @@ class AzureProductionAdapter:
             except (ValueError, TypeError, AttributeError):
                 raise AzureIOError("ARM result is not confirmed synchronous; reconcile") from None
             self.pending_operation = None
+        self.update_uncertain = False
+        self.start_required = True
         return True
 
     @staticmethod
@@ -341,6 +392,18 @@ class AzureProductionAdapter:
     def verify(self, receipt, baseline, configuration, frozen, *, seconds):
         deadline = self.clock() + seconds
         self._await_operation(deadline)
+        if self.update_uncertain:
+            raise AzureIOError("Image outcome uncertain; no start permitted")
+        if self.start_required:
+            if self.clock() >= deadline:
+                raise AzureIOError("Verification deadline exhausted; no start permitted")
+            self.assert_recovery_safe(receipt["registry_image"], configuration, frozen)
+            # Clear only after acknowledgement. An uncertain start is terminal.
+            self.update_uncertain = True
+            self.lifecycle.start()
+            self.start_required = False
+            self._wait_cold_readiness(receipt, deadline)
+            self.update_uncertain = False
         while self.clock() < deadline:
             self.assert_lease()
             if self.configuration() != configuration:
@@ -350,6 +413,8 @@ class AzureProductionAdapter:
             # handling must be proven in rehearsal before widening this policy.
             observed = self.observe("production")
             if observed["commit"] == receipt["commit"] and observed["build_id"] == receipt["build_id"]:
+                if len(self.lifecycle.inventory()) != 1:
+                    raise AzureIOError("Expected exactly one named production runtime")
                 self.assert_recovery_safe(receipt["registry_image"], configuration, frozen)
                 if not observed["healthy"] or not observed["auth_verified"] or not observed["reads_verified"]:
                     raise ConfirmedVerificationFailure("Confirmed runtime acceptance failure")
@@ -357,29 +422,172 @@ class AzureProductionAdapter:
             self.pause(3)
         raise ConfirmedVerificationFailure("Acknowledged update did not become the expected ready build")
 
-    def resume_verified(self, receipt, observed, configuration, frozen):
-        self.assert_recovery_safe(receipt["registry_image"], configuration, frozen)
-        if self._config("production")[1].get("PRODUCTION_RELEASE_RESUME_ENABLED") != "true":
-            raise AzureIOError("Automatic resume has not been approved/configured")
-        expected = {key: observed[key] for key in ("commit", "build_id", "boot_id", "state_id")}
-        result = self._rpc("production", "resume", expected=expected)
-        if result.get("draining") is not False:
-            raise AzureIOError("Resume not acknowledged; reconcile without retry")
-        # Writes may have begun after resume. Never compare/restore the old file
-        # snapshot now, and never enter rollback after a resume ambiguity.
-        return self.observe("production")
-
-    def cleanup_channel(self):
-        for slot, nonces in self.nonces.items():
-            for name in ("request.json", "response.json"):
+    def _wait_cold_readiness(self, receipt, deadline, *, slot="production"):
+        # Only idempotent public GETs are retried. 401/403/redirects are not
+        # accepted as a restart transient; access failures need reconciliation.
+        if slot not in SCM:
+            raise AzureIOError("Unapproved readiness slot")
+        host = "https://pp-image-library" + ("-staging" if slot == "staging" else "") + ".azurewebsites.net"
+        with requests.Session() as session:
+            session.trust_env = False
+            while self.clock() < deadline:
                 self.assert_lease()
-                url = SCM[slot] + "/api/vfs/" + DIRECTORY + "/" + name
-                status, headers, raw = self.transport.request("GET", url, accepted=(200, 404), max_bytes=8192)
-                if status == 404:
-                    continue
-                data = json.loads(raw)
-                etag = {k.lower(): v for k, v in headers.items()}.get("etag")
-                if data.get("nonce") not in nonces or not etag:
-                    raise AzureIOError("Control files changed; preserve for reconciliation")
-                self.transport.request("DELETE", url, accepted=(200, 204), headers={"If-Match": etag})
-                self.transport.request("GET", url, accepted=(404,), max_bytes=8192)
+                try:
+                    with session.get(host + "/readyz",
+                            timeout=(5, min(15, deadline - self.clock())),
+                            allow_redirects=False, stream=True) as response:
+                        if response.status_code == 200:
+                            raw = response.raw.read(32769, decode_content=True)
+                            if len(raw) > 32768:
+                                raise AzureIOError("Readiness response exceeds bound")
+                            value = json.loads(raw)
+                            if (value.get("commit") == receipt["commit"]
+                                    and value.get("build_id") == receipt["build_id"]
+                                    and value.get("version") == "v2.0.0"
+                                    and value.get("telemetry") is True
+                                    and value.get("status") == "ready"):
+                                return
+                        elif response.status_code not in {502, 503}:
+                            raise AzureIOError("Cold readiness access refused")
+                except (requests.Timeout, requests.ConnectionError):
+                    pass
+                self.pause(min(3, max(0, deadline - self.clock())))
+        raise AzureIOError("Cold readiness unconfirmed; reconcile without mutation")
+
+    def prepare_resume(self, receipt, previous, configuration, frozen):
+        self.validate_resume_policy(True)
+        if not self.cleanup_complete or self.resume_attempted:
+            raise AzureIOError("Post-cleanup verification required before resume")
+        self.assert_recovery_safe(receipt["registry_image"], configuration, frozen)
+        fresh = self.observe("production", protocol=2)
+        check_observation(fresh, "production", receipt, drained=True)
+        if fresh["state_id"] != previous["state_id"] or fresh["boot_id"] == previous["boot_id"]:
+            raise AzureIOError("Post-cleanup mount or fresh boot differs")
+        if len(self.lifecycle.inventory()) != 1:
+            raise AzureIOError("Post-cleanup runtime overlap")
+        self.assert_recovery_safe(receipt["registry_image"], configuration, frozen)
+        self.prepared_resume = deepcopy(fresh)
+        return fresh
+
+    def resume_verified(self, receipt, observed, configuration, frozen):
+        self.validate_resume_policy(True)
+        if self.resume_attempted or self.prepared_resume is None or observed != self.prepared_resume:
+            raise AzureIOError("Exact post-cleanup resume preparation required; no retry")
+        self.assert_recovery_safe(receipt["registry_image"], configuration, frozen)
+        validate_receipt(receipt)
+        self.resume_attempted = True
+        expected = {key: observed[key] for key in ("commit", "build_id", "boot_id", "state_id")}
+        result = self._rpc("production", "resume", expected=expected, protocol=2)
+        if (result.get("draining") is not False or result.get("release_state") != {
+                key: observed[key] for key in ("state_id", "boot_id", "uid", "gid")}
+                or result.get("release", {}).get("commit") != receipt["commit"]
+                or result.get("release", {}).get("build_id") != receipt["build_id"]):
+            raise AzureIOError("Exact resume acknowledgement differs; reconcile without retry")
+        # Writes can begin immediately. Never compare/restore the frozen files
+        # or restart after sending resume, including on verification ambiguity.
+        current = self.observe("production", protocol=2)
+        check_observation(current, "production", receipt, drained=False)
+        if current["boot_id"] != observed["boot_id"] or current["state_id"] != observed["state_id"]:
+            raise AzureIOError("Runtime changed after resume; reconcile without mutation")
+        if self.configuration() != configuration or len(self.lifecycle.inventory()) != 1:
+            raise AzureIOError("Configuration/runtime changed after resume")
+        self.resume_complete = True
+        return current
+
+    def cleanup_channel(self, slot="production"):
+        # Deleting a request while its reader is running can recreate a response
+        # after deletion. Refuse that race; cleanup orchestration must supply a
+        # separately verified stopped lifecycle, never infer it from idle work.
+        if slot not in SCM:
+            raise AzureIOError("Unapproved cleanup slot")
+        lifecycle = self.lifecycle if slot == "production" else self.lifecycles[slot]
+        lifecycle.confirm_stopped()
+        nonces = self.nonces[slot]
+        for name in ("request.json", "response.json"):
+            self.assert_lease()
+            url = SCM[slot] + "/api/vfs/" + DIRECTORY + "/" + name
+            status, headers, raw = self.transport.request("GET", url, accepted=(200, 404), max_bytes=8192)
+            if status == 404:
+                continue
+            data = json.loads(raw)
+            etag = {k.lower(): v for k, v in headers.items()}.get("etag")
+            if not isinstance(data, dict) or data.get("nonce") not in nonces or not etag:
+                raise AzureIOError("Control files changed; preserve for reconciliation")
+            self.assert_lease()
+            self.lease.checkpoint(slot + "_control_delete_requested")
+            self.transport.request("DELETE", url, accepted=(200, 204), headers={"If-Match": etag})
+            self.transport.request("GET", url, accepted=(404,), max_bytes=8192)
+
+    def _cleanup_identity(self, slot):
+        site, settings, web, main = self._config(slot)
+        web, main = deepcopy(web), deepcopy(main)
+        web.pop("lastModifiedTime", None)
+        main["properties"].pop("lastModifiedTime", None)
+        return {"settings": settings, "web": web, "container": main,
+                "identity": site.get("identity"),
+                "site": {key: site["properties"].get(key) for key in
+                         ("serverFarmId", "httpsOnly", "clientCertEnabled", "publicNetworkAccess")},
+                "auth": self._arm(slot, "/config/authsettingsV2"),
+                "hostnames": self._arm(slot, "/hostNameBindings")}
+
+    def _assert_channel_absent(self, slot):
+        for name in ("request.json", "response.json"):
+            self.transport.request("GET", SCM[slot] + "/api/vfs/" + DIRECTORY + "/" + name,
+                                   accepted=(404,), max_bytes=8192)
+
+    def _check_public_auth(self, slot):
+        host = "https://pp-image-library" + ("-staging" if slot == "staging" else "") + ".azurewebsites.net"
+        with requests.Session() as session:
+            session.trust_env = False
+            root = session.get(host + "/", timeout=(5, 15), allow_redirects=False)
+            admin = session.get(host + "/api/maintenance/deployment-status", timeout=(5, 15), allow_redirects=False)
+        if root.status_code != 302 or root.headers.get("Location") != "/login" or admin.status_code != 401:
+            raise AzureIOError("Cleanup restart authentication boundary differs")
+
+    def finalize_held(self, receipt, configuration, frozen):
+        """Stop/delete/restart once, with no RPC after deletion to recreate files.
+
+        Called explicitly before the controller journals success. Any uncertainty
+        retains the lease and prohibits replay, restart, resume or rollback.
+        """
+        if self.cleanup_attempted or self.update_uncertain or self.pending_operation or self.start_required:
+            raise AzureIOError("Cleanup cannot start or be replayed")
+        self.cleanup_attempted = True
+        self.assert_recovery_safe(receipt["registry_image"], configuration, frozen)
+        for slot in ("staging", "production"):
+            if not self.nonces[slot]:
+                continue
+            self.assert_lease()
+            identity = self._cleanup_identity(slot)
+            image = identity["container"]["properties"]["image"]
+            if image not in self.receipts:
+                raise AzureIOError("Cleanup image lacks verified provenance")
+            expected = self.receipts[image]
+            validate_receipt(expected)
+            snapshot = self.snapshot(slot)
+            lifecycle = self.lifecycle if slot == "production" else self.lifecycles[slot]
+
+            def unchanged():
+                self.assert_lease()
+                if self._cleanup_identity(slot) != identity or self.snapshot(slot) != snapshot:
+                    raise AzureIOError("Cleanup configuration/state changed; reconcile")
+                if slot == "production":
+                    self.assert_recovery_safe(receipt["registry_image"], configuration, frozen)
+
+            unchanged()
+            old = lifecycle.stop()
+            unchanged()
+            self.cleanup_channel(slot)
+            unchanged()
+            validate_receipt(expected)
+            lifecycle.start()
+            self._wait_cold_readiness(expected, self.clock() + 300, slot=slot)
+            active = lifecycle.inventory()
+            if len(active) != 1 or active & old:
+                raise AzureIOError("Cleanup restart lacks one fresh named runtime")
+            unchanged()
+            self._check_public_auth(slot)
+            self._assert_channel_absent(slot)
+            self.lease.checkpoint(slot + "_cleanup_restart_verified")
+        self.assert_recovery_safe(receipt["registry_image"], configuration, frozen)
+        self.cleanup_complete = True

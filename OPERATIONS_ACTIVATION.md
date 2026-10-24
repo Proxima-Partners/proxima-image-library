@@ -77,6 +77,11 @@ not the subsequently approved isolated resource provisioning.
 
 ## Activation sequence: separate approvals required
 
+**User decision, 2026-10-23:** private CI networking and the paid managed runner
+are deferred until the performance release is validated. Continue scoped
+implementation/testing unattended, but keep production releases supervised.
+Do not weaken network restrictions or treat validation as infrastructure approval.
+
 1. **Completed:** implementation review and full container-era integration into
    legacy main through PR #4, with all three checks passing. Main-merge approval
    did not authorize deployment. Preserve the accepted immutable rollback artifact
@@ -104,16 +109,20 @@ not the subsequently approved isolated resource provisioning.
    The fresh real CI happy path, contention, stale/exact resume, stopped rollback
    and cleanup subset passed in `40067583967-1`; loss/unknown-outcome/full-controller
    and live asynchronous-receipt evidence are still open. Current network access
-   requires an operator for each run; a stable private-runner proposal needs
-   separate infrastructure/security/billing approval.
+   requires an operator for each run. Retain that controlled procedure for the
+   supervised performance release; the private-runner proposal is deferred and
+   still needs separate infrastructure/security/billing approval when revisited.
 6. Approve the first supervised normal container release. Verify exact staging
    artifact, auth/bounded reads, lease/drain/zero work, protected backup, unchanged
    configuration/files, in-place digest, fresh boot and custom-domain behavior.
    Review any writable acceptance scope separately; the previous disposable
    canary approval was consumed and is not reusable.
-7. Only then approve unattended promotion/write-resumption and read-only
-   operations activation. Any ambiguous write outcome stops, retains evidence
-   and requires reconciliation. Never rerun a deployed workflow to recover it.
+7. After performance validation, reconsider the deferred stable unattended
+   release-network proposal and obtain separate approval before provisioning.
+   Prove that access path before approving unattended promotion/write-resumption.
+   Read-only operations activation remains separately gated. Any ambiguous write
+   outcome stops, retains evidence and requires reconciliation. Never rerun a
+   deployed workflow to recover it.
 
 ## Read-only maintenance operating proposal (not scheduled)
 

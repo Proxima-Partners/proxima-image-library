@@ -34,7 +34,10 @@ class FakeAdapter:
         self.held = True
         try:
             yield
-        finally:
+        except BaseException:
+            # Match BlobReleaseLease: ambiguous and interrupted runs retain it.
+            raise
+        else:
             self.held = False
 
     def assert_lease(self):
@@ -61,6 +64,15 @@ class FakeAdapter:
 
     def configuration(self):
         return {"secret": "not-for-journal"}
+
+    def validate_resume_policy(self, resume_writes):
+        pass
+
+    def finalize_held(self, receipt, configuration, frozen):
+        assert self.draining and receipt == self.current
+
+    def prepare_resume(self, receipt, previous, configuration, frozen):
+        return self.observe("production")
 
     def resume_verified(self, receipt, observed, configuration, frozen):
         self.assert_lease()
@@ -165,7 +177,7 @@ def test_unsafe_target_rejected_before_drain_or_update(tmp_path, key, value):
     adapter.overrides[key] = value
     with pytest.raises(release.StopRelease):
         run(adapter, tmp_path)
-    assert not adapter.draining and not adapter.updates and not adapter.held
+    assert not adapter.draining and not adapter.updates and adapter.held
 
 
 @pytest.mark.parametrize("key,value", [("registry_image", "proximaimagelibrary.azurecr.io/image-library:latest"),
@@ -192,7 +204,7 @@ def test_ambiguous_or_changed_state_stops_without_blind_retry(tmp_path, fault, u
         run(adapter, tmp_path)
     assert "secret" not in str(exc.value)
     assert len(adapter.updates) == updates
-    assert adapter.draining and not adapter.held
+    assert adapter.draining and adapter.held
     assert "stopped_reconcile_no_retry" in (tmp_path / "release.jsonl").read_text()
 
 
