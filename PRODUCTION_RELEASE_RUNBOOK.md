@@ -15,6 +15,11 @@ lease release. Independent verification confirms prior image, Stopped app, zero
 runtimes, absent test files and unlocked lease. Temporary runner access is removed;
 private evidence is retained. The full production-controller fault matrix and
 stable unattended network remain open. See `PRODUCTION_READINESS.md`.
+The user has deferred private CI networking and the paid managed runner until
+the performance release is validated. Use controlled operator-scoped access for
+the supervised release, preserving safety checks and temporary-rule cleanup.
+Implementation/testing can continue unattended; neither production automation
+nor new infrastructure is authorized by this deferral.
 Current implementation and remaining acceptance gates are in `UNATTENDED_IMPLEMENTATION.md` and
 `OPERATIONS_ACTIVATION.md`; older preparation sections below are historical.
 

@@ -53,8 +53,11 @@ def adapter():
     # Test fixtures only; the production controller has no CLI entry point.
     lease = SimpleNamespace(assert_held=lambda: None, checkpoint=lambda phase: None, run_id="test-run")
     transport = SimpleNamespace(request=lambda *a, **k: (_ for _ in ()).throw(AssertionError("Unexpected network call")))
-    return azure.AzureProductionAdapter(transport, lease,
+    result = azure.AzureProductionAdapter(transport, lease,
         azure.VerifiedReceipt(receipt("b", "124-1")), azure.VerifiedReceipt(receipt()), clock=lambda: 1000)
+    result.lifecycle = SimpleNamespace(stop=lambda: None, start=lambda: None,
+        confirm_stopped=lambda: None, inventory=lambda: {"one"})
+    return result
 
 
 def config():
@@ -265,3 +268,107 @@ def test_cleanup_refuses_unowned_control_files(adapter):
     adapter.transport.request = lambda *a, **k: (200, {"etag": '"x"'}, b'{"nonce":"someone-else"}')
     with pytest.raises(azure.AzureIOError, match="changed"):
         adapter.cleanup_channel()
+
+
+@pytest.mark.parametrize("fault", ["stop", "put", "start"])
+def test_cold_mutation_unknown_outcomes_are_not_replayed(adapter, monkeypatch, fault):
+    events = []
+    monkeypatch.setattr(adapter, "_config", lambda slot: deepcopy(config()))
+    def mutate(phase):
+        events.append(phase)
+        if phase == fault:
+            raise azure.AzureIOError("unknown mutation")
+    adapter.lifecycle.stop = lambda: mutate("stop")
+    adapter.lifecycle.start = lambda: mutate("start")
+    adapter.transport.request = lambda *a, **k: (mutate("put") or (200, {}, b""))
+    monkeypatch.setattr(adapter, "assert_recovery_safe", lambda *a: None)
+    with pytest.raises(azure.AzureIOError):
+        adapter.update(receipt()["registry_image"])
+        adapter.verify(receipt(), {}, {}, {}, seconds=10)
+    before = list(events)
+    with pytest.raises(azure.AzureIOError, match="unresolved"):
+        adapter.update(receipt()["registry_image"])
+    assert events == before
+    assert events == {"stop": ["stop"], "put": ["stop", "put"],
+                      "start": ["stop", "put", "start"]}[fault]
+
+
+def test_changed_container_after_stop_blocks_put(adapter, monkeypatch):
+    values = [deepcopy(config()), deepcopy(config())]
+    values[1][3]["properties"]["image"] = "foreign"
+    monkeypatch.setattr(adapter, "_config", lambda slot: values.pop(0))
+    with pytest.raises(azure.AzureIOError, match="changed while stopping"):
+        adapter.update(receipt()["registry_image"])
+
+
+def test_cleanup_running_reader_blocks_all_deletes(adapter):
+    def running(): raise azure.AzureIOError("runtime still running")
+    adapter.lifecycle.confirm_stopped = running
+    with pytest.raises(azure.AzureIOError, match="runtime still running"):
+        adapter.cleanup_channel()
+
+
+def test_cold_forward_order_before_runtime_acceptance(adapter, monkeypatch):
+    events = []
+    monkeypatch.setattr(adapter, "_config", lambda slot: deepcopy(config()))
+    adapter.lifecycle.stop = lambda: events.append("stop_confirmed")
+    adapter.transport.request = lambda *a, **k: (events.append("image_put") or (200, {}, b""))
+    adapter.lifecycle.start = lambda: events.append("start_confirmed")
+    monkeypatch.setattr(adapter, "assert_recovery_safe", lambda *a: events.append("state_verified"))
+    monkeypatch.setattr(adapter, "configuration", lambda: {})
+    monkeypatch.setattr(adapter, "_wait_cold_readiness", lambda *a: events.append("cold_ready"))
+    def observe(slot):
+        events.append("runtime_verified")
+        return dict(receipt(), healthy=True, auth_verified=True, reads_verified=True)
+    monkeypatch.setattr(adapter, "observe", observe)
+    adapter.update(receipt()["registry_image"])
+    adapter.verify(receipt(), {}, {}, {}, seconds=10)
+    assert events == ["stop_confirmed", "image_put", "state_verified", "start_confirmed", "cold_ready",
+                      "runtime_verified", "state_verified"]
+
+
+@pytest.mark.parametrize("status", [401, 403, 302, 404, 500])
+def test_cold_readiness_does_not_retry_auth_or_unclassified_failures(adapter, monkeypatch, status):
+    calls = []
+    class Response:
+        status_code = status
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+    class Session:
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+        def get(self, *args, **kwargs):
+            calls.append(kwargs)
+            return Response()
+    monkeypatch.setattr(azure.requests, "Session", Session)
+    with pytest.raises(azure.AzureIOError, match="access refused"):
+        adapter._wait_cold_readiness(receipt(), 1010)
+    assert len(calls) == 1 and calls[0]["allow_redirects"] is False
+
+
+@pytest.mark.parametrize("transient", [502, 503, "timeout", "wrong_build"])
+def test_cold_readiness_retries_only_reads_until_exact_build(adapter, monkeypatch, transient):
+    calls, now = [], [1000]
+    adapter.clock = lambda: now[0]
+    adapter.pause = lambda delay: now.__setitem__(0, now[0] + delay)
+    class Response:
+        def __init__(self, status, value):
+            self.status_code = status
+            raw = json.dumps(value).encode()
+            self.raw = SimpleNamespace(read=lambda *a, **k: raw)
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+    class Session:
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+        def get(self, *args, **kwargs):
+            calls.append(args)
+            value = dict(receipt(), version="v2.0.0", status="ready", telemetry=True)
+            if len(calls) == 1:
+                if transient == "timeout": raise azure.requests.Timeout()
+                if transient == "wrong_build": value["build_id"] = "old"
+                else: return Response(transient, {})
+            return Response(200, value)
+    monkeypatch.setattr(azure.requests, "Session", Session)
+    adapter._wait_cold_readiness(receipt(), 1010)
+    assert len(calls) == 2 and now[0] == 1003
