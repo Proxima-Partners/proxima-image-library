@@ -172,6 +172,15 @@ def test_pagination_cycle_is_rejected():
     assert len(session.calls) == 1
 
 
+def test_record_budget_stops_before_fetching_another_page():
+    url = "https://graph.microsoft.com/v1.0/sites/site/lists/Assets/items?$expand=fields&$top=1"
+    graph, _, session = client([Response({"value": [{"id": "1", "fields": {}}], "@odata.nextLink": url + "&page=2"})], records=1)
+    iterator = graph.records()
+    assert next(iterator)["id"] == "1"
+    with pytest.raises(DiagnosticStop, match="record_limit"): next(iterator)
+    assert len(session.calls) == 1 and "$top=1" in session.calls[0][0]
+
+
 def test_folder_traversal_is_bounded_before_more_network_calls():
     graph, _, session = client([Response({"value": [{"id": "folder", "name": "child", "folder": {}}]})], folders=1)
     with pytest.raises(DiagnosticStop, match="folder_limit"): list(graph.inventory("Images", "WebP"))

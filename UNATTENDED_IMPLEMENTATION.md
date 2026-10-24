@@ -56,6 +56,48 @@ write tests and schedule activation are separate approval gates.
 - Batch 2 target-Linux container: **548 passed**; JS **7 passed**. Reused isolated
   Python 3.12 developer validation: 541 passed/7 Linux-only skipped. Production
   remains unchanged; live concurrency/browser-performance acceptance is pending.
+- Batch 2 CI `40029611544` passed all build-only gates.
+- Batch 3: authenticated exact-build artifact retrieval, bounded ARM status/
+  Location polling with Retry-After, and dual-opt-in exact-runtime idle resume.
+  Ambiguous mutation/resume cannot trigger retries or rollback. Default remains
+  drained after promotion. Real accepted artifact `12529602290` was verified
+  read-only against run `40019125172-1`; no deployment or fresh scan was implied.
+- Batch 4: manual, main-only, opt-in public-health and evidence-review workflows;
+  legacy/pilot/source-baseline workflows replaced by refusal stubs on this branch.
+  Existing remote default/old branches, access grants and holds are unchanged.
+  Four bounded public checks passed at 22:05 UTC against the accepted build.
+- Added a target-image asset-presence test and HTTP smoke assertion for the badge
+  script, plus five workflow-boundary checks. Actionlint passed all workflows.
+  `OPERATIONS_ACTIVATION.md` records activation gates and the proposed maintenance
+  cadence. No schedule, alert service, new role or production automation enabled.
+- Build-only push validation now skips documentation-only checkpoints. Pull
+  request validation stays unconditional; required checks are not path-filtered.
+- Final local regression: **633 passed** on the actual Linux/amd64 Python 3.12.15
+  nonroot runtime with network disabled; **12 passed** browser/workflow checks.
+  Actionlint and `git diff --check` passed. Existing UTC deprecation warnings
+  remain visible. Fresh build-only CI is the remaining implementation check.
+
+## Signing checkpoint: 2026-10-23 22:12 UTC
+
+- First two batches are committed/pushed as `a77d642` and `f622521`; their CI runs
+  `40029086741` and `40029611544` passed. HEAD remains `f622521`.
+- Final batch is implemented, tested and staged, **not committed or pushed**.
+  The configured 1Password SSH signer failed with `failed to fill whole buffer`;
+  Git reported `failed to write commit object`. No signing bypass or Git config
+  change was attempted, and no commit/signing process remains running.
+- Offline exact-runtime smoke and release-channel smoke passed after the final
+  changes, including fresh boot, persistent drain, stale-boot rejection and opt-in
+  idle resume. The local fixture uses zero commit / `local-unattended-1`, explicitly
+  not a deployable CI release identity.
+- Fresh local Trivy scan/SBOM/security gate passed: zero **unreviewed** HIGH/CRITICAL
+  findings; the existing eight exact reviewed findings remain. No exception was
+  added or expiry extended. Evidence is in
+  `/private/tmp/image-library-unattended-scan.tFXaEN/reports/`; this temporary local
+  evidence does not replace a trusted fresh CI build of the eventual commit.
+- Next: user unlocks/authorizes 1Password signing; retry this branch's commit,
+  push only `perf/unattended-operations`, then observe fresh build-only CI through
+  its full security/runtime gates. Do not rerun a deployed workflow or bypass
+  signing. Production/main/schedules/access remain unchanged.
 
 ## Activation gates (not granted by implementation approval)
 

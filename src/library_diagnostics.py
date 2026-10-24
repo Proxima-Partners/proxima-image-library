@@ -147,9 +147,13 @@ class ReadOnlyGraph:
         except requests.RequestException:
             raise DiagnosticStop("provider_read_failed", failed=True) from None
 
-    def pages(self, url):
-        seen = set()
+    def pages(self, url, *, item_limit=None):
+        seen, count = set(), 0
         while url:
+            # Stop before requesting a page that could exceed the record cap.
+            # This can conservatively leave a partial last page unread.
+            if item_limit is not None and item_limit - count < min(100, item_limit):
+                raise DiagnosticStop("record_limit")
             if url in seen:
                 raise DiagnosticStop("pagination_cycle", failed=True)
             seen.add(url)
@@ -168,11 +172,15 @@ class ReadOnlyGraph:
                     raise ValueError()
             except (ValueError, KeyError, TypeError):
                 raise DiagnosticStop("invalid_provider_response", failed=True) from None
+            count += len(values)
+            if item_limit is not None and count > item_limit:
+                raise DiagnosticStop("record_limit")
             yield values
             url = following
 
     def records(self):
-        for page in self.pages(self.list_url + "?$expand=fields&$top=100"):
+        limit = self.budget.limits.records
+        for page in self.pages(self.list_url + f"?$expand=fields&$top={min(100, limit)}", item_limit=limit):
             for item in page:
                 if not isinstance(item.get("fields"), dict) or not isinstance(item.get("id"), str):
                     raise DiagnosticStop("invalid_catalog_record", failed=True)

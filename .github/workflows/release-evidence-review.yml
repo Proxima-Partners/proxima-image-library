@@ -1,0 +1,73 @@
+name: Review immutable release evidence (read only)
+
+# Prepared only: default-branch integration AND explicit enablement required.
+# No schedule, publish, OIDC, Azure login, deployment or write resumption.
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: Reviewed builder run ID (not this review run)
+        type: string
+        required: true
+      attempt:
+        description: Exact reviewed builder run attempt
+        type: string
+        required: true
+      commit:
+        description: Reviewed full 40-character source commit
+        type: string
+        required: true
+      image:
+        description: Reviewed ACR image at immutable sha256 digest
+        type: string
+        required: true
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: image-library-evidence-review
+  cancel-in-progress: false
+
+jobs:
+  review:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      PYTHON_DOTENV_DISABLED: '1'
+      TELEMETRY_ENABLED: 'false'
+    steps:
+      - name: Require separately approved enablement
+        env:
+          ENABLED: ${{ vars.IMAGE_LIBRARY_EVIDENCE_REVIEW_ENABLED }}
+        run: test "$ENABLED" = 'true'
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - name: Prepare isolated pinned dependencies
+        run: |
+          python3.12 -m venv .operations-venv
+          .operations-venv/bin/python -m pip install --only-binary=:all: -r requirements.txt
+          .operations-venv/bin/python -m pip check
+          mkdir -p reports
+      - name: Verify authenticated exact-build artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REVIEW_RUN: ${{ inputs.run_id }}
+          REVIEW_ATTEMPT: ${{ inputs.attempt }}
+          REVIEW_COMMIT: ${{ inputs.commit }}
+          REVIEW_IMAGE: ${{ inputs.image }}
+        run: |
+          .operations-venv/bin/python -m scripts.release_artifacts \
+            --run "$REVIEW_RUN" --attempt "$REVIEW_ATTEMPT" \
+            --commit "$REVIEW_COMMIT" --image "$REVIEW_IMAGE" > reports/release-evidence-review.json
+      - name: Retain sanitized review (not deployment approval)
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-evidence-review-${{ github.run_id }}-${{ github.run_attempt }}
+          path: reports/release-evidence-review.json
+          retention-days: 90
+          if-no-files-found: warn

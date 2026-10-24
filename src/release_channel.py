@@ -2,8 +2,9 @@
 
 No public HTTP endpoint, browser cookie, MCP secret or arbitrary command. Azure
 SCM publishing permission is the authentication boundary, NOT /home file modes.
-Only status, bounded catalog/filesystem probes and drain-on are accepted.
-No secrets or record contents are exchanged. Never undrain automatically.
+Status, bounded catalog/filesystem probes and drain-on are accepted by default.
+Resume needs a separately enabled runtime flag and exact build/boot/mount binding.
+No secrets or record contents are exchanged. Resume is disabled by default.
 """
 import json
 import os
@@ -105,7 +106,10 @@ class ReleaseChannel:
             request = json.loads(raw)
         except (ValueError, UnicodeError):
             return False
-        if not isinstance(request, dict) or set(request) != {"protocol", "nonce", "expires", "action"}:
+        fields = {"protocol", "nonce", "expires", "action"}
+        if isinstance(request, dict) and request.get("action") == "resume":
+            fields.add("expected")
+        if not isinstance(request, dict) or set(request) != fields:
             return False
         nonce = request["nonce"]
         now = self.clock()
@@ -115,14 +119,24 @@ class ReleaseChannel:
                 or type(request["expires"]) is not int
                 or not now < request["expires"] <= now + 60
                 or not isinstance(request["action"], str)
-                or request["action"] not in {"status", "probe", "state_probe", "drain"}):
+                or request["action"] not in {"status", "probe", "state_probe", "drain", "resume"}):
             return False
         self.seen[nonce] = request["expires"]
         response = {"protocol": 1, "nonce": nonce, "action": request["action"],
                     "release_state": self.state, "release": self.release,
                     "slot": os.getenv("TELEMETRY_SLOT"), "workers": worker_count(), "ok": True}
         try:
-            if request["action"] == "drain":
+            if request["action"] == "resume":
+                expected = {"commit": self.release.get("commit"), "build_id": self.release.get("build_id"),
+                            "state_id": self.state.get("state_id"), "boot_id": self.state.get("boot_id")}
+                if (os.getenv("PRODUCTION_RELEASE_RESUME_ENABLED") != "true"
+                        or os.getenv("TELEMETRY_SLOT") != "production"
+                        or os.getenv("INGEST_POLLER_ENABLED") != "false"
+                        or worker_count() != 1 or not all(expected.values())
+                        or request["expected"] != expected):
+                    raise RuntimeError("Resume policy or exact runtime binding differs")
+                controls.resume_if_idle()
+            elif request["action"] == "drain":
                 controls.set_drain(True)
                 marker = controls.drain_path()
                 descriptor = os.open(marker, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)

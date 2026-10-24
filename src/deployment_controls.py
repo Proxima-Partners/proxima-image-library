@@ -59,6 +59,31 @@ def set_drain(enabled):
         return snapshot()
 
 
+def resume_if_idle():
+    """Internal opt-in release operation; callers must verify policy/build first.
+
+    Admission stays locked until the drain-marker removal is persisted. An I/O
+    failure is an ambiguous resume outcome, never permission to replay this action.
+    """
+    with _lock:
+        if read_only() or not draining() or _active:
+            raise WritesDisabled("Resume requires a writable, idle, drained runtime")
+        path = drain_path()
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        try:
+            if not stat.S_ISREG(os.fstat(fd).st_mode):
+                raise WritesDisabled("Invalid drain marker")
+            path.unlink()
+            directory = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
+            try:
+                os.fsync(directory)
+            finally:
+                os.close(directory)
+        finally:
+            os.close(fd)
+        return snapshot()
+
+
 class WritesDisabled(RuntimeError):
     pass
 

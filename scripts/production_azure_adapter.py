@@ -2,9 +2,10 @@
 
 Not a cutover command: requires production already on the release-channel image,
 ingestion disabled, staging validated, and current CI-bound receipt objects.
-No public machine-admin endpoint and no automatic undrain/state restore.
-Still requires a trusted artifact loader, CI access proof, and live recovery
-rehearsal. There is deliberately no deployment CLI or workflow entry point.
+No public machine-admin endpoint or automatic state restore. Write resumption
+requires an explicit controller option AND separately approved runtime setting.
+The authenticated artifact loader exists; CI access proof and live recovery
+rehearsal remain required. There is no deployment CLI or workflow entry point.
 """
 from contextlib import contextmanager
 from copy import deepcopy
@@ -14,6 +15,7 @@ import json
 from pathlib import Path
 import re
 import time
+from urllib.parse import urlsplit
 import uuid
 
 import requests
@@ -56,6 +58,8 @@ class AzureProductionAdapter:
         self.receipts = {r["registry_image"]: deepcopy(r) for r in (candidate, prior)}
         self.clock, self.pause = clock, pause
         self.nonces = {"production": set(), "staging": set()}
+        self.pending_operation = None
+        self.pending_kind, self.poll_not_before = "status", 0
 
     def _arm(self, slot, suffix="", *, method="GET", body=None):
         if slot not in SCM:
@@ -72,10 +76,20 @@ class AzureProductionAdapter:
     def assert_lease(self):
         self.lease.assert_held()
 
-    def _rpc(self, slot, action):
+    def _rpc(self, slot, action, *, expected=None):
         self.assert_lease()
-        if slot not in SCM or action not in {"status", "probe", "state_probe", "drain"} or (action == "drain" and slot != "production"):
+        if (slot not in SCM or action not in {"status", "probe", "state_probe", "drain", "resume"}
+                or (action in {"drain", "resume"} and slot != "production")):
             raise AzureIOError("Unapproved runtime control action")
+        if action == "resume":
+            if (not isinstance(expected, dict) or set(expected) != {"commit", "build_id", "boot_id", "state_id"}
+                    or not re.fullmatch(r"[a-f0-9]{40}", str(expected["commit"]))
+                    or not re.fullmatch(r"[A-Za-z0-9._-]{1,100}", str(expected["build_id"]))
+                    or not re.fullmatch(r"[a-f0-9]{32}", str(expected["boot_id"]))
+                    or not re.fullmatch(r"[a-f0-9]{64}", str(expected["state_id"]))):
+                raise AzureIOError("Exact resume binding is required")
+        elif expected is not None:
+            raise AzureIOError("Unexpected runtime control arguments")
         nonce = uuid.uuid4().hex
         self.nonces[slot].add(nonce)
         url = SCM[slot] + "/api/vfs/" + DIRECTORY + "/request.json"
@@ -92,6 +106,8 @@ class AzureProductionAdapter:
                 raise AzureIOError("Unrecognized prior control request; reconcile first")
         condition = {"If-Match": etag} if status == 200 else {"If-None-Match": "*"}
         body = {"protocol": 1, "nonce": nonce, "expires": int(self.clock()) + 60, "action": action}
+        if action == "resume":
+            body["expected"] = expected
         self.lease.checkpoint("runtime_" + action + "_requested")
         self.transport.request("PUT", url, accepted=(200, 201, 204), headers=condition,
                                data=json.dumps(body).encode())
@@ -245,6 +261,8 @@ class AzureProductionAdapter:
 
     def update(self, image):
         self.assert_lease()
+        if self.pending_operation:
+            raise AzureIOError("Previous ARM operation unresolved; reconcile before another update")
         if image not in self.receipts:
             raise AzureIOError("Image lacks verified CI provenance")
         validate_receipt(self.receipts[image])
@@ -255,13 +273,71 @@ class AzureProductionAdapter:
         properties["image"] = image
         properties.pop("lastModifiedTime", None)
         self.lease.checkpoint("image_update_requested")
-        self.transport.request("PUT", ARM + APP_ID + "/sitecontainers/main?api-version=" + API,
+        status, headers, raw = self.transport.request("PUT", ARM + APP_ID + "/sitecontainers/main?api-version=" + API,
                                accepted=(200, 201, 202), headers={"Content-Type": "application/json"},
                                data=json.dumps({"properties": properties}).encode())
+        lower = {key.lower(): value for key, value in headers.items()}
+        operation = lower.get("azure-asyncoperation") or lower.get("location")
+        if operation:
+            parsed = urlsplit(operation)
+            prefix = ARM + APP_ID.split("/resourceGroups/")[0] + "/"
+            if not operation.startswith(prefix) or parsed.fragment or parsed.username:
+                raise AzureIOError("Unapproved ARM operation poll endpoint; reconcile")
+            self.pending_operation = operation
+            self.pending_kind = "status" if lower.get("azure-asyncoperation") else "location"
+            self.poll_not_before = self.clock() + self._poll_delay(lower)
+        elif status == 202:
+            raise AzureIOError("ARM accepted without a poll receipt; outcome requires reconciliation")
+        else:
+            try:
+                result = json.loads(raw) if raw else {}
+                state = result.get("properties", {}).get("provisioningState")
+                if state not in (None, "Succeeded"):
+                    raise ValueError("nonterminal or failed ARM state")
+            except (ValueError, TypeError, AttributeError):
+                raise AzureIOError("ARM result is not confirmed synchronous; reconcile") from None
+            self.pending_operation = None
         return True
+
+    @staticmethod
+    def _poll_delay(headers):
+        value = headers.get("retry-after", "3")
+        if not isinstance(value, str) or not re.fullmatch(r"[0-9]{1,6}", value):
+            raise AzureIOError("Unrecognized ARM polling interval; reconcile")
+        return max(1, int(value))  # Never shorten a provider-requested interval.
+
+    def _await_operation(self, deadline):
+        while self.pending_operation:
+            self.assert_lease()
+            if self.clock() >= deadline:
+                raise AzureIOError("ARM operation still uncertain; no automatic rollback")
+            if self.poll_not_before > self.clock():
+                self.pause(min(3, self.poll_not_before - self.clock(), deadline - self.clock()))
+                continue
+            code, headers, raw = self.transport.request("GET", self.pending_operation,
+                accepted=(200, 202, 204), timeout=min(30, deadline - self.clock()))
+            if self.clock() >= deadline:
+                raise AzureIOError("ARM polling deadline exceeded; reconcile")
+            lower = {key.lower(): value for key, value in headers.items()}
+            try:
+                result = json.loads(raw) if raw else {}
+                if not isinstance(result, dict) or not isinstance(result.get("properties", {}), dict):
+                    raise ValueError()
+            except (ValueError, TypeError):
+                raise AzureIOError("Unrecognized ARM polling response; reconcile") from None
+            state = result.get("status") or result.get("properties", {}).get("provisioningState")
+            if ((state == "Succeeded" and code == 200)
+                    or (self.pending_kind == "location" and code in {200, 204} and state is None)):
+                self.pending_operation = None
+            elif (state in {"InProgress", "Running", "Accepted"}
+                  or (self.pending_kind == "location" and code == 202 and state is None)):
+                self.poll_not_before = self.clock() + self._poll_delay(lower)
+            else:
+                raise AzureIOError("ARM terminal result needs reconciliation; no blind rollback")
 
     def verify(self, receipt, baseline, configuration, frozen, *, seconds):
         deadline = self.clock() + seconds
+        self._await_operation(deadline)
         while self.clock() < deadline:
             self.assert_lease()
             if self.configuration() != configuration:
@@ -277,6 +353,18 @@ class AzureProductionAdapter:
                 return observed
             self.pause(3)
         raise ConfirmedVerificationFailure("Acknowledged update did not become the expected ready build")
+
+    def resume_verified(self, receipt, observed, configuration, frozen):
+        self.assert_recovery_safe(receipt["registry_image"], configuration, frozen)
+        if self._config("production")[1].get("PRODUCTION_RELEASE_RESUME_ENABLED") != "true":
+            raise AzureIOError("Automatic resume has not been approved/configured")
+        expected = {key: observed[key] for key in ("commit", "build_id", "boot_id", "state_id")}
+        result = self._rpc("production", "resume", expected=expected)
+        if result.get("draining") is not False:
+            raise AzureIOError("Resume not acknowledged; reconcile without retry")
+        # Writes may have begun after resume. Never compare/restore the old file
+        # snapshot now, and never enter rollback after a resume ambiguity.
+        return self.observe("production")
 
     def cleanup_channel(self):
         for slot, nonces in self.nonces.items():

@@ -50,7 +50,7 @@ def test_mismatched_receipt_rejected(key, value):
 
 @pytest.fixture
 def adapter():
-    # Test fixtures only; production has no artifact loader/CLI yet.
+    # Test fixtures only; the production controller has no CLI entry point.
     lease = SimpleNamespace(assert_held=lambda: None, checkpoint=lambda phase: None, run_id="test-run")
     transport = SimpleNamespace(request=lambda *a, **k: (_ for _ in ()).throw(AssertionError("Unexpected network call")))
     return azure.AzureProductionAdapter(transport, lease,
@@ -99,7 +99,7 @@ def test_rpc_does_not_overwrite_another_run(adapter):
 def test_config_guards_and_immutable_update_only(adapter, monkeypatch):
     captured = []
     monkeypatch.setattr(adapter, "_config", lambda slot: deepcopy(config()))
-    adapter.transport.request = lambda *args, **kwargs: captured.append((args, kwargs)) or (202, {}, b"")
+    adapter.transport.request = lambda *args, **kwargs: captured.append((args, kwargs)) or (200, {}, b"")
     candidate = receipt("b", "124-1")["registry_image"]
     assert adapter.update(candidate) is True
     assert len(captured) == 1
@@ -123,6 +123,107 @@ def test_update_transport_failure_is_not_retried(adapter, monkeypatch):
     with pytest.raises(azure.AzureIOError):
         adapter.update(receipt()["registry_image"])
     assert len(calls) == 1
+
+
+def test_async_update_without_operation_receipt_is_ambiguous(adapter, monkeypatch):
+    monkeypatch.setattr(adapter, "_config", lambda slot: deepcopy(config()))
+    adapter.transport.request = lambda *a, **k: (202, {}, b"")
+    with pytest.raises(azure.AzureIOError, match="poll receipt"):
+        adapter.update(receipt()["registry_image"])
+
+
+@pytest.mark.parametrize("raw", [b'{"properties":{"provisioningState":"InProgress"}}',
+    b'{"properties":{"provisioningState":"Failed"}}', b'[]', b'not json'])
+def test_sync_status_with_uncertain_body_is_not_an_acknowledgement(adapter, monkeypatch, raw):
+    monkeypatch.setattr(adapter, "_config", lambda slot: deepcopy(config()))
+    adapter.transport.request = lambda *a, **k: (201, {}, raw)
+    with pytest.raises(azure.AzureIOError, match="reconcile"):
+        adapter.update(receipt()["registry_image"])
+
+
+def test_pending_arm_operation_blocks_a_second_mutation(adapter, monkeypatch):
+    adapter.pending_operation = azure.ARM + azure.APP_ID + "/operations/fixture"
+    monkeypatch.setattr(adapter, "_config", lambda _: pytest.fail("no more calls"))
+    with pytest.raises(azure.AzureIOError, match="unresolved"):
+        adapter.update(receipt()["registry_image"])
+
+
+def test_async_update_must_complete_before_runtime_verification(adapter, monkeypatch):
+    monkeypatch.setattr(adapter, "_config", lambda slot: deepcopy(config()))
+    url = azure.ARM + azure.APP_ID + "/operations/fixture?api-version=" + azure.API
+    adapter.transport.request = lambda *a, **k: (202, {"Azure-AsyncOperation": url}, b"")
+    assert adapter.update(receipt()["registry_image"]) is True
+    assert adapter.pending_operation == url
+    values, times = iter([{"status": "InProgress"}, {"status": "Succeeded"}]), [1000]
+    adapter.transport.request = lambda *a, **k: (200, {}, json.dumps(next(values)).encode())
+    adapter.clock = lambda: times[0]
+    adapter.pause = lambda seconds: times.__setitem__(0, times[0] + seconds)
+    adapter._await_operation(1010)
+    assert adapter.pending_operation is None and times[0] == 1006
+
+
+@pytest.mark.parametrize("state", ["Failed", "Canceled", "Unknown", None])
+def test_async_failed_or_unknown_state_stops_without_automatic_rollback(adapter, state):
+    adapter.pending_operation = azure.ARM + azure.APP_ID + "/operations/fixture"
+    adapter.transport.request = lambda *a, **k: (200, {}, json.dumps({"status": state}).encode())
+    with pytest.raises(azure.AzureIOError): adapter._await_operation(1010)
+    assert adapter.pending_operation is not None
+
+
+def test_async_deadline_is_not_confirmed_runtime_failure(adapter):
+    adapter.pending_operation = azure.ARM + azure.APP_ID + "/operations/fixture"
+    with pytest.raises(azure.AzureIOError): adapter._await_operation(999)
+
+
+@pytest.mark.parametrize("terminal", [200, 204])
+def test_location_poll_honors_retry_after_and_empty_terminal_result(adapter, terminal):
+    adapter.pending_operation = azure.ARM + azure.APP_ID + "/operations/fixture"
+    adapter.pending_kind = "location"
+    times, calls = [1000], []
+    values = iter([(202, {"Retry-After": "7"}, b""), (terminal, {}, b"")])
+    def request(*a, **k): calls.append(times[0]); return next(values)
+    adapter.transport.request = request
+    adapter.clock = lambda: times[0]
+    adapter.pause = lambda delay: times.__setitem__(0, times[0] + delay)
+    adapter._await_operation(1020)
+    assert calls == [1000, 1007] and adapter.pending_operation is None
+
+
+def test_long_retry_after_stops_without_an_early_poll(adapter):
+    adapter.pending_operation = azure.ARM + azure.APP_ID + "/operations/fixture"
+    adapter.pending_kind = "location"
+    times, calls = [1000], []
+    def request(*a, **k): calls.append(times[0]); return 202, {"Retry-After": "30"}, b""
+    adapter.transport.request = request
+    adapter.clock = lambda: times[0]
+    adapter.pause = lambda delay: times.__setitem__(0, times[0] + delay)
+    with pytest.raises(azure.AzureIOError): adapter._await_operation(1010)
+    assert calls == [1000] and adapter.pending_operation is not None
+
+
+@pytest.mark.parametrize("header", ["invalid", "-1", "1.5"])
+def test_invalid_polling_interval_is_not_guessed(adapter, header):
+    with pytest.raises(azure.AzureIOError): adapter._poll_delay({"retry-after": header})
+
+
+def test_empty_status_endpoint_does_not_mean_success(adapter):
+    adapter.pending_operation = azure.ARM + azure.APP_ID + "/operations/fixture"
+    adapter.transport.request = lambda *a, **k: (204, {}, b"")
+    with pytest.raises(azure.AzureIOError): adapter._await_operation(1010)
+
+
+def test_foreign_operation_poll_is_rejected(adapter, monkeypatch):
+    monkeypatch.setattr(adapter, "_config", lambda slot: deepcopy(config()))
+    adapter.transport.request = lambda *a, **k: (202, {"Location": "https://evil.test/poll"}, b"")
+    with pytest.raises(azure.AzureIOError): adapter.update(receipt()["registry_image"])
+
+
+def test_resume_requires_separate_runtime_approval(adapter, monkeypatch):
+    monkeypatch.setattr(adapter, "assert_recovery_safe", lambda *a: None)
+    monkeypatch.setattr(adapter, "_config", lambda slot: deepcopy(config()))
+    monkeypatch.setattr(adapter, "_rpc", lambda *a, **k: pytest.fail("resume forbidden"))
+    with pytest.raises(azure.AzureIOError, match="approved"):
+        adapter.resume_verified(receipt(), {}, {}, {})
 
 
 def test_protected_backup_roundtrip_and_independent_mount(adapter, monkeypatch):

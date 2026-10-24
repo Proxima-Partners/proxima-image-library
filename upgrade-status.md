@@ -4,6 +4,18 @@ Updated: 2026-10-23 (America/Los_Angeles).
 
 ## Current execution checkpoint
 
+**Local unattended-implementation checks passed on `perf/unattended-operations`;
+the final commit/push is blocked on 1Password signing. It is not deployed.**
+633 target-runtime tests, 12 browser/workflow checks, runtime smoke and the local
+security gate passed. The first two batches already passed build-only CI; the
+final batch is staged and still needs a signed commit and fresh CI. Read efficiency,
+bounded diagnostics, authenticated artifact
+verification, conservative release safeguards and disabled operations workflows
+are prepared. See `UNATTENDED_IMPLEMENTATION.md` and `OPERATIONS_ACTIVATION.md` for
+tests and the separate main-integration/access/rehearsal/activation gates. A fresh
+four-request public probe at 22:05 UTC confirmed the accepted build below; it does
+not close the 24-hour telemetry or representative-performance acceptance gates.
+
 **Supervised production cutover PASSED.** `https://library.liveproxima.org` now
 serves writable **v2.0.0**, commit `2ffc0ff` / build `40019125172-1`, on the
 dedicated P2v3 container app. Final stopped-writer backup, Azure-aware no-overwrite

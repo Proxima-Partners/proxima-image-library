@@ -154,3 +154,51 @@ def test_worker_count_needs_real_linux_single_child(monkeypatch):
     assert channel.worker_count() is None
     monkeypatch.setattr(os, "getppid", lambda: 3)
     assert channel.worker_count() is None
+
+
+def resume_request(runtime):
+    runtime.release.update(commit="b" * 40, build_id="100-1")
+    runtime.state.update(boot_id="c" * 32)
+    expected = dict(runtime.state, commit=runtime.release["commit"], build_id="100-1")
+    request(runtime, action="resume", expected=expected)
+    return expected
+
+
+def test_resume_disabled_by_default_even_with_exact_runtime_binding(runtime, monkeypatch):
+    monkeypatch.delenv("PRODUCTION_RELEASE_RESUME_ENABLED", raising=False)
+    channel.controls.set_drain(True); resume_request(runtime)
+    assert runtime.process_once() and response(runtime)["ok"] is False
+    assert channel.controls.draining()
+
+
+def test_resume_requires_explicit_flag_exact_runtime_idle_and_single_owner(runtime, monkeypatch):
+    monkeypatch.setenv("PRODUCTION_RELEASE_RESUME_ENABLED", "true")
+    monkeypatch.setenv("INGEST_POLLER_ENABLED", "false")
+    channel.controls.set_drain(True); resume_request(runtime)
+    assert runtime.process_once() and response(runtime)["ok"] is True
+    assert response(runtime)["draining"] is False
+    assert runtime.process_once() is False  # no replay
+
+
+@pytest.mark.parametrize("key,value", [("TELEMETRY_SLOT", "staging"), ("INGEST_POLLER_ENABLED", "true"),
+    ("APP_READ_ONLY", "true"), ("PRODUCTION_RELEASE_RESUME_ENABLED", "yes")])
+def test_resume_wrong_policy_stays_drained(runtime, monkeypatch, key, value):
+    monkeypatch.setenv("PRODUCTION_RELEASE_RESUME_ENABLED", "true")
+    monkeypatch.setenv("INGEST_POLLER_ENABLED", "false")
+    monkeypatch.setenv(key, value)
+    channel.controls.set_drain(True); resume_request(runtime)
+    assert runtime.process_once() and response(runtime)["ok"] is False
+    assert channel.controls.draining()
+
+
+def test_resume_rejects_active_work_and_changed_boot(runtime, monkeypatch):
+    monkeypatch.setenv("PRODUCTION_RELEASE_RESUME_ENABLED", "true")
+    monkeypatch.setenv("INGEST_POLLER_ENABLED", "false")
+    with channel.controls.Work():
+        channel.controls.set_drain(True); resume_request(runtime)
+        assert runtime.process_once() and response(runtime)["ok"] is False
+    expected = resume_request(runtime)
+    expected["boot_id"] = "d" * 32
+    request(runtime, action="resume", expected=expected, nonce="e" * 32)
+    assert runtime.process_once() and response(runtime)["ok"] is False
+    assert channel.controls.draining()

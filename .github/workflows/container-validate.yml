@@ -3,6 +3,19 @@ name: Validate Image Library container
 on:
   push:
     branches: [perf/container-pilot, perf/unattended-operations]
+    # Documentation checkpoints do not rebuild an unchanged runtime. PR checks
+    # remain unconditional so a required check is never left pending by a filter.
+    paths:
+      - .github/workflows/**
+      - Dockerfile
+      - .dockerignore
+      - requirements*.txt
+      - src/**
+      - scripts/**
+      - templates/**
+      - static/**
+      - tests/**
+      - security/**
   pull_request:
     branches: [main]
   workflow_dispatch: {}
@@ -30,7 +43,7 @@ jobs:
       - name: Build, regression, exact-image smoke, SBOM and security gates
         run: bash scripts/validate_container.sh
 
-      - name: Browser polling behavior (no network or browser credentials)
+      - name: Browser behavior and workflow boundaries (no credentials)
         run: node --test tests/js/*.test.cjs
 
       - name: Retain evidence even when a gate fails

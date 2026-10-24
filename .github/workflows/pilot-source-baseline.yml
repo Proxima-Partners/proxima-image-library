@@ -1,12 +1,9 @@
-name: Compare isolated pilot source baseline
+name: Retired isolated source baseline deployment
 
+# Tombstone on the implementation branch. Historical artifacts/source remain in
+# Git; this does not revoke credentials or disable workflows on older branches.
 on:
   workflow_dispatch: {}
-  push:
-    branches: [perf/container-pilot]
-    paths:
-      - .github/workflows/pilot-source-baseline.yml
-      - scripts/pilot_source_baseline.py
 
 permissions:
   contents: read
@@ -16,29 +13,11 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  source-baseline:
-    if: github.ref == 'refs/heads/perf/container-pilot'
+  retired:
     runs-on: ubuntu-24.04
-    environment: image-library-pilot
-    timeout-minutes: 30
-    permissions:
-      contents: read
-      id-token: write
+    timeout-minutes: 1
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-        with:
-          persist-credentials: false
-      - uses: azure/login@7184910d9eb2b1c5e48f7073824a90609bb9b6d6 # v2
-        with:
-          client-id: ${{ vars.AZURE_IMAGE_DEPLOY_CLIENT_ID }}
-          tenant-id: a87255bb-ca4b-4ada-9354-5e0579f6e68f
-          subscription-id: 9528fb58-4fa4-43f8-9940-e5c3e1f1903f
-      - name: Package and deploy read-only source to the empty new-app slot
-        run: python3 -m scripts.pilot_source_baseline
-      - name: Retain baseline evidence
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: pilot-source-${{ github.run_id }}-${{ github.run_attempt }}
-          path: reports/
-          retention-days: 90
+      - name: Refuse obsolete deployment path
+        run: |
+          echo "::error::Retired after production cutover. No deployment was attempted. See OPERATIONS_ACTIVATION.md."
+          exit 1

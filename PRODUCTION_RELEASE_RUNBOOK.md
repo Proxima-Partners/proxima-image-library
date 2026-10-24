@@ -3,6 +3,12 @@
 Updated 2026-10-23. Scope: approved supervised production cutover on
 `perf/container-pilot`; no `main` push or unattended production promotion.
 
+Implementation update: `perf/unattended-operations` adds read efficiency,
+authenticated artifact verification, conservative ARM polling and disabled
+operations workflows. It is **not deployed or activated**. Current implementation
+and remaining acceptance gates are in `UNATTENDED_IMPLEMENTATION.md` and
+`OPERATIONS_ACTIVATION.md`; older preparation sections below are historical.
+
 ## Accepted production checkpoint
 
 **Production cutover and the single disposable write canary PASSED.** The public

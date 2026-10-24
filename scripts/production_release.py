@@ -2,8 +2,9 @@
 
 The adapter contract below must be implemented and rehearsed before this core
 can operate production. No CLI, credentials, deployment commands, DNS changes,
-state restores or automatic undrain exist here. A successful release remains
-drained for supervised acceptance. Unit tests use only an in-memory adapter.
+state restores or deploy CLI exist here. A successful release stays drained by
+default. Opt-in resume additionally requires runtime configuration approval and
+an exact-build idle check. Unit tests use only an in-memory adapter.
 """
 
 from datetime import datetime, timezone
@@ -56,6 +57,7 @@ class Adapter(Protocol):
     def assert_recovery_safe(self, image, configuration, frozen): ...
     def update(self, image): ...
     def verify(self, receipt, baseline, configuration, frozen, *, seconds): ...
+    def resume_verified(self, receipt, observed, configuration, frozen): ...
 
 
 def validate_receipt(receipt, now=None):
@@ -149,7 +151,7 @@ def held_lease(adapter):
 
 
 def promote(adapter, candidate, prior, journal_path, *, drain_seconds=300,
-            verify_seconds=600, monotonic=time.monotonic, pause=time.sleep):
+            verify_seconds=600, resume_writes=False, monotonic=time.monotonic, pause=time.sleep):
     """Promote an already verified staging digest in place, once; leave writes held.
 
     Not the DNS/source-to-container cutover and not a schema/data migration tool.
@@ -157,6 +159,8 @@ def promote(adapter, candidate, prior, journal_path, *, drain_seconds=300,
     """
     for receipt in (candidate, prior):
         validate_receipt(receipt)
+    if type(resume_writes) is not bool:
+        raise StopRelease("Explicit boolean resume policy required")
     if candidate["registry_image"] == prior["registry_image"]:
         raise StopRelease("Candidate must differ from the known prior release")
     if not 0 < drain_seconds <= 300 or not 0 < verify_seconds <= 600:
@@ -222,6 +226,17 @@ def promote(adapter, candidate, prior, journal_path, *, drain_seconds=300,
                     raise StopRelease("Rollback state/boot verification failed")
                 journal.phase("rollback_verified_held")
                 return "rollback_verified_held"
+            if resume_writes:
+                adapter.assert_lease()
+                validate_receipt(candidate)
+                adapter.assert_recovery_safe(candidate["registry_image"], configuration, frozen)
+                journal.phase("verified_resume_requested_once")
+                resumed = adapter.resume_verified(candidate, result, configuration, frozen)
+                check_observation(resumed, "production", candidate, drained=False)
+                if resumed["boot_id"] != result["boot_id"] or resumed["state_id"] != result["state_id"]:
+                    raise StopRelease("Runtime changed during resume; reconcile without another mutation")
+                journal.phase("candidate_verified_writable")
+                return "candidate_verified_writable"
             journal.phase("candidate_verified_held")
             return "candidate_verified_held"
         except Exception:

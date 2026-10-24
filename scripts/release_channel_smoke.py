@@ -29,6 +29,7 @@ def smoke(image, commit, build_id):
                "--env", "FLASK_SECRET_KEY", "--env", "TELEMETRY_ENABLED=false",
                "--env", "APP_READ_ONLY=false", "--env", "PILOT_STATE_PROBE_ENABLED=false",
                "--env", "PRODUCTION_RELEASE_CONTROL_ENABLED=true", "--env", "TELEMETRY_SLOT=production",
+               "--env", "PRODUCTION_RELEASE_RESUME_ENABLED=true",
                "--env", f"EXPECTED_COMMIT={commit}", "--env", f"EXPECTED_BUILD_ID={build_id}",
                image, env=environment)
 
@@ -41,13 +42,14 @@ def smoke(image, commit, build_id):
                     time.sleep(1)
             raise RuntimeError("Offline release runtime readiness failed")
 
-        def control(action):
+        def control(action, expected=None, ok=True):
             nonce = uuid.uuid4().hex
+            extra = f",expected={expected!r}" if expected is not None else ""
             code = (
                 "import json,os,time; from pathlib import Path; "
                 "p=Path('/home/.image-library-release-control/request.json'); "
                 "fd=os.open(p,os.O_WRONLY|os.O_CREAT|os.O_TRUNC|os.O_NOFOLLOW,0o600); "
-                f"os.write(fd,json.dumps(dict(protocol=1,nonce='{nonce}',expires=int(time.time())+60,action='{action}')).encode()); "
+                f"os.write(fd,json.dumps(dict(protocol=1,nonce='{nonce}',expires=int(time.time())+60,action='{action}'{extra})).encode()); "
                 "os.fsync(fd); os.close(fd)"
             )
             docker("exec", name, "python", "-c", code)
@@ -57,7 +59,7 @@ def smoke(image, commit, build_id):
                         "from pathlib import Path; print(Path('/home/.image-library-release-control/response.json').read_text())",
                         stderr=subprocess.DEVNULL))
                     if result["nonce"] == nonce:
-                        assert result["ok"] is True and result["workers"] == 1
+                        assert result["ok"] is ok and result["workers"] == 1
                         assert result["active_work"] == 0 and result["read_only"] is False
                         assert result["release"]["commit"] == commit and result["release"]["build_id"] == build_id
                         return result
@@ -82,10 +84,16 @@ def smoke(image, commit, build_id):
         assert first["release_state"]["state_id"] == second["release_state"]["state_id"]
         assert first["release_state"]["boot_id"] != second["release_state"]["boot_id"]
         assert second["release_state"]["uid"] == second["release_state"]["gid"] == 65532
+        expected = {"commit": commit, "build_id": build_id,
+                    "boot_id": second["release_state"]["boot_id"], "state_id": second["release_state"]["state_id"]}
+        stale = dict(expected, boot_id=first["release_state"]["boot_id"])
+        assert control("resume", stale, ok=False)["draining"] is True
+        assert control("resume", expected)["draining"] is False
         print(json.dumps({"status": "passed", "image": image, "build_id": build_id,
             "network": "none", "workers": 1, "drain_survived_restart": True,
             "mount_preserved": True, "fresh_boot": True, "shutdown_exit": 0,
             "worker_filesystem_probe": filesystem,
+            "opt_in_resume_verified": True, "stale_boot_resume_rejected": True,
             "azure_scm_or_graph_verified": False}))
     finally:
         subprocess.run(["docker", "rm", "--force", name], check=False, stdout=subprocess.DEVNULL)

@@ -62,6 +62,14 @@ class FakeAdapter:
     def configuration(self):
         return {"secret": "not-for-journal"}
 
+    def resume_verified(self, receipt, observed, configuration, frozen):
+        self.assert_lease()
+        assert self.draining and self.work == 0
+        self.draining = False
+        if self.fault == "resume_ambiguous":
+            raise TimeoutError("secret resume outcome")
+        return self.observe("production")
+
     def drain(self):
         self.draining = True
         if self.fault == "drain_ambiguous":
@@ -98,7 +106,7 @@ class FakeAdapter:
         assert 0 < seconds <= 600
         if self.fault == "verify_ambiguous":
             raise TimeoutError("unknown verification outcome")
-        if self.fault and self.fault not in {"state_changed", "same_boot"} and len(self.updates) == 1:
+        if self.fault and self.fault not in {"state_changed", "same_boot", "resume_ambiguous"} and len(self.updates) == 1:
             raise release.ConfirmedVerificationFailure("bounded confirmed failure")
         if self.fault == "rollback_failed" and len(self.updates) == 2:
             raise release.ConfirmedVerificationFailure("prior unhealthy")
@@ -127,6 +135,25 @@ def test_verified_promotion_leaves_drain_and_releases_lease(tmp_path):
     with pytest.raises(FileExistsError):
         run(adapter, tmp_path)
     assert len(adapter.updates) == 1
+
+
+def test_explicit_resume_only_after_verified_promotion(tmp_path):
+    adapter = FakeAdapter()
+    assert run(adapter, tmp_path, resume_writes=True) == "candidate_verified_writable"
+    assert not adapter.draining and adapter.updates == [adapter.candidate["registry_image"]]
+    assert "verified_resume_requested_once" in (tmp_path / "release.jsonl").read_text()
+
+
+def test_ambiguous_resume_never_replays_or_rolls_back_after_possible_writes(tmp_path):
+    adapter = FakeAdapter(); adapter.fault = "resume_ambiguous"
+    with pytest.raises(release.StopRelease): run(adapter, tmp_path, resume_writes=True)
+    assert len(adapter.updates) == 1 and adapter.draining is False
+
+
+def test_rollback_does_not_implicitly_resume_writes(tmp_path):
+    adapter = FakeAdapter(); adapter.fault = "confirmed_failure"
+    assert run(adapter, tmp_path, resume_writes=True) == "rollback_verified_held"
+    assert adapter.draining and len(adapter.updates) == 2
 
 
 @pytest.mark.parametrize("key,value", [("resource", "PP-App-Serv"), ("plan", "shared-S1"),

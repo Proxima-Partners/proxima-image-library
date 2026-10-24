@@ -13,6 +13,7 @@
 !templates/**/*.html
 !static/
 !static/logo.png
+!static/review-badge.js
 !tests/
 !tests/test_*.py
 # Defense in depth after inclusions, including nested hidden files/directories.

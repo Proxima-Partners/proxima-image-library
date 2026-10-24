@@ -56,6 +56,10 @@ except HTTPError as e:
     assert e.code == 302 and e.headers["Location"].endswith("/login")
 with urlopen("http://127.0.0.1:8080/health", timeout=3) as r:
     assert json.load(r) == {"status": "ok"}
+with urlopen("http://127.0.0.1:8080/static/review-badge.js", timeout=3) as r:
+    assert "javascript" in r.headers["Content-Type"]
+    assert r.read() == Path("/app/static/review-badge.js").read_bytes()
+assert b"createReviewBadgePoller" in Path("/app/static/review-badge.js").read_bytes()
 print(json.dumps(info))
 '''
 
