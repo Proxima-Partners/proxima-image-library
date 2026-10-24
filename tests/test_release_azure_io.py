@@ -168,6 +168,17 @@ def test_recovery_file_cannot_be_reused_and_resource_is_exact(tmp_path):
         io.BlobReleaseLease(fake, path, blob="unapproved.json")
 
 
+def test_synthetic_container_cannot_hold_production_lock(tmp_path):
+    with pytest.raises(ValueError):
+        io.BlobReleaseLease(LeaseTransport(), tmp_path / "owner.json", container="ci-rehearsal")
+    lease = io.BlobReleaseLease(LeaseTransport(), tmp_path / "owner.json",
+                               container="ci-rehearsal", blob="rehearsal.json")
+    assert lease.resource == io.APP_ID + "-rehearsal"
+    with pytest.raises(io.AzureIOError):
+        with lease.exclusive(io.APP_ID): pass
+    assert lease.url.endswith("/ci-rehearsal/rehearsal.json")
+
+
 def test_recovery_directory_fsync_precedes_cloud_mutation(tmp_path, monkeypatch):
     fake = LeaseTransport()
     def fail(_):

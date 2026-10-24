@@ -1,0 +1,71 @@
+name: Rehearse isolated Image Library recovery
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: image-library-deploy
+  cancel-in-progress: false
+
+jobs:
+  rehearsal:
+    if: github.ref == 'refs/heads/main' && vars.IMAGE_LIBRARY_RECOVERY_REHEARSAL_ENABLED == 'true'
+    runs-on: ubuntu-24.04
+    environment: image-library-recovery-rehearsal
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+    env:
+      IMAGE_LIBRARY_RECOVERY_REHEARSAL_ENABLED: ${{ vars.IMAGE_LIBRARY_RECOVERY_REHEARSAL_ENABLED }}
+      PYTHON_DOTENV_DISABLED: '1'
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - name: Require fresh approved main rehearsal
+        run: |
+          test "$IMAGE_LIBRARY_RECOVERY_REHEARSAL_ENABLED" = 'true'
+          test "$GITHUB_REF" = 'refs/heads/main'
+          test "$GITHUB_EVENT_NAME" = 'workflow_dispatch'
+          test "$GITHUB_RUN_ATTEMPT" = '1'
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6, Node 24
+        with:
+          python-version: '3.12.15'
+      - name: Install bounded transport dependency
+        run: |
+          python -m pip install --only-binary=:all: --constraint requirements.txt requests==2.33.0
+      - name: Announce runner address without credentials
+        run: python -m scripts.rehearsal_network announce
+      - name: Retain runner network request
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          archive: true
+          name: rehearsal-network-${{ github.run_id }}-${{ github.run_attempt }}
+          path: runner-network.json
+          retention-days: 7
+          if-no-files-found: error
+      - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0, Node 24
+        with:
+          client-id: ${{ vars.AZURE_IMAGE_REHEARSAL_CLIENT_ID }}
+          tenant-id: a87255bb-ca4b-4ada-9354-5e0579f6e68f
+          subscription-id: 9528fb58-4fa4-43f8-9940-e5c3e1f1903f
+      - name: Await operator-scoped network path
+        run: python -m scripts.rehearsal_network wait
+      - name: Isolated real Azure forward and rollback rehearsal
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python -m scripts.rehearsal_runner
+      - name: Retain sanitized rehearsal evidence only
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          archive: true
+          name: recovery-rehearsal-${{ github.run_id }}-${{ github.run_attempt }}
+          path: reports/recovery-rehearsal.json
+          retention-days: 90
+          if-no-files-found: warn

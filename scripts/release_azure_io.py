@@ -27,6 +27,7 @@ SCM = {"production": "https://pp-image-library.scm.azurewebsites.net",
        "staging": "https://pp-image-library-staging.scm.azurewebsites.net"}
 LEGACY_SCM = {"production": "https://pp-app-serv.scm.azurewebsites.net",
               "staging": "https://pp-app-serv-staging.scm.azurewebsites.net"}
+REHEARSAL_SCM = "https://pp-image-library-rehearsal.scm.azurewebsites.net"
 ARM_AUDIENCE = "https://management.core.windows.net/"
 STORAGE_AUDIENCE = "https://storage.azure.com/"
 
@@ -80,7 +81,7 @@ class AzureTransport:
     def request(self, method, url, *, accepted=(200,), headers=None, data=None,
                 max_bytes=2 * 1024 * 1024, timeout=30):
         parsed = urlsplit(url)
-        allowed = {urlsplit(x).netloc for x in [ARM, STORAGE, *SCM.values(), *LEGACY_SCM.values()]}
+        allowed = {urlsplit(x).netloc for x in [ARM, STORAGE, REHEARSAL_SCM, *SCM.values(), *LEGACY_SCM.values()]}
         decoded_path = unquote(parsed.path)
         if (parsed.scheme != "https" or parsed.netloc not in allowed or parsed.username
                 or parsed.fragment or ".." in decoded_path.split("/")
@@ -131,11 +132,14 @@ class BlobReleaseLease:
     use this lock; never auto-break it. Manual lock recovery requires writers
     held and any in-flight ARM operation reconciled first.
     """
-    def __init__(self, transport, recovery_path, *, blob="production.json"):
+    def __init__(self, transport, recovery_path, *, blob="production.json", container="release-control"):
         if blob not in {"production.json", "rehearsal.json"}:
             raise ValueError("Unapproved release lock")
+        if container not in {"release-control", "ci-rehearsal"} or (container == "ci-rehearsal" and blob != "rehearsal.json"):
+            raise ValueError("Unapproved release lock container")
         self.transport, self.recovery_path = transport, Path(recovery_path)
-        self.url = STORAGE + "/release-control/" + blob
+        self.url = STORAGE + "/" + container + "/" + blob
+        self.resource = APP_ID + ("-rehearsal" if container == "ci-rehearsal" else "")
         self.lease_id = str(uuid.uuid4())
         self.run_id = uuid.uuid4().hex
         self.acquired = False
@@ -150,7 +154,7 @@ class BlobReleaseLease:
         fd = os.open(self.recovery_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
         with os.fdopen(fd, "w") as stream:
             json.dump({"url": self.url, "lease_id": self.lease_id, "run_id": self.run_id,
-                       "resource": APP_ID, "instruction": "Reconcile; never auto-break or auto-resume"}, stream)
+                       "resource": self.resource, "instruction": "Reconcile; never auto-break or auto-resume"}, stream)
             stream.flush()
             os.fsync(stream.fileno())
         directory = os.open(self.recovery_path.parent, os.O_RDONLY | os.O_DIRECTORY)
@@ -180,7 +184,7 @@ class BlobReleaseLease:
         self.transport.request("PUT", self.url, accepted=(201,), headers={
             "x-ms-blob-type": "BlockBlob", "x-ms-lease-id": self.lease_id,
             "Content-Type": "application/json"}, data=json.dumps({
-                "run_id": self.run_id, "resource": APP_ID, "phase": phase, "at": int(time.time()),
+                "run_id": self.run_id, "resource": self.resource, "phase": phase, "at": int(time.time()),
             }).encode())
 
     def release(self):
@@ -191,7 +195,7 @@ class BlobReleaseLease:
 
     @contextmanager
     def exclusive(self, resource):
-        if resource != APP_ID:
+        if resource != self.resource:
             raise AzureIOError("Lease resource mismatch")
         self.acquire()
         try:
