@@ -9,6 +9,7 @@ import json
 import re
 import threading
 import time
+from copy import deepcopy
 from pathlib import Path, PurePosixPath
 from typing import Optional
 
@@ -16,8 +17,24 @@ from src.config import Config
 
 
 _SIDECAR_CACHE: dict[str, tuple[float, set[str]]] = {}
+_SIDECAR_DOCUMENT_CACHE: dict[str, tuple[float, dict]] = {}
 _SIDECAR_CACHE_LOCK = threading.Lock()
 _SIDECAR_CACHE_SECONDS = 60
+_SIDECAR_DOCUMENT_CACHE_MAX = 512
+
+
+def _document_cache_key(root: str, slug: str) -> str:
+    return f"sharepoint:{root}:{slug}"
+
+
+def _cache_document(key: str, value: dict, now: float) -> None:
+    """Store a private bounded copy; callers never receive shared mutations."""
+    expired = [name for name, (expires, _) in _SIDECAR_DOCUMENT_CACHE.items() if expires <= now]
+    for name in expired:
+        _SIDECAR_DOCUMENT_CACHE.pop(name, None)
+    while len(_SIDECAR_DOCUMENT_CACHE) >= _SIDECAR_DOCUMENT_CACHE_MAX:
+        _SIDECAR_DOCUMENT_CACHE.pop(next(iter(_SIDECAR_DOCUMENT_CACHE)))
+    _SIDECAR_DOCUMENT_CACHE[key] = (now + _SIDECAR_CACHE_SECONDS, deepcopy(value))
 
 
 def metadata_location(slug: str) -> str:
@@ -47,6 +64,12 @@ def write_metadata(
         path.write_bytes(content)
     with _SIDECAR_CACHE_LOCK:
         _SIDECAR_CACHE.clear()
+        if storage_mode == "sharepoint" and sp_client is not None:
+            _cache_document(
+                _document_cache_key(root, slug),
+                json.loads(content),
+                time.monotonic(),
+            )
     return relative
 
 
@@ -100,6 +123,16 @@ def read_metadata(
     mode = storage_mode or Config.STORAGE_MODE
     folder = image_folder or Config.IMAGE_FOLDER
     relative = metadata_location(slug)
+    root = (Config.SHAREPOINT_IMAGE_FOLDER or "").strip().strip("/") if mode == "sharepoint" else ""
+    document_key = _document_cache_key(root, slug) if mode == "sharepoint" else ""
+    if document_key:
+        now = time.monotonic()
+        with _SIDECAR_CACHE_LOCK:
+            cached = _SIDECAR_DOCUMENT_CACHE.get(document_key)
+            if cached and cached[0] > now:
+                return deepcopy(cached[1])
+            if cached:
+                _SIDECAR_DOCUMENT_CACHE.pop(document_key, None)
     try:
         if not metadata_exists(
             slug,
@@ -112,13 +145,16 @@ def read_metadata(
             if sp_client is None:
                 from src.sharepoint_client import SharePointClient
                 sp_client = SharePointClient()
-            root = (Config.SHAREPOINT_IMAGE_FOLDER or "").strip().strip("/")
             path = f"{root}/{relative}" if root else relative
             raw = sp_client.get_file_bytes(path)
         else:
             raw = (Path(folder) / relative).read_bytes()
         parsed = json.loads(raw)
-        return parsed if isinstance(parsed, dict) else {}
+        result = parsed if isinstance(parsed, dict) else {}
+        if document_key:
+            with _SIDECAR_CACHE_LOCK:
+                _cache_document(document_key, result, time.monotonic())
+        return deepcopy(result)
     except (FileNotFoundError, OSError, ValueError, TypeError, json.JSONDecodeError):
         return {}
     except Exception:

@@ -2,6 +2,7 @@ from io import BytesIO
 
 from PIL import Image
 
+from src import image_processor
 from src.image_processor import (
     HERO_WIDTH,
     STANDARD_WIDTH,
@@ -126,6 +127,22 @@ def test_transparency_is_preserved():
     with Image.open(BytesIO(result["standard"]["bytes"])) as image:
         assert image.mode == "RGBA"
         assert image.getchannel("A").getextrema()[1] < 255
+
+
+def test_each_derivative_target_is_resized_only_once(monkeypatch):
+    calls = []
+    resize = image_processor._resize_to_width
+
+    def recording_resize(image, target_width):
+        calls.append(target_width)
+        return resize(image, target_width)
+
+    monkeypatch.setattr(image_processor, "_resize_to_width", recording_resize)
+    result = generate_web_derivatives(_image_bytes(3200, 1800))
+
+    assert calls == [STANDARD_WIDTH, HERO_WIDTH]
+    assert _opened_size(result["standard_png"]["bytes"]) == (STANDARD_WIDTH, 900)
+    assert _opened_size(result["hero_png"]["bytes"]) == (HERO_WIDTH, 1440)
 
 
 def test_process_image_raises_when_record_creation_fails(tmp_path):

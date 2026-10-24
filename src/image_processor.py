@@ -111,9 +111,8 @@ def _resize_to_width(img: PILImage.Image, target_width: int) -> PILImage.Image:
     return img
 
 
-def _encode_png(img: PILImage.Image, target_width: int) -> dict:
-    """Lossless PNG companion to a WebP derivative (same pixels, same size)."""
-    img = _resize_to_width(img, target_width)
+def _encode_png_pixels(img: PILImage.Image) -> dict:
+    """Encode already-sized pixels as a lossless PNG."""
     if img.mode not in ("RGB", "RGBA"):
         img = img.convert("RGBA" if "A" in img.getbands() else "RGB")
     buf = BytesIO()
@@ -126,6 +125,11 @@ def _encode_png(img: PILImage.Image, target_width: int) -> dict:
         "format": "PNG",
         "fileSize": len(content),
     }
+
+
+def _encode_png(img: PILImage.Image, target_width: int) -> dict:
+    """Lossless PNG companion to a WebP derivative (same pixels, same size)."""
+    return _encode_png_pixels(_resize_to_width(img, target_width))
 
 
 def png_location(location: str) -> str:
@@ -144,8 +148,8 @@ def convert_to_png(image_bytes: bytes) -> bytes:
     return buf.getvalue()
 
 
-def _encode_webp(img: PILImage.Image, target_width: int) -> dict:
-    img = _resize_to_width(img, target_width)
+def _encode_webp_pixels(img: PILImage.Image) -> dict:
+    """Encode already-sized pixels as the approved WebP derivative."""
     output_width, output_height = img.size
     buf = BytesIO()
     img.save(buf, format="WEBP", quality=WEBP_QUALITY, method=4)
@@ -158,6 +162,10 @@ def _encode_webp(img: PILImage.Image, target_width: int) -> dict:
         "fileSize": len(content),
         "quality": WEBP_QUALITY,
     }
+
+
+def _encode_webp(img: PILImage.Image, target_width: int) -> dict:
+    return _encode_webp_pixels(_resize_to_width(img, target_width))
 
 
 @traced("image.derivatives")
@@ -176,10 +184,15 @@ def generate_web_derivatives(image_bytes: bytes, *, include_png: bool = True) ->
         oriented = ImageOps.exif_transpose(source_img)
         srgb = _to_srgb(oriented)
         hero_eligible = original["width"] >= HERO_WIDTH
-        standard = _encode_webp(srgb, STANDARD_WIDTH)
-        hero = _encode_webp(srgb, HERO_WIDTH) if hero_eligible else None
-        standard_png = _encode_png(srgb, STANDARD_WIDTH) if include_png else None
-        hero_png = _encode_png(srgb, HERO_WIDTH) if include_png and hero_eligible else None
+        # WebP and PNG companions use identical resized pixels. Resize once per
+        # approved target instead of repeating the expensive LANCZOS pass for
+        # each output format.
+        standard_pixels = _resize_to_width(srgb, STANDARD_WIDTH)
+        standard = _encode_webp_pixels(standard_pixels)
+        standard_png = _encode_png_pixels(standard_pixels) if include_png else None
+        hero_pixels = _resize_to_width(srgb, HERO_WIDTH) if hero_eligible else None
+        hero = _encode_webp_pixels(hero_pixels) if hero_pixels is not None else None
+        hero_png = _encode_png_pixels(hero_pixels) if include_png and hero_pixels is not None else None
     return {
         "original": original,
         "standard": standard,
