@@ -28,6 +28,18 @@ def test_active_overlap_and_confirmed_termination():
 
 def test_ambiguous_logs_fail_closed():
     with pytest.raises(AzureIOError): lifecycle.active_containers(b"Container is terminated.\n")
+    with pytest.raises(AzureIOError): lifecycle.active_containers(b"")
+
+
+def test_stop_carries_named_runtime_identity_into_termination_check(monkeypatch):
+    known = {"abc_pp-image-library-rehearsal_main"}
+    monkeypatch.setattr(lifecycle, "inventory", lambda io: known)
+    observed = []
+    monkeypatch.setattr(lifecycle, "confirm_stopped", lambda io, lease, **kwargs: observed.append(kwargs))
+    transport = SimpleNamespace(request=lambda *args, **kwargs: None)
+    lease = SimpleNamespace(checkpoint=lambda _: None)
+    lifecycle.stop(transport, lease)
+    assert observed == [{"required_terminated": known}]
 
 
 def test_cold_update_never_puts_before_termination(monkeypatch):
