@@ -134,3 +134,46 @@ production-controller fault matrix; prove production CI identity/network access
 and finish writer containment; review the real 24-hour telemetry window; then
 obtain separate supervised-release and unattended-activation approvals. The
 earliest observation checkpoint remains October 24 at approximately 14:08 PDT.
+
+## Operator reconciliation — October 23, 22:34 PDT
+
+The previous held rehearsal is now reconciled, **not reclassified as a CI pass**.
+Azure Resource Health reported Available. The diagnostics skill's names-only
+collector was used; its deployment-list command was unavailable in this CLI, so
+targeted ARM and bounded platform/SCM log reads supplied the lifecycle evidence.
+Logs show the old runtime continued until `05:15:17Z`, after the candidate became
+ready at `05:14:57Z`. Thus a single App Service instance/one Gunicorn child does
+not establish one runtime during an online update. The shared response vanished
+during that overlap; overlap is a supported contributing hypothesis, not proof
+of the exact filesystem failure mechanism.
+
+The failed request and configuration were preserved in private storage under the
+existing recovery prefix before status-only diagnosis. Early diagnostic starts
+were contained/stopped when the readiness helper rejected the stopped-site
+response or timed out; no status/resume was replayed. The helper now polls
+transient startup responses/GET timeouts within a fixed deadline and permits
+stopped-site HTTP 403 only in an explicit cold-start path. After a controlled
+restart, three fresh status acknowledgements passed with drain/state preserved.
+
+A separate, fresh operator acceptance then passed stale-boot rejection, exact
+resume and re-drain. Candidate termination was verified from named platform
+lifecycle records before one stopped-image rollback. The prior build became
+ready with a fresh boot and unchanged mount, configuration and synthetic state.
+The app was stopped and its runtime termination confirmed before ETag-conditional
+deletion of only its synthetic counter, request and response files. Each read
+back HTTP 404. Owner/configuration/recovery records remain protected and retained.
+The existing lease was explicitly released, never broken.
+
+Independent readback verified prior digest `1a1d24e…`, **Stopped**, zero active
+rehearsal containers, unchanged configuration and **unlocked** synthetic lease.
+Public production checks at `2026-10-24T05:34:07Z` passed on the original accepted
+build. Production/staging images, settings, ingress, state and provider data are
+unchanged. No temporary runner access was added during operator reconciliation.
+
+The revised isolated CI harness now stops and verifies runtime termination before
+each digest change, checks authenticated SCM/storage access before starting, and
+stops before channel cleanup. Readiness polling and sanitized phase/error reporting
+are improved. Local checks passed 680 tests with seven Linux-only skips, 15 JS
+checks, actionlint and diff validation. A fresh reviewed CI rehearsal is still
+required. The production adapter's lifecycle policy/full fault matrix, production
+CI access, 24-hour telemetry, supervised release and activation remain open gates.

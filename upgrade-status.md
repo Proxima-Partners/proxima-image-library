@@ -4,6 +4,16 @@ Updated: 2026-10-23 (America/Los_Angeles).
 
 ## Current execution checkpoint
 
+**The failed isolated rehearsal is now safely reconciled by an operator-run
+recovery, not yet a fresh CI pass.** Fresh stale/exact resume checks, re-drain,
+stopped rollback, synthetic-file cleanup and owner-held lease release passed.
+Independent checks verified prior image, Stopped app, zero rehearsal runtimes,
+HTTP 404 for all three owned test files and an unlocked lease. Protected records
+remain retained. The revised harness adds stopped-container verification before
+image changes and bounded cold-start readiness. See `PRODUCTION_READINESS.md`;
+the failed-run checkpoint immediately below is historical, superseded for its
+held lease and uncleaned fixture state only. Production is unchanged.
+
 **Production builder complete; isolated recovery rehearsal stopped at a missing
 resume acknowledgement. Production is unchanged.** PRs #5/#6 added the pinned
 manual production publisher and isolated CI rehearsal. Candidate `ba61c52` /

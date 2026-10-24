@@ -9,7 +9,7 @@ import time
 import requests
 
 from scripts.rehearsal_runner import IsolatedTransport, require
-from scripts.rehearsal_infra import HOST
+from scripts.rehearsal_infra import HOST, SCM
 from scripts.release_azure_io import STORAGE
 
 
@@ -35,8 +35,13 @@ def wait():
             code, _, _ = io.request("HEAD", STORAGE + "/ci-rehearsal?restype=container", accepted=(200, 403), timeout=10)
             response = session.get(HOST + "/health", timeout=(5, 10), allow_redirects=False)
             require(response.status_code in {200, 403, 502, 503})
-            if code == 200 and response.status_code == 200:
-                print("Runner network and synthetic-container read access verified")
+            scm_code, _, _ = io.request("GET", SCM + "/api/vfs/.image-library-release-control/request.json",
+                                       accepted=(200, 403, 404), max_bytes=4096, timeout=10)
+            # A stopped app returns 403 even to an allowed runner. Storage and
+            # authenticated SCM must be reachable before the lease/start step;
+            # exact public readiness is proved after the bounded cold start.
+            if code == 200 and scm_code in {200, 404}:
+                print("Runner synthetic-storage and authenticated SCM access verified")
                 return
             time.sleep(5)
     raise RuntimeError("Scoped network path unavailable; no rehearsal mutations started")

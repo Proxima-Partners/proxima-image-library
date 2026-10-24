@@ -1,3 +1,4 @@
+import json
 from types import SimpleNamespace
 
 import pytest
@@ -35,3 +36,58 @@ def test_container_execution_overrides_rejected(key, value):
     props = {"image": rehearsal.target.PRIOR_IMAGE, "authType": "SystemIdentity", "isMain": True, "targetPort": "8080"}
     props[key] = value
     with pytest.raises(azure.AzureIOError): rehearsal.immutable_container({"properties": props})
+
+
+class Response:
+    def __init__(self, status, body=None):
+        self.status_code = status
+        self.raw = SimpleNamespace(read=lambda *args, **kwargs: json.dumps(body).encode())
+
+    def __enter__(self): return self
+    def __exit__(self, *args): pass
+
+
+class Session:
+    def __init__(self, responses): self.responses = iter(responses)
+    def __enter__(self): return self
+    def __exit__(self, *args): pass
+    def get(self, *args, **kwargs):
+        value = next(self.responses)
+        if isinstance(value, Exception): raise value
+        return value
+
+
+def test_normal_readiness_does_not_ignore_access_denial(monkeypatch):
+    monkeypatch.setattr(rehearsal.requests, "Session", lambda: Session([Response(403)]))
+    with pytest.raises(azure.AzureIOError, match="HTTP 403"):
+        rehearsal.ready({})
+
+
+def test_explicit_cold_start_polls_but_still_requires_exact_ready_identity(monkeypatch):
+    receipt = {"commit": "a" * 40, "build_id": "100-1"}
+    body = dict(receipt, status="ready", version="v2.0.0")
+    monkeypatch.setattr(rehearsal.requests, "Session", lambda: Session([Response(403), Response(200, body)]))
+    pauses = []
+    monkeypatch.setattr(rehearsal.time, "sleep", pauses.append)
+    assert rehearsal.ready(receipt, cold_start=True) == body
+    assert pauses == [3]
+
+
+def test_cold_start_access_denial_is_bounded_not_success(monkeypatch):
+    monkeypatch.setattr(rehearsal.requests, "Session", lambda: Session([Response(403)]))
+    ticks = iter([0, 0, 301])
+    monkeypatch.setattr(rehearsal.time, "monotonic", lambda: next(ticks))
+    monkeypatch.setattr(rehearsal.time, "sleep", lambda _: None)
+    with pytest.raises(azure.AzureIOError, match="Exact rehearsal readiness missing"):
+        rehearsal.ready({}, cold_start=True)
+
+
+@pytest.mark.parametrize("error", [rehearsal.requests.ReadTimeout(), rehearsal.requests.ConnectionError()])
+def test_readiness_transport_transients_retry_only_get(monkeypatch, error):
+    receipt = {"commit": "a" * 40, "build_id": "100-1"}
+    body = dict(receipt, status="ready", version="v2.0.0")
+    monkeypatch.setattr(rehearsal.requests, "Session", lambda: Session([error, Response(200, body)]))
+    pauses = []
+    monkeypatch.setattr(rehearsal.time, "sleep", pauses.append)
+    assert rehearsal.ready(receipt) == body
+    assert pauses == [3]
