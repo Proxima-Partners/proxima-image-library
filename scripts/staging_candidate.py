@@ -14,6 +14,8 @@ import tempfile
 import time
 from urllib.parse import urlsplit
 
+import requests
+
 from scripts.production_azure_adapter import AzureProductionAdapter, API
 from scripts.production_release import check_observation, validate_receipt
 from scripts.release_artifacts import GitHubReads, load_receipt
@@ -54,6 +56,37 @@ class StagingTransport(AzureTransport):
         return super().request(method, url, **kwargs)
 
 
+def wait_readiness(adapter, receipt, deadline):
+    """Staging-only bounded GET polling, including App Service startup 403.
+
+    Pre/post configuration and file guards remain mandatory in cold_update.
+    A 403 is never acceptance: only exact ready identity followed by authenticated
+    RPC and anonymous auth-boundary checks can pass. No ARM/SCM mutation retries.
+    This does not widen the production adapter's readiness policy.
+    """
+    with requests.Session() as session:
+        session.trust_env = False
+        while time.time() < deadline:
+            adapter.assert_lease()
+            try:
+                with session.get("https://pp-image-library-staging.azurewebsites.net/readyz",
+                        timeout=(5, min(15, deadline-time.time())), allow_redirects=False, stream=True) as response:
+                    if response.status_code == 200:
+                        raw = response.raw.read(32769, decode_content=True)
+                        require(len(raw) <= 32768)
+                        value = json.loads(raw)
+                        if (value.get("commit") == receipt["commit"] and value.get("build_id") == receipt["build_id"]
+                                and value.get("version") == "v2.0.0" and value.get("telemetry") is True
+                                and value.get("status") == "ready"):
+                            return
+                    else:
+                        require(response.status_code in {403, 502, 503})
+            except (requests.Timeout, requests.ConnectionError):
+                pass
+            time.sleep(min(3, max(0, deadline-time.time())))
+    raise AzureIOError("Staging readiness unconfirmed; retain lease without mutation")
+
+
 def cold_update(adapter, receipt, prior_image, unchanged):
     validate_receipt(receipt)
     require(receipt["registry_image"] in adapter.receipts and receipt["registry_image"] != prior_image)
@@ -84,7 +117,7 @@ def cold_update(adapter, receipt, prior_image, unchanged):
         require(code != 202 and (json.loads(raw) if raw else {}).get("properties", {}).get("provisioningState") in {None, "Succeeded"})
     unchanged(receipt["registry_image"])
     life.start()
-    adapter._wait_cold_readiness(receipt, time.time() + 300, slot="staging")
+    wait_readiness(adapter, receipt, time.time() + 300)
     active = life.inventory()
     require(len(active) == 1 and not active & old)
     unchanged(receipt["registry_image"])
@@ -119,7 +152,8 @@ def execute(report):
         require(baseline["active_work"] == 0)
         frozen = adapter.snapshot("staging")
         require(adapter.snapshot("staging") == frozen)
-        backup = gzip.compress(json.dumps({"state": frozen, "configuration": initial}, sort_keys=True).encode(), mtime=0)
+        backup = gzip.compress(json.dumps({"state": frozen, "configuration": initial,
+            "baseline": baseline, "production_configuration": production}, sort_keys=True).encode(), mtime=0)
         url = STORAGE + "/rollback-backups/" + lease.run_id + "/staging.json.gz"
         lease.checkpoint("staging_protected_backup_requested")
         io.request("PUT", url, accepted=(201,), headers={"x-ms-blob-type": "BlockBlob", "If-None-Match": "*"}, data=backup)

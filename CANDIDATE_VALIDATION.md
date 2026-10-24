@@ -63,3 +63,26 @@ does not rebuild or relabel the candidate. Rehearsal and staging are still pendi
 GitHub emitted a non-failing Node 20 metadata deprecation for the pinned Buildx
 action (runner forced Node 24); track its vendor update separately from this
 immutable candidate, without weakening or silently replacing builder provenance.
+
+## Rehearsal and staging checkpoint
+
+PR #10 merged the exact candidate pin as `d0cb46a`. Isolated recovery run
+`40071226303-1` passed in 6m24s, including the new stopped cleanup/restart and
+protocol-2 stale/exact resume checks, synthetic rollback and cleanup. Verified
+artifact `12551592242`, ZIP SHA-256
+`b7e5ef5f519667638828e12e3b4455215e34ecf248812aaa3bec36c451874fe4`.
+Independent operator reads confirmed prior image, Stopped, zero active runtimes,
+absent owned files and unlocked lease. Temporary runner `57.151.87.21` / rule
+`rehearsal-ci-40071226303` was removed from app/SCM/storage and operator-only
+default-deny access verified. Both enablement flags are false. The protected
+synthetic records remain under `ci-rehearsal/2f57089d3dec4c4fbc66a37e906f0b5d/`.
+
+The first staging forward operation paused at strict cold readiness, retaining
+the lease without replay or rollback. Subsequent direct reads found the exact
+candidate ready, anonymous home redirected to login, maintenance returned 401,
+and control files were absent. Staging-only polling is being adapted for the
+Azure startup window: bounded 403/502/503 GETs are not acceptance; exact ready
+identity and subsequent authenticated runtime/auth checks remain required.
+Production adapter policy is unchanged. Recovery must first reconcile the
+existing owner, original private backup, known mount and actual named lifecycle;
+never rerun the failed command or acquire/break a replacement lease.
